@@ -36,6 +36,12 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Simulation Logs
+**/simlog/
+**/log/
+**/logs/
+**/simulation_log/
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
@@ -77,6 +83,9 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# VSCode stuff
+.vscode
 
 # IPython
 profile_default/
@@ -137,6 +146,7 @@ venv.bak/
 
 # mkdocs documentation
 /site
+venv
 
 # mypy
 .mypy_cache/

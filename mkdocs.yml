@@ -1,0 +1,7 @@
+site_name: SupplyNetPy Documentation
+nav:
+  - Home: index.md
+  - Overview: overview.md
+  - InventOpt in 10 Minutes: ten_min.md
+  - About: about.md
+theme: readthedocs
