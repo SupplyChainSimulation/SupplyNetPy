@@ -166,12 +166,12 @@ def get_sc_net_info(supplychainnet):
     """
     sc_info = "Supply chain configuration: \n"
     logger = sccore.global_logger.logger
-    logger.log(f"Number of nodes in the network: {supplychainnet['num_of_nodes']}") # type: ignore
-    logger.log(f"Number of edges in the network: {supplychainnet['num_of_edges']}") # type: ignore
-    logger.log(f"\t Number of suppliers: {supplychainnet['num_suppliers']}") # type: ignore
-    logger.log(f"\t Number of manufacturers: {supplychainnet['num_manufacturers']}") # type: ignore
-    logger.log(f"\t Number of distributors: {supplychainnet['num_distributors']}") # type: ignore
-    logger.log(f"\t Number of retailers: {supplychainnet['num_retailers']}") # type: ignore
+    logger.info(f"Number of nodes in the network: {supplychainnet['num_of_nodes']}") 
+    logger.info(f"Number of edges in the network: {supplychainnet['num_of_edges']}") 
+    logger.info(f"\t Number of suppliers: {supplychainnet['num_suppliers']}") 
+    logger.info(f"\t Number of manufacturers: {supplychainnet['num_manufacturers']}") 
+    logger.info(f"\t Number of distributors: {supplychainnet['num_distributors']}") 
+    logger.info(f"\t Number of retailers: {supplychainnet['num_retailers']}") 
     
     sc_info += f"Number of nodes in the network: {supplychainnet['num_of_nodes']} \n Number of edges in the network: {supplychainnet['num_of_edges']} \n Number of suppliers: {supplychainnet['num_suppliers']} \n Number of manufacturers: {supplychainnet['num_manufacturers']} \n Number of distributors: {supplychainnet['num_distributors']} \n Number of retailers: {supplychainnet['num_retailers']}"
     for node in supplychainnet["nodes"]:
@@ -181,15 +181,15 @@ def get_sc_net_info(supplychainnet):
     for demand in supplychainnet["demand"]:
         sc_info += demand.get_info()
     sc_info += "\nSupply chain performance: \n"
-    logger.log(f"Supply chain performance: \n") # type: ignore
+    logger.info(f"Supply chain performance: \n") 
     if("performance" in supplychainnet):
-        logger.log(f"Number of products sold = {supplychainnet['total_product_sold']}") # type: ignore
-        logger.log(f"SC total profit = {supplychainnet['sc_profit']}") # type: ignore
-        logger.log(f"SC total tranportation cost = {supplychainnet['sc_tranport_cost']}") # type: ignore
-        logger.log(f"SC inventory cost = {supplychainnet['sc_inv_cost']}") # type: ignore
-        logger.log(f"SC revenue (profit - cost) = {supplychainnet['sc_revenue']}") # type: ignore
-        logger.log(f"Average revenue (per day) = {supplychainnet['avg_revenue']}") # type: ignore
-        logger.log(f"Customers returned  = {supplychainnet['total_customer_returned']}") # type: ignore
+        logger.info(f"Number of products sold = {supplychainnet['total_product_sold']}") 
+        logger.info(f"SC total profit = {supplychainnet['sc_profit']}") 
+        logger.info(f"SC total tranportation cost = {supplychainnet['sc_tranport_cost']}")
+        logger.info(f"SC inventory cost = {supplychainnet['sc_inv_cost']}") 
+        logger.info(f"SC revenue (profit - cost) = {supplychainnet['sc_revenue']}") 
+        logger.info(f"Average revenue (per day) = {supplychainnet['avg_revenue']}") 
+        logger.info(f"Customers returned  = {supplychainnet['total_customer_returned']}") 
     
     sc_info += f"Number of products sold = {supplychainnet['total_product_sold']}  \n SC total profit = {supplychainnet['sc_profit']}  \n SC total tranportation cost = {supplychainnet['sc_tranport_cost']}  \n SC inventory cost = {supplychainnet['sc_inv_cost']}  \n SC revenue (profit - cost) = {supplychainnet['sc_revenue']}  \n Average revenue (per day) = {supplychainnet['avg_revenue']}  \n Customers returned  = {supplychainnet['total_customer_returned']}"
     return sc_info
@@ -232,6 +232,8 @@ def simulate_sc_net(env,supplychainnet,sim_time):
     - supplychainnet (dict): updated dict with listed performance measures
     """
     logger = sccore.global_logger
+    get_sc_net_info(supplychainnet)
+
     demands = supplychainnet["demand"]
     nodes = supplychainnet["nodes"]
     edges = supplychainnet["edges"]
@@ -274,14 +276,14 @@ def simulate_sc_net(env,supplychainnet,sim_time):
                                      "sc_revenue":sc_revenue,
                                      "avg_revenue":sc_avg_revenue,
                                      "total_customer_returned": sc_total_customers_returned}
-    logger.log(f"*** SC stats ***") # type: ignore
-    logger.log(f"Number of products sold = {sc_total_unit_sold}") # type: ignore
-    logger.log(f"SC total profit = {sc_profit}") # type: ignore
-    logger.log(f"SC total tranportation cost = {sc_tranport_cost}") # type: ignore
-    logger.log(f"SC inventory cost = {sc_inventory_cost}") # type: ignore
-    logger.log(f"SC revenue (profit - cost) = {sc_revenue}") # type: ignore
-    logger.log(f"Average revenue (per day) = {sc_avg_revenue}") # type: ignore
-    logger.log(f"Customers returned  = {sc_total_customers_returned}") # type: ignore
+    logger.info(f"*** SC stats ***") # type: ignore
+    logger.info(f"Number of products sold = {sc_total_unit_sold}") # type: ignore
+    logger.info(f"SC total profit = {sc_profit}") # type: ignore
+    logger.info(f"SC total tranportation cost = {sc_tranport_cost}") # type: ignore
+    logger.info(f"SC inventory cost = {sc_inventory_cost}") # type: ignore
+    logger.info(f"SC revenue (profit - cost) = {sc_revenue}") # type: ignore
+    logger.info(f"Average revenue (per day) = {sc_avg_revenue}") # type: ignore
+    logger.info(f"Customers returned  = {sc_total_customers_returned}") # type: ignore
     
     return supplychainnet
 
