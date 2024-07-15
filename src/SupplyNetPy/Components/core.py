@@ -116,21 +116,22 @@ class Link:
         """
         Displays link information
         """
-        print(f"From: {self.from_node.name}")
-        print(f"To: {self.to_node.name}")
-        print(f"\tLead time: {self.lead_time}")
-        print(f"\tTranportation cost: {self.transportation_cost}")
-        print(f"\tDistance: {self.link_distance} Km")
-        print(f"\tTransport type: {self.transportation_type}")
-        #print(f"{self.products}")
-        print(f"\tLoad capacity: {self.max_load_capacity}")
-        print(f"\tMin shipment quantity: {self.min_shipment_quantity}")
+        self.logger.info(f"Link from: {self.from_node.name}")
+        self.logger.info(f"to: {self.to_node.name}")
+        self.logger.info(f"Lead time: {self.lead_time}")
+        self.logger.info(f"Tranportation cost: {self.transportation_cost}")
+        self.logger.info(f"Distance: {self.link_distance} Km")
+        self.logger.info(f"Transport type: {self.transportation_type}")
+        self.logger.info(f"Load capacity: {self.max_load_capacity}")
+        self.logger.info(f"Min shipment quantity: {self.min_shipment_quantity}")
         
-        print(f"\tLink failuer probability: {self.probability_of_failure}")
-        print(f"\tCO2 cost: {self.co2_cost}")
-        print(f"\tReliability: {self.edge_reliability}")
-        print(f"\tResilience: {self.edge_resilience}")
-        print(f"\tCriticality: {self.edge_criticality}")
+        self.logger.info(f"Link failuer probability: {self.probability_of_failure}")
+        self.logger.info(f"CO2 cost: {self.co2_cost}")
+        self.logger.info(f"Reliability: {self.edge_reliability}")
+        self.logger.info(f"Resilience: {self.edge_resilience}")
+        self.logger.info(f"Criticality: {self.edge_criticality}")
+
+        return f"Link from: {self.from_node.name}, to: {self.to_node.name}\n Lead time: {self.lead_time}\n Tranportation cost: {self.transportation_cost} \n Tranportation cost: {self.transportation_cost} \n Distance: {self.link_distance} Km \n Transport type: {self.transportation_type} \n Load capacity: {self.max_load_capacity} \n Min shipment quantity: {self.min_shipment_quantity} \n Link failuer probability: {self.probability_of_failure} \n CO2 cost: {self.co2_cost} \n Reliability: {self.edge_reliability} \n Resilience: {self.edge_resilience} \n Criticality: {self.edge_criticality} "
               
     def calculate_stats(self, timenow):
         """
@@ -148,12 +149,14 @@ class Link:
         """
         Print performance measures of this link.
         """
-        print(f"Performance measures for link: from {self.from_node.name} to {self.to_node.name}:")
-        print(f"Total shipments made: {self.total_shipments}")
-        print(f"Link flow [time, flow (#shipments/day)]: {self.flow[-1]}")
-        print(f"Link utilization [time, utilization(%)]: {self.utilization[-1]} ")
-        print(f"Total transport cost: {self.total_transport_cost} Rs")
-        print(f"Average transport cost [time, average cost]: {self.average_transport_cost[-1]} Rs")
+        self.logger.info(f"Performance measures for link: from {self.from_node.name} to {self.to_node.name}:")
+        self.logger.info(f"Total shipments made: {self.total_shipments}")
+        self.logger.info(f"Link flow [time, flow (#shipments/day)]: {self.flow[-1]}")
+        self.logger.info(f"Link utilization [time, utilization(%)]: {self.utilization[-1]} ")
+        self.logger.info(f"Total transport cost: {self.total_transport_cost} Rs")
+        self.logger.info(f"Average transport cost [time, average cost]: {self.average_transport_cost[-1]} Rs")
+
+        return f"Performance measures for link: from {self.from_node.name} to {self.to_node.name}: \n Total shipments made: {self.total_shipments} \n Link flow [time, flow (#shipments/day)]: {self.flow[-1]} \n Link utilization [time, utilization(%)]: {self.utilization[-1]} \n Total transport cost: {self.total_transport_cost} Rs \n Average transport cost [time, average cost]: {self.average_transport_cost[-1]} Rs"
 
 class Node:
     """
@@ -222,19 +225,21 @@ class Node:
         """
         Displays node information and its parameter values
         """
-        print(f"Name: {self.name}")
-        print(f"\tID: {self.node_id}")
-        print(f"\tType: {self.node_type}")
-        print(f"\tLocation: {self.location}")
-        print(f"\tReliability: {self.supply_reliability}")
-        print(f"\tResilience: {self.node_resilience}")
-        print(f"\tCriticality: {self.node_criticality}")
-        print(f"\tInventory capacity: {self.inventory.capacity}") # type: ignore
-        print(f"\tInventory holding cost: {self.inventory.holding_cost}") # type: ignore
-        print(f"\tInventory reorder level: {self.inventory.reorder_level}") # type: ignore
-        print(f"\tInventory reorder period: {self.inventory.reorder_period}") # type: ignore
-        print(f"\tInventory type: {self.inventory.inventory_type}") # type: ignore
-        print(f"\tInventory replenishment policy: {self.inventory.replenishment_policy}") # type: ignore
+        self.logger.info(f"Name: {self.name}")
+        self.logger.info(f"ID: {self.node_id}")
+        self.logger.info(f"Type: {self.node_type}")
+        self.logger.info(f"Location: {self.location}")
+        self.logger.info(f"Reliability: {self.supply_reliability}")
+        self.logger.info(f"Resilience: {self.node_resilience}")
+        self.logger.info(f"Criticality: {self.node_criticality}")
+        self.logger.info(f"Inventory capacity: {self.inventory.capacity}") # type: ignore
+        self.logger.info(f"Inventory holding cost: {self.inventory.holding_cost}") # type: ignore
+        self.logger.info(f"Inventory reorder level: {self.inventory.reorder_level}") # type: ignore
+        self.logger.info(f"Inventory reorder period: {self.inventory.reorder_period}") # type: ignore
+        self.logger.info(f"Inventory type: {self.inventory.inventory_type}") # type: ignore
+        self.logger.info(f"Inventory replenishment policy: {self.inventory.replenishment_policy}") # type: ignore
+
+        return f"Name: {self.name} \n ID: {self.node_id} \n Type: {self.node_type} \n Location: {self.location} \n Reliability: {self.supply_reliability} \n Resilience: {self.node_resilience} \n Criticality: {self.node_criticality} \n Inventory capacity: {self.inventory.capacity} \n Inventory holding cost: {self.inventory.holding_cost} \n Inventory reorder level: {self.inventory.reorder_level} \n Inventory reorder period: {self.inventory.reorder_period} \n   Inventory type: {self.inventory.inventory_type} \n Inventory replenishment policy: {self.inventory.replenishment_policy}" # type: ignore
 
     def calculate_stats(self,timenow):
         """
@@ -253,13 +258,15 @@ class Node:
         """
         Print performance measures of this node.
         """
-        print(f"Performance measures of node '{self.name}'")
-        print(f"Throughput: {self.throughput}")
-        print(f"Total units sold:{self.total_sale} units")
-        print(f"Average Sale: {self.average_sale} units/day")
-        print(f"Inventory holding costs = {sum(self.inventory.stats_inventory_hold_costs)}") # type: ignore
-        print(f"Profit: {self.profit} Rs")
-        print(f"Average profit: {self.average_profit} Rs/day")
+        self.logger.info(f"Performance measures of node '{self.name}'")
+        self.logger.info(f"Throughput: {self.throughput}")
+        self.logger.info(f"Total units sold:{self.total_sale} units")
+        self.logger.info(f"Average Sale: {self.average_sale} units/day")
+        self.logger.info(f"Inventory holding costs = {sum(self.inventory.stats_inventory_hold_costs)}") # type: ignore
+        self.logger.info(f"Profit: {self.profit} Rs")
+        self.logger.info(f"Average profit: {self.average_profit} Rs/day")
+
+        return  f"Performance measures of node '{self.name}' \n Throughput: {self.throughput} \n Total units sold:{self.total_sale} units \n Average Sale: {self.average_sale} units/day \n Inventory holding costs = {sum(self.inventory.stats_inventory_hold_costs)} \n Profit: {self.profit} Rs \n Average profit: {self.average_profit} Rs/day"
 
     def monitor_inventory(self,env,suppliers_list):
         """
@@ -494,11 +501,11 @@ class Demand:
         """
         Displays demand information
         """
-        print(f"This demand is generated for node {self.demand_node.name}.")
-        print(f"\tCustomer arrival is modeled by {self.distribution} distribution.")
-        print(f"\tThe distribution parameters are {self.distribution_params}.")
-        print(f"\tPer customer demand is modeled using {self.demand_distribution} distribution.")
-        print(f"\tparameters are: {self.demand_params}")
+        self.logger.info(f"This demand is generated for node {self.demand_node.name}.")
+        self.logger.info(f"Customer arrival is modeled by {self.distribution} distribution.")
+        self.logger.info(f"The distribution parameters are {self.distribution_params}.")
+        self.logger.info(f"Per customer demand is modeled using {self.demand_distribution} distribution.")
+        self.logger.info(f"parameters are: {self.demand_params}")
 
     def customer_demand(self,env):
         """
