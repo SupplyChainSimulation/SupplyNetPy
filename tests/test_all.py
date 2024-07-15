@@ -1,4 +1,3 @@
-import sys
 import SupplyNetPy.Components as scm
 import simpy
 import pytest
