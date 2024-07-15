@@ -506,6 +506,8 @@ class Demand:
         self.logger.info(f"The distribution parameters are {self.distribution_params}.")
         self.logger.info(f"Per customer demand is modeled using {self.demand_distribution} distribution.")
         self.logger.info(f"parameters are: {self.demand_params}")
+        
+        return f"This demand is generated for node {self.demand_node.name}. \n Customer arrival is modeled by {self.distribution} distribution. \n The distribution parameters are {self.distribution_params}. \n Per customer demand is modeled using {self.demand_distribution} distribution. \n parameters are: {self.demand_params}"
 
     def customer_demand(self,env):
         """
