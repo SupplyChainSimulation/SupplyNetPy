@@ -1,4 +1,7 @@
-import SupplyNetPy.Components as sccore
+import sys
+sys.path.insert(1, '/src/SupplyNetPy/Components')
+import core as sccore
+import inventory as inv
 import simpy
 import random
 import networkx as nx
@@ -79,9 +82,9 @@ def create_a_random_product(name, desc, cost_bounds, profit_bounds, shelf_life_b
     product_profit = random.randint(profit_bounds[0],profit_bounds[1])
     if(product_type=="perishable"):
         shelf_life = random.randint(shelf_life_bounds[0],shelf_life_bounds[1])
-        product = sccore.Product(sku="12325", name=name, description=desc, cost=product_cost,profit=product_profit, product_type=product_type, shelf_life=shelf_life)
+        product = inv.Product(sku="12325", name=name, description=desc, cost=product_cost,profit=product_profit, product_type=product_type, shelf_life=shelf_life)
     else:
-        product = sccore.Product(sku="12325", name=name, description=desc, cost=product_cost,profit=product_profit, product_type=product_type, shelf_life=None)
+        product = inv.Product(sku="12325", name=name, description=desc, cost=product_cost,profit=product_profit, product_type=product_type, shelf_life=None)
     return product
 
 def create_random_sc_net(env,num_suppliers,num_manufacturers,num_distributors,num_retailers):
@@ -191,7 +194,7 @@ def get_sc_net_info(supplychainnet):
         logger.info(f"Average revenue (per day) = {supplychainnet['avg_revenue']}") 
         logger.info(f"Customers returned  = {supplychainnet['total_customer_returned']}") 
     
-    sc_info += f"Number of products sold = {supplychainnet['total_product_sold']}  \n SC total profit = {supplychainnet['sc_profit']}  \n SC total tranportation cost = {supplychainnet['sc_tranport_cost']}  \n SC inventory cost = {supplychainnet['sc_inv_cost']}  \n SC revenue (profit - cost) = {supplychainnet['sc_revenue']}  \n Average revenue (per day) = {supplychainnet['avg_revenue']}  \n Customers returned  = {supplychainnet['total_customer_returned']}"
+        sc_info += f"Number of products sold = {supplychainnet['total_product_sold']}  \n SC total profit = {supplychainnet['sc_profit']}  \n SC total tranportation cost = {supplychainnet['sc_tranport_cost']}  \n SC inventory cost = {supplychainnet['sc_inv_cost']}  \n SC revenue (profit - cost) = {supplychainnet['sc_revenue']}  \n Average revenue (per day) = {supplychainnet['avg_revenue']}  \n Customers returned  = {supplychainnet['total_customer_returned']}"
     return sc_info
 
 
@@ -231,7 +234,7 @@ def simulate_sc_net(env,supplychainnet,sim_time):
     Returns:
     - supplychainnet (dict): updated dict with listed performance measures
     """
-    logger = sccore.global_logger
+    logger = sccore.global_logger.logger
     get_sc_net_info(supplychainnet)
 
     demands = supplychainnet["demand"]
@@ -276,21 +279,20 @@ def simulate_sc_net(env,supplychainnet,sim_time):
                                      "sc_revenue":sc_revenue,
                                      "avg_revenue":sc_avg_revenue,
                                      "total_customer_returned": sc_total_customers_returned}
-    logger.info(f"*** SC stats ***") # type: ignore
-    logger.info(f"Number of products sold = {sc_total_unit_sold}") # type: ignore
-    logger.info(f"SC total profit = {sc_profit}") # type: ignore
-    logger.info(f"SC total tranportation cost = {sc_tranport_cost}") # type: ignore
-    logger.info(f"SC inventory cost = {sc_inventory_cost}") # type: ignore
-    logger.info(f"SC revenue (profit - cost) = {sc_revenue}") # type: ignore
-    logger.info(f"Average revenue (per day) = {sc_avg_revenue}") # type: ignore
-    logger.info(f"Customers returned  = {sc_total_customers_returned}") # type: ignore
+    logger.info(f"*** SC stats ***")
+    logger.info(f"Number of products sold = {sc_total_unit_sold}") 
+    logger.info(f"SC total profit = {sc_profit}") 
+    logger.info(f"SC total tranportation cost = {sc_tranport_cost}") 
+    logger.info(f"SC inventory cost = {sc_inventory_cost}") 
+    logger.info(f"SC revenue (profit - cost) = {sc_revenue}") 
+    logger.info(f"Average revenue (per day) = {sc_avg_revenue}") 
+    logger.info(f"Customers returned  = {sc_total_customers_returned}")
     
     return supplychainnet
 
 if __name__ == "__main__": 
     env = simpy.Environment()
     supplychainnet = create_random_sc_net(env=env,num_suppliers=2,num_manufacturers=1,num_distributors=2,num_retailers=4)
-    #get_sc_net_info(supplychainnet)
-    #visualize_sc_net(supplychainnet)
-    sccore.global_logger.enable_logging(log_to_file=True,log_to_screen=False)
-    supplychainnet = simulate_sc_net(env,supplychainnet,sim_time=360)
+    sccore.global_logger.enable_logging(log_to_file=True,log_to_screen=True)
+    supplychainnet = simulate_sc_net(env,supplychainnet,sim_time=10)
+    visualize_sc_net(supplychainnet)
