@@ -1,5 +1,31 @@
-from SupplyNetPy.Components import inventory
-from SupplyNetPy.Components.logger import GlobalLogger
+"""
+core Module
+
+This module provides the essential components for building a supply chain simulation. 
+It includes classes that represent various entities and their interactions within a supply chain.
+
+Classes:
+    Node: Represents a generic node in the supply chain.
+    Supplier: Represents a supplier node.
+    Manufacturer: Represents a manufacturer node.
+    Retailer: Represents a retailer node.
+    Distributor: Represents a distributor node.
+    Demand: Represents the demand at a particular node.
+    Link: Represents a transportation link between two nodes in the supply chain.
+
+Functions:
+    createSC: 
+    
+Usage:
+    Users can create instances of these classes to model a supply chain. Each class includes methods for 
+    setting attributes and calculating performance metrics.
+
+"""
+
+import sys
+sys.path.insert(1, '/src/SupplyNetPy/Components')
+import inventory
+from logger import GlobalLogger
 import random
 
 node_types = ["retailer","distributor","warehouse","manufacturer","supplier"]
@@ -8,38 +34,63 @@ global_logger = GlobalLogger()
 
 class Link:
     """
-    Represents a link between two nodes in the supply chain.
+    Represents a transportation link between two nodes in a supply chain.
+
+    Parameters:
+        from_node (Node): The starting node of the link.
+        to_node (Node): The ending node of the link.
+        lead_time (int): Time taken for a shipment to travel from the from_node to the to_node.
+        transportation_cost (float): Cost of transportation per shipment.
+        link_distance (float): Distance between the from_node and the to_node.
+        transportation_type (str): Type of transportation (default is "road").
+        products (list): List of products that can be transported through this link.
+        max_load_capacity (float): Maximum load capacity of the link.
+        min_shipment_quantity (float): Minimum shipment quantity.
+        probability_of_failure (float): Probability of link failure.
+        co2_cost (float): CO2 cost of transportation.
+        edge_reliability (float): Reliability of the link.
+        edge_resilience (float): Resilience of the link.
+        edge_criticality (float): Criticality of the link.
+        iso_log (bool): If true, creates an isolated logger for the link.
+        total_shipments (int): Total number of shipments made through this link.
+        flow (list): List of tuples recording time and number of shipments per unit time.
+        utilization (list): List of tuples recording time and utilization percentage.
+        total_transport_cost (float): Total transportation cost.
+        average_transport_cost (list): List of tuples recording time and average transportation cost.
+        logger (Logger): Logger for recording events and information.
+
+    Functions:
+        __init__: Initializes a Link object between two nodes in a supply chain.
+        get_info: Displays link information.
+        calculate_stats: Calculates performance measures of the link.
+        get_stats: Prints performance measures of this link.
     """
     def __init__(self, from_node, to_node, lead_time, transportation_cost, link_distance,
                  transportation_type="road", products=[], max_load_capacity=0, min_shipment_quantity=0, 
                  probability_of_failure=0, co2_cost=0, edge_reliability=1, edge_resilience=1, edge_criticality=0,
                  iso_log=False,**kwargs):
-            """
-            Represents a link between two nodes in the supply chain.
+            
+        """
+        Initializes a Link object between two nodes in a supply chain.
 
-            Args:
-                from_node (str): The node where the link originates from.
-                to_node (str): The node where the link terminates.
-                lead_time (float): Time to deliver the shipment from one node to another.
-                transportation_cost (float): Cost to transport goods from one node to another.
-                link_distance (float): The distance between two nodes (by road/air).
-                transportation_type (str): The mode of transportation (e.g., Road, Air).
-                products (list): List of products (SKUs) being transported.
-                max_load_capacity (float): The maximum quantity that can be shipped.
-                min_shipment_quantity (float): The minimum quantity required to start shipment.
-                probability_of_failure (float): Probability of unavailability of this link.
-                co2_cost (float): Carbon emission cost.
-                edge_reliability (float): Reliability of the edge (probability).
-                edge_resilience (float): Resilience depends on the reliability of the edge and connected nodes.
-                edge_criticality (str): Refers to the importance of the edge.
-
-            Attributes:
-                flow (float): Number of products transported via this link over a certain time period.
-                co2_cost (float): Carbon emission cost.
-                utilization (float): Link utilization over a certain time period.
-                total_transport_cost (float): Cumulative transportation cost for shipments made till now.
-                average_transport_cost (float): Average transport cost of the link (per day/month/quarter).
-            """
+        Parameters:
+            from_node (Node): The starting node of the link.
+            to_node (Node): The ending node of the link.
+            lead_time (int): Time taken for a shipment to travel from the from_node to the to_node.
+            transportation_cost (float): Cost of transportation per shipment.
+            link_distance (float): Distance between the from_node and the to_node.
+            transportation_type (str): Type of transportation (default is "road").
+            products (list): List of products that can be transported through this link.
+            max_load_capacity (float): Maximum load capacity of the link.
+            min_shipment_quantity (float): Minimum shipment quantity.
+            probability_of_failure (float): Probability of link failure.
+            co2_cost (float): CO2 cost of transportation.
+            edge_reliability (float): Reliability of the link.
+            edge_resilience (float): Resilience of the link.
+            edge_criticality (float): Criticality of the link.
+            iso_log (bool): If true, creates an isolated logger for the link.
+            **kwargs: Additional keyword arguments for the logger.
+        """
         self.from_node = from_node
         self.to_node = to_node
         self.lead_time = lead_time
@@ -115,7 +166,10 @@ class Link:
     
     def get_info(self):
         """
-        Displays link information
+        Displays link information.
+
+        Returns:
+            str: A formatted string containing the link's details.
         """
         self.logger.info(f"Link from: {self.from_node.name}")
         self.logger.info(f"to: {self.to_node.name}")
@@ -136,9 +190,10 @@ class Link:
               
     def calculate_stats(self, timenow):
         """
-        This function calculates performance measures of the link
-        Attributes:
-        - timenow (env.now): current time in simulation
+        Calculates performance measures of the link.
+
+        Parameters:
+            timenow (float): Current time in the simulation.
         """
         self.total_shipments += 1
         self.flow.append([timenow, self.total_shipments/timenow]) # number of shipments per unit time
@@ -148,7 +203,10 @@ class Link:
 
     def get_stats(self):
         """
-        Print performance measures of this link.
+        Prints performance measures of this link.
+
+        Returns:
+            str: A formatted string containing the performance measures of the link.
         """
         self.logger.info(f"Performance measures for link: from {self.from_node.name} to {self.to_node.name}:")
         self.logger.info(f"Total shipments made: {self.total_shipments}")
@@ -161,34 +219,56 @@ class Link:
 
 class Node:
     """
-    Represents a base class for all supply chain nodes.
-    This class provides common attributes and methods that are shared by all types of supply chain nodes,
-    such as retailers, suppliers, distributors and manufacturers.
+    This class is a base for all supply chain nodes, providing common attributes and methods for retailers, suppliers, distributors, and manufacturers.
+
+    Parameters:
+        env (SimPy Environment): The simulation environment in which the node operates.
+        name (str): The name of the supply chain node.
+        node_id (int): A unique identifier for the supply chain node.
+        node_type (str): The type of the supply chain node (e.g., retailer, supplier, manufacturer).
+        location (str): The location of the supply chain node.
+        supply_reliability (float, optional): The probability of supply reliability, which is influenced by the number of demand and supply nodes connected (default is 1).
+        node_resilience (float, optional): The resilience of the node, reflecting the reliability of its supply (default is 1).
+        node_criticality (int, optional): The criticality of the node, indicating its importance in the supply chain (default is 1).
+        inventory (Inventory, optional): The inventory held by this supply chain node.
+        iso_log (bool, optional): Whether to use isolated logging for this node (default is False).
+        **kwargs: Additional keyword arguments for logging configuration.
+
+    Functions:
+        __init__:
+        get_info:
+        calculate_stats:
+        monitor_inventory:
+        place_order:
+
+
     """
     def __init__(self, env, name, node_id, node_type, location,
                  supply_reliability=1, node_resilience=1, node_criticality=1, inventory=None,
                  iso_log=False,**kwargs):
         """
-        Initialize the supply chain Node.
-        Parameters:
-        - env : SimPy Environment variable
-        - name (str): The name of the supply chain node.
-        - node_id (int): The unique identifier for the supply chain node.
-        - node_type (str): The type of the supply chain node (e.g., retailer, supplier, manufacturer).
-        - location (str): The location of the supply chain node.
-        - supply_reliability (float): The probability of supply reliability, which depends on the number of 
-                                      demand and supply nodes connected.
-        - node_resilience (float): The resilience of the node, which depends on the reliability of its supply.
-        - node_criticality (str): The criticality of the node, referring to its importance in the supply chain flow.
-        - inventory (Inventory): inventory held by this supply chain node
+        Initializes a supply chain node.
 
-        Performance Measures (output):
-        - total_sale (int): number of units sold
-        - throughput (float): number of units sold per unit time (per hour/day/month)
-        - average_sale (float): average number of units sold (per day/month/quarter)
-        - net_profit (float): net profit generated (total)
-        - average_net_profit (float): average net profit generated (per day/month/quarter)
-        - node_cost (float): cost of manufacturing, moving, loading, unloading, sorting etc.
+        Parameters:
+            env (SimPy Environment): The simulation environment in which the node operates.
+            name (str): The name of the supply chain node.
+            node_id (int): A unique identifier for the supply chain node.
+            node_type (str): The type of the supply chain node (e.g., retailer, supplier, manufacturer).
+            location (str): The location of the supply chain node.
+            supply_reliability (float, optional): The probability of supply reliability, which is influenced by the number of demand and supply nodes connected (default is 1).
+            node_resilience (float, optional): The resilience of the node, reflecting the reliability of its supply (default is 1).
+            node_criticality (int, optional): The criticality of the node, indicating its importance in the supply chain (default is 1).
+            inventory (Inventory, optional): The inventory held by this supply chain node.
+            iso_log (bool, optional): Whether to use isolated logging for this node (default is False).
+            **kwargs: Additional keyword arguments for logging configuration.
+
+        Attributes:
+            total_sale (int): The total number of units sold.
+            throughput (float): The number of units sold per unit of time (e.g., per hour, day, or month).
+            average_sale (float): The average number of units sold per day, month, or quarter.
+            net_profit (float): The total net profit generated.
+            average_net_profit (float): The average net profit generated per day, month, or quarter.
+            node_cost (float): The cost associated with manufacturing, moving, loading, unloading, sorting, etc.
         """
         self.env = env
         self.name = name
@@ -541,6 +621,18 @@ class Demand:
             yield env.timeout(t)
 
 def createSC(products,nodes,links,demands):
+    """
+    Creates a supply chain network with given nodes and links and populates it with additional information.
+
+    Attributes:
+        products:
+        nodes:
+        links:
+        demads:
+
+    Returns:
+        supplychainnet:
+    """
     num_suppliers = 0
     num_manufacturers = 0
     num_distributors = 0
