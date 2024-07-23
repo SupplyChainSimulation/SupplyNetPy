@@ -1,7 +1,5 @@
-import sys
-sys.path.insert(1, '/src/SupplyNetPy/Components')
-import core as sccore
-import inventory as inv
+import SupplyNetPy.Components.inventory as inv
+import SupplyNetPy.Components.core as sccore
 import simpy
 import random
 import networkx as nx
