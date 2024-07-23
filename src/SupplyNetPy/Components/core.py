@@ -22,10 +22,8 @@ Usage:
 
 """
 
-import sys
-sys.path.insert(1, '/src/SupplyNetPy/Components')
-import inventory
-from logger import GlobalLogger
+from SupplyNetPy.Components import inventory
+from SupplyNetPy.Components.logger import GlobalLogger
 import random
 
 node_types = ["retailer","distributor","warehouse","manufacturer","supplier"]
