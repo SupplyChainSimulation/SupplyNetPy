@@ -14,31 +14,32 @@ class Link:
                  transportation_type="road", products=[], max_load_capacity=0, min_shipment_quantity=0, 
                  probability_of_failure=0, co2_cost=0, edge_reliability=1, edge_resilience=1, edge_criticality=0,
                  iso_log=False,**kwargs):
-        """
-        Initialize the Link.
-        Parameters:
-        - from_node (str): The node where the link originates from.
-        - to_node (str): The node where the link terminates.
-        - lead_time (float): Time to deliver the shipment from one node to another.
-        - transportation_cost (float): Cost to transport goods from one node to another.
-        - link_distance (float): The distance between two nodes (by road/air).
-        - transportation_type (str): The mode of transportation (e.g., Road, Air).
-        - products (list): List of products (SKUs) being transported.
-        - max_load_capacity (float): The maximum quantity that can be shipped.
-        - min_shipment_quantity (float): The minimum quantity required to start shipment.
-        - probability_of_failure (float): Probability of unavailability of this link.
-        - co2_cost (float): Carbon emission cost.
-        - edge_reliability (float): Reliability of the edge (probability).
-        - edge_resilience (float): Resilience depends on the reliability of the edge and connected nodes.
-        - edge_criticality (str): Refers to the importance of the edge.
-        
-        Performance Measures:
-        - flow (float): Number of products tranported via this link over certain time period
-        - co2_cost (float): carbon emmission cost
-        - utilization (float): link utilization over certain time period
-        - total_transport_cost (float): cumulative transportation cost for shipments made till now
-        - average_transport_cost (float): average transport cost of the link (per day/month/quarter)
-        """
+            """
+            Represents a link between two nodes in the supply chain.
+
+            Args:
+                from_node (str): The node where the link originates from.
+                to_node (str): The node where the link terminates.
+                lead_time (float): Time to deliver the shipment from one node to another.
+                transportation_cost (float): Cost to transport goods from one node to another.
+                link_distance (float): The distance between two nodes (by road/air).
+                transportation_type (str): The mode of transportation (e.g., Road, Air).
+                products (list): List of products (SKUs) being transported.
+                max_load_capacity (float): The maximum quantity that can be shipped.
+                min_shipment_quantity (float): The minimum quantity required to start shipment.
+                probability_of_failure (float): Probability of unavailability of this link.
+                co2_cost (float): Carbon emission cost.
+                edge_reliability (float): Reliability of the edge (probability).
+                edge_resilience (float): Resilience depends on the reliability of the edge and connected nodes.
+                edge_criticality (str): Refers to the importance of the edge.
+
+            Attributes:
+                flow (float): Number of products transported via this link over a certain time period.
+                co2_cost (float): Carbon emission cost.
+                utilization (float): Link utilization over a certain time period.
+                total_transport_cost (float): Cumulative transportation cost for shipments made till now.
+                average_transport_cost (float): Average transport cost of the link (per day/month/quarter).
+            """
         self.from_node = from_node
         self.to_node = to_node
         self.lead_time = lead_time
@@ -266,7 +267,7 @@ class Node:
         self.logger.info(f"Profit: {self.profit} Rs")
         self.logger.info(f"Average profit: {self.average_profit} Rs/day")
 
-        return  f"Performance measures of node '{self.name}' \n Throughput: {self.throughput} \n Total units sold:{self.total_sale} units \n Average Sale: {self.average_sale} units/day \n Inventory holding costs = {sum(self.inventory.stats_inventory_hold_costs)} \n Profit: {self.profit} Rs \n Average profit: {self.average_profit} Rs/day"
+        return  f"Performance measures of node '{self.name}' \n Throughput: {self.throughput} \n Total units sold:{self.total_sale} units \n Average Sale: {self.average_sale} units/day \n Inventory holding costs = {sum(self.inventory.stats_inventory_hold_costs)} \n Profit: {self.profit} Rs \n Average profit: {self.average_profit} Rs/day" # type: ignore
 
     def monitor_inventory(self,env,suppliers_list):
         """
@@ -492,7 +493,7 @@ class Demand:
 
         global global_logger
         if(iso_log):
-            isologger = GlobalLogger(logger_name=f'node:{self.name}',**kwargs)
+            isologger = GlobalLogger(logger_name=f'node:{self.name}',**kwargs) # type: ignore
             self.logger = isologger.logger
         else:
             self.logger = global_logger.logger
