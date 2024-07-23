@@ -13,5 +13,5 @@ SupplyNetPy: Python library for modelling, simulation, design exploration and op
     - Visulaizing your networks
     - Simulation
 - Examples
-- API References
+- [API References](api-ref.md)
 - [About](about.md)
