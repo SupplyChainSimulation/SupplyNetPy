@@ -3,9 +3,27 @@ nav:
   - Home: index.md
   - Overview: overview.md
   - SupplyNetPy in 10 Minutes: ten_min.md
-  - API reference: api-ref.md
   - About: about.md
-theme: readthedocs
+  - API reference:
+    - Introduction: api-reference/api-intro.md
+    - Components.core: api-reference/api-ref-core.md
+    - Components.inventory: api-reference/
+    - Components.logger: api-reference/
+    - Components.utilities: api-reference/
+  
+theme:
+  name: readthedocs
+  highlightjs: true
+  hljs_languages:
+    - yaml
+    - rust
+
 plugins:
-  - search
-  - mkdocstrings
+- search
+- autorefs
+- mkdocstrings:
+    handlers:
+      python:
+        paths: [src]
+        options:
+          show_source: false
