@@ -9,7 +9,7 @@ class GlobalLogger:
         log_file (str): The file to which log messages will be written.
         log_to_screen (bool): Whether to log messages to the screen.
     """
-    def __init__(self, logger_name='sim_trace', log_to_file=True, log_file='simlog/simulation_trace.log', log_to_screen=True):
+    def __init__(self, logger_name='sim_trace', log_to_file=True, log_file='simulation_trace.log', log_to_screen=True):
         """
         Initializes the Logger with options to log to file, log file name, and log to screen.
 
