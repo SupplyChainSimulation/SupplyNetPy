@@ -176,17 +176,17 @@ class Inventory:
 
     # -TO DO-
     # Inventory Get method
-        # Single item Inventory: direcctly get an item from the Container
-        # Mixed items Inventory: needs logic that keeps count of item types that are stored in the container
-            # Get an item of the given type: need to update the item count and container
+        # Single item Inventory: directly get an item from the Container
+        # Mixed items Inventory: needs logic that keeps count of item types that are stored in the Container
+            # Get an item of the given type: need to update the item count and Container
             # possible scenario
             # (item1 storage space required = 1, but item2 storage space required is 2)
-        # Perishable: needs logic that stores items' current shelf lives, and 'Get' accourdingly
+        # Perishable: needs logic that stores items' current shelf lives, and 'Get' accordingly
             # need a Priority Queue for this
 
     # Inventory Put method (similar to Get above)
 
-    # Note: For the time being, only 'single' inventory type is implemented, only sS replenishment policy is implemented
+    # Note: For the time being, only the 'single' inventory type is implemented; only sS replenishment policy is implemented
 
     def get(self,quantity,product=None):
         """

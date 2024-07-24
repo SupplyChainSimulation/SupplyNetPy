@@ -60,7 +60,7 @@ class GlobalLogger:
             self.logger.addHandler(screen_handler)
 
         if self.log_to_file:
-            file_handler = logging.FileHandler(self.log_file)
+            file_handler = logging.FileHandler(self.log_file, mode='w')
             file_handler.setLevel(logging.DEBUG)
             file_format = logging.Formatter('%(levelname)s %(asctime)s %(name)s - %(message)s')
             file_handler.setFormatter(file_format)

@@ -5,7 +5,7 @@ from SupplyNetPy.Components.core import Distributor
 from SupplyNetPy.Components.core import Retailer
 from SupplyNetPy.Components.core import Demand
 from SupplyNetPy.Components.core import Link
-from SupplyNetPy.Components.core import createSC
+from SupplyNetPy.Components.core import create_sc
 from SupplyNetPy.Components.core import global_logger
 from SupplyNetPy.Components.inventory import Product
 from SupplyNetPy.Components.inventory import Inventory

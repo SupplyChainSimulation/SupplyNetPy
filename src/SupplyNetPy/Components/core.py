@@ -14,7 +14,7 @@ Classes:
     Link: Represents a transportation link between two nodes in the supply chain.
 
 Functions:
-    createSC: 
+    create_sc: 
     
 Usage:
     Users can create instances of these classes to model a supply chain. Each class includes methods for 
@@ -281,12 +281,13 @@ class Node:
         self.inventory = inventory
         self.ordered = False
 
-        self.total_sale = 0
-        self.throughput = 0
-        self.average_sale = []
-        self.profit = 0
-        self.average_profit = []
-        self.node_cost = 0
+        self.total_sale = 0 # number of product units sold to customer orders
+        self.total_sale_inv = 0 # number of product units sold/shipped (bulk order) to other node
+        self.throughput = 0 
+        self.average_sale = [] # number of units sold per day
+        self.profit = 0 # total profit on total sold products
+        self.average_profit = [] 
+        self.node_cost = 0 # inventory cost + transportation cost + 
 
         global global_logger
         if(iso_log):
@@ -326,12 +327,9 @@ class Node:
         """
         self.throughput = self.total_sale/timenow
         self.average_sale = self.total_sale/timenow
-        if(self.node_type=="retailer"):
+        if(self.node_type.lower()!="supplier"):
             self.profit = self.total_sale*self.inventory.products[0].profit # type: ignore
             self.average_profit = self.profit/timenow
-        else:
-            self.profit = 0
-            self.average_profit = 0
 
     def get_stats(self):
         """
@@ -339,7 +337,8 @@ class Node:
         """
         self.logger.info(f"Performance measures of node '{self.name}'")
         self.logger.info(f"Throughput: {self.throughput}")
-        self.logger.info(f"Total units sold:{self.total_sale} units")
+        self.logger.info(f"Total units sold (direct orders):{self.total_sale} units")
+        self.logger.info(f"Total units sold (bulk orders):{self.total_sale_inv} units")
         self.logger.info(f"Average Sale: {self.average_sale} units/day")
         self.logger.info(f"Inventory holding costs = {sum(self.inventory.stats_inventory_hold_costs)}") # type: ignore
         self.logger.info(f"Profit: {self.profit} Rs")
@@ -400,7 +399,7 @@ class Node:
         if(quantity<=supplier_link.from_node.inventory.level()):
             self.logger.info(f": {self.env.now:.4f}: ({self.node_id}): placed an order to '{supplier_link.from_node.name}' for {quantity} units.")
             supplier_link.from_node.inventory.get(quantity)
-            supplier_link.from_node.total_sale += quantity # update stats for supplier node
+            supplier_link.from_node.total_sale_inv += quantity # update stats for supplier node
             # shipment is on the road, wait for 'lead_time' to receive it
             yield self.env.timeout(supplier_link.lead_time)
             self.logger.info(f": {self.env.now:.4f}: ({self.node_id}): got {quantity} units from '{supplier_link.from_node.name}'.")
@@ -618,7 +617,7 @@ class Demand:
             t = random.expovariate(lambd=lam)
             yield env.timeout(t)
 
-def createSC(products,nodes,links,demands):
+def create_sc(products,nodes,links,demands):
     """
     Creates a supply chain network with given nodes and links and populates it with additional information.
 

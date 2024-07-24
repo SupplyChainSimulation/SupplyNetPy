@@ -18,7 +18,7 @@ retailer1 = scm.Retailer(env=env,name=f"retailer1",node_id=125,location="Mumbai"
 demand_ret1 = scm.Demand(env=env, arr_dist="Poisson",arr_params=[6],node=retailer1,demand_dist="Uniform",demand_params=[1,10])
 
 # lets assemble all nodes into a supply chain network
-scnet = scm.createSC(products=[product1],
+scnet = scm.create_sc(products=[product1],
                      nodes = [retailer1],
                      links = [],
                      demands = [demand_ret1])

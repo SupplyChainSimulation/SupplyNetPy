@@ -1,5 +1,3 @@
-
-
 # lets create a supply chain network for a single product inventory 
 # with three sc nodes, a supplier, a manufacturer and a retailer
 # lets import the library
@@ -29,7 +27,7 @@ demand_ret1 = scm.Demand(env=env, arr_dist="Poisson",arr_params=[6],node=retaile
 demand_man1 = scm.Demand(env=env, arr_dist="Poisson",arr_params=[1],node=manufacturer1,demand_dist="Uniform",demand_params=[1,3])
 
 # let put all together in a network
-scnet = scm.createSC(products=[product1],
+scnet = scm.create_sc(products=[product1],
                      nodes = [supplier1,manufacturer1,retailer1],
                      links = [link1, link2],
                      demands = [demand_ret1,demand_man1])

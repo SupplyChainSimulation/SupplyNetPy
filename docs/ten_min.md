@@ -62,14 +62,14 @@ demand_ret1 = scm.Demand(env=env, arr_dist="Poisson",arr_params=[6],
 ~~~
 
 ##### Ready to Run
-The single node supply chain has been set up with minimal requirements. At this point, we are ready to run the simulation using `env.run()`. It's important to note that the retailer is not currently linked to any warehouses. This means that once the retailer's inventory depletes, it won't be able to restock its products. Consequently, the simulation will continue, customers will keep arriving at `retailer1`, and they will leave without making a purchase. When we expand the network to include multiple nodes, we will be able to observe the supply chain in action. If you need a more detailed example, you can check out this link.
+The single node supply chain has been set up with minimal requirements. At this point, we are ready to run the simulation using `env.run()`. It's important to note that the retailer is not currently linked to any warehouses. This means that once the retailer's inventory depletes, it won't be able to restock its products. Consequently, the simulation will continue, customers will keep arriving at `retailer1`, and they will leave without making a purchase. When we expand the network to include multiple nodes, we will be able to observe the supply chain in action. If you need a more detailed example, you can check out this [link](example.md).
 
 __A better way to simulate__
 
-SupplyNetPy offers a convenient function `createSC` designed to help you create a supply chain network with nodes, links, products, and demand. This function adds metadata information to your supply chain, such as the number of nodes, retailers, manufacturers, and more, to keep everything organized. Once you've created the supply chain, you can access it using a single variable. Additionally, the `simulate_sc_net` function allows you to simulate the created supply chain over a specified period of time, and it calculates performance measures such as net profit, throughput, and more. Let's leverage these functions to create and simulate our supply chain.
+SupplyNetPy offers a convenient function `create_sc` designed to help you create a supply chain network with nodes, links, products, and demand. This function adds metadata information to your supply chain, such as the number of nodes, retailers, manufacturers, and more, to keep everything organized. Once you've created the supply chain, you can access it using a single variable. Additionally, the `simulate_sc_net` function allows you to simulate the created supply chain over a specified period of time, and it calculates performance measures such as net profit, throughput, and more. Let's leverage these functions to create and simulate our supply chain.
 
 ~~~
-scnet = scm.createSC(products=[product1],
+scnet = scm.create_sc(products=[product1],
                      nodes = [retailer1],
                      links = [],
                      demands = [demand_ret1])
@@ -96,7 +96,7 @@ retailer1 = scm.Retailer(env=env,name=f"retailer1",node_id=125,location="Mumbai"
 demand_ret1 = scm.Demand(env=env, arr_dist="Poisson",arr_params=[6],node=retailer1,demand_dist="Uniform",demand_params=[1,10])
 
 # lets assemble all nodes into a supply chain network
-scnet = scm.createSC(products=[product1],
+scnet = scm.create_sc(products=[product1],
                      nodes = [retailer1],
                      links = [],
                      demands = [demand_ret1])
