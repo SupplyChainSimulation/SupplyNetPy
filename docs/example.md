@@ -1,14 +1,3 @@
-```{css, echo=FALSE}
-pre {
-  max-height: 800px;
-  overflow-y: auto;
-}
-
-pre[class] {
-  max-height: 100px;
-}
-```
-
 # SupplyNetPy Examples
 
 ## A simple three node supply chain
@@ -63,8 +52,11 @@ demand_man1 = scm.Demand(env=env, arr_dist="Poisson",arr_params=[1],node=manufac
 Now that we have created all the essential components in the supply chain, we need to connect them in a network. SupplyNetPy uses the `Link` class to connect any two supply chain nodes. We have to specify the "to" and "from" nodes, along with additional essential parameters like lead time, transport cost, and distance.
 
 ~~~
-link1 = scm.Link(from_node=supplier1,to_node=manufacturer1,lead_time=3,transportation_cost=100,link_distance=300)
-link2 = scm.Link(from_node=manufacturer1,to_node=retailer1,lead_time=2,transportation_cost=70,link_distance=200)
+link1 = scm.Link(from_node=supplier1,to_node=manufacturer1,
+                 lead_time=3,transportation_cost=100,link_distance=300)
+
+link2 = scm.Link(from_node=manufacturer1,to_node=retailer1,
+                 lead_time=2,transportation_cost=70,link_distance=200)
 ~~~
 
 Let us leverage SupplyNetPy's create_sc and simulate_sc_net functions to assemble the supply chain components we created above in a single network and simulate it. 
@@ -81,8 +73,8 @@ scm.simulate_sc_net(env,scnet,sim_time=10)
 ### Code output
 
 Below is the simulation log printed on the console by running the above code snippet.
-
-```
+<div style="overflow-y: auto; padding: 0px; max-height: 500px;">
+```bash
 INFO 2024-07-24 17:43:16,726 sim_trace - : A link from 'supplier1' to 'man1' is created.
 INFO 2024-07-24 17:43:16,727 sim_trace - : A link from 'man1' to 'retailer1' is created.
 INFO 2024-07-24 17:43:16,727 sim_trace - Number of nodes in the network: 3
@@ -257,3 +249,4 @@ INFO 2024-07-24 17:43:16,816 sim_trace - SC revenue (profit - cost) = 6080
 INFO 2024-07-24 17:43:16,816 sim_trace - Average revenue (per day) = 1216.0
 INFO 2024-07-24 17:43:16,816 sim_trace - Customers returned  = 0
 ```
+</div>
