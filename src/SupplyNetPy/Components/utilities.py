@@ -1,78 +1,93 @@
 from SupplyNetPy.Components.core import *
 import numpy as np
 import random
-import networkx as nx
-import matplotlib.pyplot as plt
 
-def create_sc_nodes(num_of_nodes,node_type,inv_cap_bounds,inv_hold_cost_bounds,inv_reorder_lvl_bounds,product=default_product,env=env):
+def create_sc_nodes(num_of_nodes, node_type, inv_cap_bounds, inv_hold_cost_bounds, inv_reorder_lvl_bounds, product=default_product, env=env):
     """
-    Creates number of nodes of given node type
+    Creates a specified number of nodes of a given node type in the supply chain.
+
     Parameters:
-    - env: SimPy Environment variable
-    - num_of_node (int): number of nodes to be created
-    - node_type (str): type of node to be created
-    - inv_cap_bounds (list): Inventory capacity lower and upper bounds 
-    - inv_hold_cost_bounds (list): Inventory holding cost  lower and upper bounds 
-    - inv_reorder_lvl_bounds (list): Inventory reorder level lower and upper bounds 
-    - product (Product): Product in the inventory
-    Return:
-    - nodes (list): list of objects (supply chain nodes) that are created
+        num_of_nodes (int): The number of nodes to be created.
+        node_type (str): The type of node to be created. Valid values are "supplier", "manufacturer", "distributor", and "retailer".
+        inv_cap_bounds (list): The lower and upper bounds for the inventory capacity of the nodes.
+        inv_hold_cost_bounds (list): The lower and upper bounds for the inventory holding cost of the nodes.
+        inv_reorder_lvl_bounds (list): The lower and upper bounds for the inventory reorder level of the nodes.
+        product (Product): The product to be stored in the inventory. Defaults to default_product.
+        env (SimPy Environment): The SimPy Environment variable. Defaults to env.
+
+    Returns:
+        list: A list of objects (supply chain nodes) that are created.
     """
     nodes = []
-    for i in range(0,num_of_nodes):
-        id = random.randint(0,100) # any random ID
-        inv_capacity = random.randint(inv_cap_bounds[0],inv_cap_bounds[1]) # choose an integer in given bounds
-        inv_hold_cost = random.randint(inv_hold_cost_bounds[0],inv_hold_cost_bounds[1])
-        inv_reorder_lvl = random.randint(inv_reorder_lvl_bounds[0],inv_reorder_lvl_bounds[1])
-        if(node_type.lower()=="supplier"):
+    for i in range(0, num_of_nodes):
+        id = random.randint(0, 100)  # any random ID
+        inv_capacity = random.randint(inv_cap_bounds[0], inv_cap_bounds[1])  # choose an integer in the given bounds
+        inv_hold_cost = random.randint(inv_hold_cost_bounds[0], inv_hold_cost_bounds[1])
+        inv_reorder_lvl = random.randint(inv_reorder_lvl_bounds[0], inv_reorder_lvl_bounds[1])
+        if node_type.lower() == "supplier":
             node = Supplier(ID=f"S{id}", name="Supplier", capacity=inv_capacity, initial_level=inv_capacity, inventory_holding_cost=inv_hold_cost, product=product)
             nodes.append(node)
-        elif(node_type.lower()=="manufacturer"):
-            node = Manufacturer(ID=f"M{id}", name="Manufacturer", capacity=inv_capacity, initial_level=inv_capacity, inventoty_holding_cost=inv_hold_cost, replenishment_policy="sS", policy_param=[inv_reorder_lvl],product=product)
+        elif node_type.lower() == "manufacturer":
+            node = Manufacturer(ID=f"M{id}", name="Manufacturer", capacity=inv_capacity, initial_level=inv_capacity, inventory_holding_cost=inv_hold_cost, replenishment_policy="sS", policy_param=[inv_reorder_lvl], product=product)
             nodes.append(node)
-        elif(node_type.lower()=="distributor" or node_type.lower()=="warehouse"):
-            node = InventoryNode(ID=f"D{id}", name="Distributor", node_type="distributor", capacity=inv_capacity, initial_level=inv_capacity, inventory_holding_cost=inv_hold_cost, replenishment_policy="sS", policy_param=[inv_reorder_lvl],product=product)
+        elif node_type.lower() == "distributor" or node_type.lower() == "warehouse":
+            node = InventoryNode(ID=f"D{id}", name="Distributor", node_type="distributor", capacity=inv_capacity, initial_level=inv_capacity, inventory_holding_cost=inv_hold_cost, replenishment_policy="sS", policy_param=[inv_reorder_lvl], product=product)
             nodes.append(node)
-        elif(node_type.lower()=="retailer"):
-            node = InventoryNode(ID=f"R{id}", name="Retailer", node_type="retailer", capacity=inv_capacity, initial_level=inv_capacity, inventory_holding_cost=inv_hold_cost, replenishment_policy="sS", policy_param=[inv_reorder_lvl],product=product)
+        elif node_type.lower() == "retailer":
+            node = InventoryNode(ID=f"R{id}", name="Retailer", node_type="retailer", capacity=inv_capacity, initial_level=inv_capacity, inventory_holding_cost=inv_hold_cost, replenishment_policy="sS", policy_param=[inv_reorder_lvl], product=product)
             nodes.append(node)
     return nodes
 
-def create_sc_links(from_nodes,to_nodes,lead_time_bounds,tranport_cost_bounds,link_dist_bounds):
+def create_sc_links(from_nodes, to_nodes, lead_time_bounds, tranport_cost_bounds):
     """
-    Creates links from each node in from_nodes list to every other node in to_nodes list.
+    Creates links from each node in `from_nodes` list to every other node in `to_nodes` list.
+
     Parameters:
-    - from_nodes (list): List of nodes 
-    - to_nodes (list): List of nodes 
-    - lead_time_bounds (list): Upper and lower bounds on the lead time of these links
-    - tranport_cost_bounds (list): Upper and lower bounds on the tranportation cost
-    - link_dist_bounds (list): Upper and lower bounds on the distance
+        from_nodes (list): List of nodes representing the source nodes.
+        to_nodes (list): List of nodes representing the sink nodes.
+        lead_time_bounds (list): List containing the upper and lower bounds on the lead time of these links.
+        tranport_cost_bounds (list): List containing the upper and lower bounds on the transportation cost.
+        link_dist_bounds (list): List containing the upper and lower bounds on the distance.
+
     Returns:
-    - links (list): List of links created in the SC network
+        links (list): List of links created in the supply chain network.
     """
     links = []
     for source in from_nodes:
         for sink in to_nodes:
-            id = random.randint(0,100) # any random ID
-            lead_time = random.randint(lead_time_bounds[0],lead_time_bounds[1])
-            tranport_cost = random.randint(tranport_cost_bounds[0],tranport_cost_bounds[1])
+            id = random.randint(0, 100)  # any random ID
+            lead_time = random.randint(lead_time_bounds[0], lead_time_bounds[1])
+            tranport_cost = random.randint(tranport_cost_bounds[0], tranport_cost_bounds[1])
             link = Link(ID=f"L{id}", source=source, sink=sink, cost=tranport_cost, lead_time=lead_time)
             links.append(link)
-    return(links)
+    return links
 
-def create_random_sc_net(num_suppliers,num_manufacturers,num_distributors,num_retailers,env=env,product=default_product):
+def create_random_sc_net(num_suppliers, num_manufacturers, num_distributors, num_retailers, env=env, product=default_product):
     """
-    This function creates a fully connected random SC network
+    This function creates a fully connected random supply chain network.
+
     Parameters:
-    - num_suppliers (int): number of suppliers
-    - num_manufacturers (int): number of manufacturers
-    - num_distributors (int): number of distributors
-    - num_retailers (int): number of retailers
-    """
-    # To - Do #
-    # get bounds for node/edge parameters as as attributes
+        num_suppliers (int): Number of suppliers.
+        num_manufacturers (int): Number of manufacturers.
+        num_distributors (int): Number of distributors.
+        num_retailers (int): Number of retailers.
+        env (object): Environment object for simulation (default: env).
+        product (object): Product object for the supply chain network (default: default_product).
 
-    # create a product
+    Returns:
+        dict: A dictionary representing the supply chain network with the following keys:
+            - num_of_nodes (int): Total number of nodes in the network.
+            - num_suppliers (int): Number of suppliers.
+            - num_manufacturers (int): Number of manufacturers.
+            - num_distributors (int): Number of distributors.
+            - num_retailers (int): Number of retailers.
+            - num_of_edges (int): Total number of edges in the network.
+            - nodes (list): List of all nodes in the network.
+            - edges (list): List of all edges in the network.
+            - demand (list): List of demand objects in the network.
+            - products (list): List of products in the network.
+    """
+
     if(num_suppliers!=0):
         suppliers = create_sc_nodes(num_of_nodes=num_suppliers,node_type="supplier",inv_cap_bounds=[800,900],
                                      inv_hold_cost_bounds=[1,3],inv_reorder_lvl_bounds=[700,750],product=default_product)
@@ -140,10 +155,24 @@ def create_random_sc_net(num_suppliers,num_manufacturers,num_distributors,num_re
 def get_sc_net_info(supplychainnet):
     """
     Get supply chain network information. 
-    It displays following information:
-    Number of nodes, edges, node parameters, edge parameters, demand, and products
+
+    This function displays the following information about the supply chain network:
+    - Number of nodes
+    - Number of edges
+    - Number of suppliers
+    - Number of manufacturers
+    - Number of distributors
+    - Number of retailers
+    - Node parameters
+    - Edge parameters
+    - Demand
+    - Products
+
     Parameters: 
-    - supplychainnet (dict): a supply chain network
+        supplychainnet (dict): A dictionary representing the supply chain network.
+
+    Returns:
+        str: A string containing the supply chain network information.
     """
     sc_info = "Supply chain configuration: \n"
     logger = global_logger.logger
@@ -176,41 +205,58 @@ def get_sc_net_info(supplychainnet):
     return sc_info
 
 
+import networkx as nx
+import matplotlib.pyplot as plt
+
 def visualize_sc_net(supplychainnet):
     """
-    Visualize the supply chain network as a graph
-    Nodes: supply chain nodes
-    Edges: links between supply chain nodes
+    Visualize the supply chain network as a graph.
+
     Parameters:
-    - supplychainnet (dict): supply chain network 
+        supplychainnet (dict): The supply chain network containing nodes and edges.
+
+    Returns:
+        None
     """
-    G=nx.Graph()
+    G = nx.Graph()
     nodes = supplychainnet["nodes"]
     edges = supplychainnet["edges"]
+
+    # Add nodes to the graph
     for node in nodes:
-        G.add_node(node.ID,level=node.node_type)
-    
+        G.add_node(node.ID, level=node.node_type)
+
+    # Add edges to the graph
     for edge in edges:
         from_node = edge.source.ID
         to_node = edge.sink.ID
-        G.add_edge(from_node,to_node,weight=edge.lead_time)
+        G.add_edge(from_node, to_node, weight=edge.lead_time)
 
-    pos=nx.spring_layout(G)
-    nx.draw(G,pos,node_color='#CCCCCC',with_labels = True)
-    labels = nx.get_edge_attributes(G,'weight')
-    nx.draw_networkx_edge_labels(G,pos,edge_labels=labels)
+    # Generate the layout of the graph
+    pos = nx.spring_layout(G)
+
+    # Draw the graph
+    nx.draw(G, pos, node_color='#CCCCCC', with_labels=True)
+
+    # Add edge labels
+    labels = nx.get_edge_attributes(G, 'weight')
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
+
+    # Set the title and display the graph
     plt.title("Supply chain network")
     plt.show()
 
-def simulate_sc_net(supplychainnet,sim_time,env=env):
+def simulate_sc_net(supplychainnet, sim_time, env=env):
     """
-    Simulate the supply chain network for given time period
+    Simulate the supply chain network for a given time period.
+
     Parameters:
-    - env : SimPy Environment variable
-    - supplychainnet (dict): a supply chain network
-    - sim_time (int): simulation time
+        supplychainnet (dict): A supply chain network.
+        sim_time (int): Simulation time.
+        env (SimPy Environment variable): SimPy Environment variable.
+
     Returns:
-    - supplychainnet (dict): updated dict with listed performance measures
+        supplychainnet (dict): Updated dict with listed performance measures.
     """
     logger = global_logger.logger
     #get_sc_net_info(supplychainnet)
@@ -218,7 +264,7 @@ def simulate_sc_net(supplychainnet,sim_time,env=env):
     demands = supplychainnet["demand"]
     nodes = supplychainnet["nodes"]
 
-    # lets create some variable to store stats 
+    # Let's create some variables to store stats
     sc_net_inventory_cost = 0
     sc_net_transport_cost = 0
     sc_net_node_cost = 0
@@ -226,10 +272,10 @@ def simulate_sc_net(supplychainnet,sim_time,env=env):
     sc_total_unit_sold = 0
     sc_total_unsatisfied_demand = 0
     
-    # run the simulation
+    # Run the simulation
     env.run(sim_time)
 
-    # calculate stats
+    # Calculate stats
     for node in nodes:
         sc_net_inventory_cost += node.inventory_cost
         sc_net_transport_cost += node.transportation_cost
@@ -240,14 +286,16 @@ def simulate_sc_net(supplychainnet,sim_time,env=env):
         sc_total_unit_sold += demand.total_products_sold
         sc_total_unsatisfied_demand += demand.unsatisfied_demand
     
-    supplychainnet["performance"] = {"total_product_sold":sc_total_unit_sold,
-                                     "sc_profit":sc_net_profit,
-                                     "sc_tranport_cost":sc_net_transport_cost,
-                                     "sc_inv_cost":sc_net_inventory_cost,
-                                     "sc_total_cost":sc_net_node_cost,
-                                     "total_unsatisfied_demand": sc_total_unsatisfied_demand}
+    supplychainnet["performance"] = {
+        "total_product_sold": sc_total_unit_sold,
+        "sc_profit": sc_net_profit,
+        "sc_tranport_cost": sc_net_transport_cost,
+        "sc_inv_cost": sc_net_inventory_cost,
+        "sc_total_cost": sc_net_node_cost,
+        "total_unsatisfied_demand": sc_total_unsatisfied_demand
+    }
     
-    logger.info(f"*** Supply chain statistics ***")
+    logger.info("*** Supply chain statistics ***")
     logger.info(f"Number of products sold = {sc_total_unit_sold}") 
     logger.info(f"SC total profit = {sc_net_profit}") 
     logger.info(f"SC total tranportation cost = {sc_net_transport_cost}") 
@@ -259,14 +307,22 @@ def simulate_sc_net(supplychainnet,sim_time,env=env):
 
 def create_sc_net(nodes:list = [],links:list = [],demands:list = [],products:list = []):
     """
-    Create a supply chain network
+    Create a supply chain network.
+
     Parameters:
-    - nodes (list): list of supply chain nodes
-    - links (list): list of links between supply chain nodes
-    - demands (list): list of demands
-    - products (list): list of products
+        nodes (list): A list of supply chain nodes.
+        links (list): A list of links between supply chain nodes.
+        demands (list): A list of demands.
+        products (list): A list of products.
+
     Returns:
-    - supplychainnet (dict): a supply chain network
+        supplychainnet (dict): A dictionary representing the supply chain network with the following keys:
+            - num_of_nodes (int): The number of nodes in the supply chain network.
+            - num_of_edges (int): The number of edges (links) in the supply chain network.
+            - nodes (list): The list of supply chain nodes.
+            - edges (list): The list of links between supply chain nodes.
+            - demand (list): The list of demands.
+            - products (list): The list of products.
     """
     supplychainnet = {"num_of_nodes":len(nodes),
                       "num_of_edges":len(links),
@@ -282,3 +338,4 @@ if __name__ == "__main__":
     for node in supplychainnet["nodes"]:
         global_logger.logger.info(node.get_info())
     supplychainnet = simulate_sc_net(supplychainnet,sim_time=100)
+    
