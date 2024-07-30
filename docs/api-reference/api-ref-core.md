@@ -12,10 +12,10 @@ __Classes:__
 | Node | Represents a generic node in the supply chain. |
 | Supplier | Represents a supplier node. |
 | Manufacturer | Represents a manufacturer node. |
-| Retailer | Represents a retailer node. |
-| Distributor | Represents a distributor node. |
+| InventoryNode | Represents a node that maintains an inventory. It can be a warehouse, distributor or retailer node. |
 | Demand | Represents the demand at a particular node. |
 | Link | Represents a transportation link between two nodes in the supply chain. |
+| Inventory | Represents an inventory maintained by any Node. |
 
 __Usage:__
 
@@ -23,9 +23,45 @@ Users can create instances of these classes to model a supply chain. Each class 
 
 Following is a list classes and methods in __core__ module.
 
-### Link class
+### Classes
+##### [Link](#link)
 
-::: SupplyNetPy.Components.core.Link
-    handler: python
+##### [Node](#node)
+
+##### [Inventory](#inventory)
+
+##### [Supplier](#supplier)
+
+##### [Manufacturer](#manufacturer)
+
+##### [Inventory Node](#inventorynode)
+
+##### [Demand](#demand)
+
+### Link 
+
+:::SupplyNetPy.Components.core.Link
 
 ### Node
+
+:::SupplyNetPy.Components.core.Node
+
+### Inventory
+
+:::SupplyNetPy.Components.core.Inventory
+
+### Supplier
+
+:::SupplyNetPy.Components.core.Supplier
+
+### Manufacturer
+
+:::SupplyNetPy.Components.core.Manufacturer
+
+### InventoryNode
+
+:::SupplyNetPy.Components.core.InventoryNode
+
+### Demand
+
+:::SupplyNetPy.Components.core.Demand

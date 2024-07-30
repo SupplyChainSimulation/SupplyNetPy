@@ -8,9 +8,8 @@ nav:
   - API reference:
     - Introduction: api-reference/api-intro.md
     - Components.core: api-reference/api-ref-core.md
-    - Components.inventory: api-reference/
-    - Components.logger: api-reference/
-    - Components.utilities: api-reference/
+    - Components.logger: api-reference/api-ref-logger.md
+    - Components.utilities: api-reference/api-ref-utilities.md
   
 theme:
   name: readthedocs
