@@ -8,7 +8,9 @@ Let's create a supply chain network for a single product inventory with six node
 # let us import the library
 import SupplyNetPy.Components as scm
 ~~~
-# Create a supply chain
+## Create a supply chain
+
+#### Creating Nodes
 ~~~Python
 # create supply chain nodes
 supplier1 = scm.Supplier(ID="S1", name="Supplier 1",
@@ -36,6 +38,8 @@ retailer3 = scm.InventoryNode(ID="R1", name="Retailer 1", node_type="retailer",
 ~~~
 
 [sS]: ## "Reorder level-based inventory replenishment policy: In this approach, inventory levels are continuously monitored. When inventory levels drop below a certain threshold 's', an order is placed to restock it to its full capacity 'S'."
+
+#### Creating Links
 ~~~Python
 # Create links between the nodes
 link_sup1_man1 = scm.Link(ID="L1", source=supplier1, sink=manufacturer1, cost=5, lead_time=3)
@@ -44,7 +48,9 @@ link_dis1_ret1 = scm.Link(ID="L3", source=distributor1, sink=retailer1, cost=50,
 link_dis1_ret2 = scm.Link(ID="L4", source=distributor1, sink=retailer2, cost=50, lead_time=4)
 link_dis1_ret3 = scm.Link(ID="L5", source=distributor1, sink=retailer3, cost=50, lead_time=4)
 ~~~
-To stimulate product movement within our network, we need to generate demand. Traditionally, retailers are the main points of contact for real customer demand. However, we can also create demand directly at the manufacturer node. Imagine a scenario in which a manufacturer not only supplies products to retailers but also directly responds to customer orders for personalized items. For example, consider the manufacturing of custom-designed T-shirts for a university baseball team. We use the `Demand` class from SupplyNetPy to generate deamnd at a particular node. Demand takes the order arrival and quantity models as callable functions. These can be a constant number of distribution generation functions to model order arrival and quantity.
+To stimulate product movement within our network, we need to generate demand. Traditionally, retailers are the main points of contact for real customer demand. However, we can also create demand directly at the manufacturer node. Imagine a scenario in which a manufacturer not only supplies products to retailers but also directly responds to customer orders for personalized items. For example, consider the manufacturing of custom-designed T-shirts for a university baseball team. We use the `Demand` class from SupplyNetPy to generate deamnd at a particular node. Demand takes the order arrival and quantity models as callable functions. These can be a constant number or distribution generation functions to model order arrival and quantity. In this example we create a deterministic demand.
+
+#### Creating Demand
 ~~~Python
 # Create a demand
 demand_r1 = scm.Demand(ID="demand_R1", name="Demand 1", order_arrival_model=lambda: 5,
@@ -59,6 +65,7 @@ demand_r3 = scm.Demand(ID="demand_R3", name="Demand 3", order_arrival_model=lamb
 
 Let us leverage SupplyNetPy's create_sc and simulate_sc_net functions to assemble the supply chain components we created above in a single network and simulate it. 
 
+#### Running simulations
 ~~~Python
 scnet = scm.create_sc_net(nodes=[supplier1, manufacturer1, distributor1, retailer1, retailer2, retailer3],
                           links=[link_sup1_man1, link_man1_dis1, link_dis1_ret1, link_dis1_ret2, link_dis1_ret3],
@@ -68,7 +75,7 @@ scnet = scm.create_sc_net(nodes=[supplier1, manufacturer1, distributor1, retaile
 scm.simulate_sc_net(scnet, sim_time=100)
 ~~~
 
-### Code output
+#### Code output
 
 Below is the simulation log printed on the console by running the above code snippet.
 <div style="overflow-y: auto; padding: 0px; max-height: 500px;">

@@ -56,7 +56,7 @@ link_man1_dis1 = scm.Link(ID="L3", source=manufacturer1, sink=distributor1, cost
 ~~~
 
 ##### Creating Demand
-We are now ready to run the simulation. However, we still need to specify the demand for this chain. Since we do not have any retailer in the network yet, let us create demand at the distributor. Consider it a direct demand faced by the distributors (for example, a distributor faces a demand for custom-made products). Demand takes the order arrival and quantity models as callable functions. These can be a constant number of distribution generation functions to model order arrival and quantity.
+We are now ready to run the simulation. However, we still need to specify the demand for this chain. Since we do not have any retailer in the network yet, let us create demand at the distributor. Consider it a direct demand faced by the distributors (for example, a distributor faces a demand for custom-made products). Demand takes the order arrival and quantity models as callable functions. These can be a constant number or distribution generation functions to model order arrival and quantity.
 
 ~~~
 demand_dis = scm.Demand(ID="demand_D1", name="Demand 1", order_arrival_model=lambda: 1,

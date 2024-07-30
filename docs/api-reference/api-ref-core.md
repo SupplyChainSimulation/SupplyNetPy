@@ -23,45 +23,41 @@ Users can create instances of these classes to model a supply chain. Each class 
 
 Following is a list classes and methods in __core__ module.
 
-### Classes
-##### [Link](#link)
+### Classes 
+- [Link](#link)
+- [Node](#node)
+- [Inventory](#inventory)
+- [Supplier](#supplier)
+- [Manufacturer](#manufacturer)
+- [Inventory Node](#inventorynode)
+- [Demand](#demand)
 
-##### [Node](#node)
 
-##### [Inventory](#inventory)
-
-##### [Supplier](#supplier)
-
-##### [Manufacturer](#manufacturer)
-
-##### [Inventory Node](#inventorynode)
-
-##### [Demand](#demand)
-
-### Link 
-
+------------------
+<b><span style="font-size:20px;"> Link </span></b><br>
 :::SupplyNetPy.Components.core.Link
+------------------
 
 ### Node
-
 :::SupplyNetPy.Components.core.Node
+------------------
 
 ### Inventory
-
 :::SupplyNetPy.Components.core.Inventory
+------------------
 
 ### Supplier
-
 :::SupplyNetPy.Components.core.Supplier
+------------------
 
 ### Manufacturer
-
 :::SupplyNetPy.Components.core.Manufacturer
+------------------
 
 ### InventoryNode
-
 :::SupplyNetPy.Components.core.InventoryNode
+------------------
 
 ### Demand
-
 :::SupplyNetPy.Components.core.Demand
+------------------
