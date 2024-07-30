@@ -21,6 +21,14 @@ class RawMaterial():
         __init__: initializes the raw material object
         __str__: returns the name of the raw material
         __repr__: returns the name of the raw material
+        get_info: returns a dictionary containing details of the raw material
+
+    Attributes:
+        ID (str): ID of the raw material (alphanumeric)
+        name (str): name of the raw material
+        extraction_quantity (float): quantity of the raw material that can be extracted in extraction_time
+        extraction_time (float): time to extract the raw material
+        cost (float): cost of the raw material (per item)
     """
     def __init__(self, ID: str, name: str, extraction_quantity: float, extraction_time: float, cost: float) -> None:
         """
@@ -36,6 +44,16 @@ class RawMaterial():
         Returns:
             None
         """
+        if(extraction_quantity <= 0):
+            global_logger.logger.error("Extraction quantity cannot be zero or negative.")
+            raise ValueError("Extraction quantity cannot be negative.")
+        if(extraction_time < 0):
+            global_logger.logger.error("Extraction time cannot be negative.")
+            raise ValueError("Extraction time cannot be negative.")
+        if(cost <= 0):
+            global_logger.logger.error("Cost cannot be zero or negative.")
+            raise ValueError("Cost cannot be negative.")
+
         self.ID = ID # ID of the raw material (alphanumeric)
         self.name = name # name of the raw material
         self.extraction_quantity = extraction_quantity # quantity of the raw material that can be extracted in extraction_time
@@ -89,6 +107,7 @@ class Product():
         __init__: initializes the product object
         __str__: returns the name of the product
         __repr__: returns the name of the product
+        get_info: returns a dictionary containing details of the product
     """
     def __init__(self, ID: str, name: str, manufacturing_cost: float, manufacturing_time: int, sell_price: float, raw_materials: list, units_per_cycle: int, buy_price: float = 0) -> None:
         """
@@ -107,6 +126,22 @@ class Product():
         Returns:
             None
         """
+        if(manufacturing_cost <= 0):
+            global_logger.logger.error("Manufacturing cost cannot be zero or negative.")
+            raise ValueError("Manufacturing cost cannot be negative.")
+        if(manufacturing_time < 0):
+            global_logger.logger.error("Manufacturing time cannot be negative.")
+            raise ValueError("Manufacturing time cannot be negative.")
+        if(sell_price <= 0):
+            global_logger.logger.error("Sell price cannot be zero or negative.")
+            raise ValueError("Sell price cannot be negative.")
+        if(buy_price < 0):
+            global_logger.logger.error("Buy price cannot be negative.")
+            raise ValueError("Buy price cannot be negative.")
+        if(units_per_cycle <= 0):
+            global_logger.logger.error("Units per cycle cannot be zero or negative.")
+            raise ValueError("Units per cycle cannot be negative.")
+
         self.ID = ID # ID of the product (alphanumeric)
         self.name = name # name of the product
         self.manufacturing_cost = manufacturing_cost # manufacturing cost of the product
@@ -143,7 +178,7 @@ class Product():
         """
         return {"ID": self.ID, "name": self.name, "manufacturing_cost": self.manufacturing_cost, "manufacturing_time": self.manufacturing_time, "sell_price": self.sell_price, "buy_price": self.buy_price, "raw_materials": self.raw_materials, "units_per_cycle": self.units_per_cycle}
     
-default_product = Product(ID="P1", name="Product 1", manufacturing_cost=100, manufacturing_time=10, sell_price=200, raw_materials=[{"raw_material": default_raw_material, "quantity": 9}], units_per_cycle=50) # create a default product
+default_product = Product(ID="P1", name="Product 1", manufacturing_cost=100, manufacturing_time=10, sell_price=220, raw_materials=[{"raw_material": default_raw_material, "quantity": 9}], units_per_cycle=30) # create a default product
 
 class MonitoredContainer(simpy.Container):
     """
@@ -251,6 +286,7 @@ class Inventory():
         __init__: initializes the inventory object
         __str__: returns the name of the inventory
         __repr__: returns the name of the inventory
+        get_info: returns a dictionary containing details of the inventory
     """
     def __init__(self, capacity: int, initial_level: int, replenishment_policy: str, env: simpy.Environment = env) -> None:
         """
@@ -272,6 +308,19 @@ class Inventory():
         Returns:
             None
         """
+        if(initial_level > capacity):
+            global_logger.logger.error("Initial level cannot be greater than capacity.")
+            raise ValueError("Initial level cannot be greater than capacity.")
+        if(initial_level < 0):
+            global_logger.logger.error("Initial level cannot be negative.")
+            raise ValueError("Initial level cannot be negative.")
+        if(capacity <= 0):
+            global_logger.logger.error("Capacity cannot be zero or negative.")
+            raise ValueError("Capacity cannot be negative.")
+        if(replenishment_policy not in ["continuous", "sS", "periodic"]):
+            global_logger.logger.error(f"Invalid replenishment policy. {replenishment_policy} is not yet available.")
+            raise ValueError(f"Invalid replenishment policy. {replenishment_policy} is not yet available.")
+
         self.env = env # simulation environment
         self.capacity = capacity # maximum capacity of the inventory
         self.level = initial_level # initial inventory level
@@ -283,6 +332,15 @@ class Inventory():
 
     def __repr__(self):
         return self.name
+    
+    def get_info(self):
+        """
+        Get the details of the inventory.
+
+        Returns:
+            dict: dictionary containing details of the inventory
+        """
+        return {"capacity": self.capacity, "level": self.level, "replenishment_policy": self.replenishment_policy}
 
 class Node():
     """
@@ -303,6 +361,7 @@ class Node():
         __init__: initializes the node object
         __str__: returns the name of the node
         __repr__: returns the name of the node
+        get_info: returns a dictionary containing details of the node
     """
     def __init__(self, ID: str, name: str, node_type: str, env: simpy.Environment = env, isolated_logger: bool = False, **kwargs) -> None:
         """
@@ -319,6 +378,10 @@ class Node():
         Returns:
             None
         """
+        if(node_type.lower() not in ["supplier", "manufacturer", "warehouse", "distributor", "inventory", "retailer", "demand"]):
+            global_logger.logger.error(f"Invalid node type. Node type: {node_type}")
+            raise ValueError("Invalid node type.")
+        
         self.ID = ID  # ID of the node (alphanumeric)
         self.name = name  # name of the node
         self.node_type = node_type  # type of the node
@@ -328,6 +391,12 @@ class Node():
         if isolated_logger:  # if individual logger is required
             self.logger = GlobalLogger(logger_name=self.name, **kwargs).logger  # create an isolated logger
 
+        self.inventory_cost = 0  # total inventory cost
+        self.transportation_cost = 0  # total transportation cost
+        self.node_cost = 0  # total node cost
+        self.profit = 0  # profit
+        self.net_profit = 0  # net profit
+
     def __str__(self):
         """
         Returns the name of the node.
@@ -345,6 +414,15 @@ class Node():
             str: The name of the node.
         """
         return self.name
+    
+    def get_info(self):
+        """
+        Get the details of the node.
+
+        Returns:
+            dict: dictionary containing details of the node
+        """
+        return {"ID": self.ID, "name": self.name, "node_type": self.node_type}
 
 class Link():
     """
@@ -354,7 +432,7 @@ class Link():
         env (simpy.Environment): simulation environment
         ID (str): ID of the link (alphanumeric)
         source (Node): source node of the link
-        target (Node): target node of the link
+        sink (Node): sink node of the link
         cost (float): cost of transportation over the link
         lead_time (int): lead time of the link
 
@@ -362,9 +440,10 @@ class Link():
         __init__: initializes the link object
         __str__: returns the name of the link
         __repr__: returns the name of the link
+        get_info: returns a dictionary containing details of the link
     """
 
-    def __init__(self, ID: str, source: Node, target: Node, cost: float, lead_time: int, env: simpy.Environment = env) -> None:
+    def __init__(self, ID: str, source: Node, sink: Node, cost: float, lead_time: int, env: simpy.Environment = env) -> None:
         """
         Initialize the link object.
 
@@ -372,21 +451,43 @@ class Link():
             env (simpy.Environment): simulation environment
             ID (str): ID of the link (alphanumeric)
             source (Node): source node of the link
-            target (Node): target node of the link
+            sink (Node): sink node of the link
             cost (float): cost of transportation over the link
             lead_time (int): lead time of the link
 
         Returns:
             None
         """
+        if(lead_time < 0):
+            global_logger.logger.error("Lead time cannot be negative.")
+            raise ValueError("Lead time cannot be negative.")
+        if(cost <= 0):
+            global_logger.logger.error("Cost cannot be zero or negative.")
+            raise ValueError("Cost cannot be negative.")
+        if(source == sink):
+            global_logger.logger.error("Source and sink nodes cannot be the same.")
+            raise ValueError("Source and sink nodes cannot be the same.")
+        if(source.node_type == "demand"):
+            global_logger.logger.error("Demand node cannot be a source node.")
+            raise ValueError("Demand node cannot be a source node.")
+        if(sink.node_type == "supplier"):
+            global_logger.logger.error("Supplier node cannot be a sink node.")
+            raise ValueError("Supplier node cannot be a sink node.")
+        if(source.node_type == "supplier" and sink.node_type == "supplier"):
+            global_logger.logger.error("Supplier nodes cannot be connected.")
+            raise ValueError("Supplier nodes cannot be connected.")
+        if(source.node_type == "supplier" and sink.node_type == "demand"):
+            global_logger.logger.error("Supplier node cannot be connected to a demand node.")
+            raise ValueError("Supplier node cannot be connected to a demand node.")
+
         self.env = env  # simulation environment
         self.ID = ID  # ID of the link (alphanumeric)
         self.source = source  # source node of the link
-        self.target = target  # target node of the link
+        self.sink = sink  # sink node of the link
         self.cost = cost  # cost of the link
         self.lead_time = lead_time  # lead time of the link
 
-        self.target.suppliers.append(self)  # add the link as a supplier link to the target node
+        self.sink.suppliers.append(self)  # add the link as a supplier link to the sink node
 
     def __str__(self):
         """
@@ -395,7 +496,7 @@ class Link():
         Returns:
             str: The name of the link.
         """
-        return self.name
+        return self.ID
 
     def __repr__(self):
         """
@@ -404,7 +505,16 @@ class Link():
         Returns:
             str: The name of the link.
         """
-        return self.name
+        return self.ID
+
+    def get_info(self):
+        """
+        Get the details of the link.
+
+        Returns:
+            dict: dictionary containing details of the link
+        """
+        return {"ID": self.ID, "source": self.source, "sink": self.sink, "trnsportation cost": self.cost, "lead_time": self.lead_time}
 
 class Supplier(Node):
     """
@@ -425,6 +535,7 @@ class Supplier(Node):
         __init__: initializes the supplier object
         __str__: returns the name of the supplier
         __repr__: returns the name of the supplier
+        get_info: returns a dictionary containing details of the supplier
         calculate_statistics: calculate statistics for the supplier
         get_statistics: get statistics for the supplier
         behavior: supplier behavior
@@ -449,6 +560,10 @@ class Supplier(Node):
         Returns:
             None
         """
+        if(inventory_holding_cost <= 0):
+            global_logger.logger.error("Inventory holding cost cannot be zero or negative.")
+            raise ValueError("Inventory holding cost cannot be negative.")
+
         super().__init__(ID=ID, name=name, node_type="supplier", isolated_logger=isolated_logger, **kwargs)
         self.env = env
         self.raw_material = raw_material # raw material supplied by the supplier. By default, it is the default raw material.
@@ -489,6 +604,18 @@ class Supplier(Node):
             str: name of the supplier
         """
         return self.name
+    
+    def get_info(self):
+        """
+        Get the details of the supplier.
+
+        Parameters:
+            None
+
+        Returns:
+            dict: dictionary containing details of the supplier
+        """
+        return {"ID": self.ID, "name": self.name, "raw_material": self.raw_material.get_info(), "inventory": self.inventory.get_info()}
     
     def calculate_statistics(self):
         """
@@ -563,6 +690,7 @@ class Manufacturer(Node):
         __init__: initializes the manufacturer object
         __str__: returns the name of the manufacturer
         __repr__: returns the name of the manufacturer
+        get_info: returns a dictionary containing details of the manufacturer
         calculate_statistics: calculate statistics for the manufacturer
         get_statistics: get statistics for the manufacturer
         behavior: manufacturer behavior - consume raw materials, produce the product, and put the product in the inventory
@@ -595,6 +723,10 @@ class Manufacturer(Node):
         Returns:
             None
         """
+        if(inventoty_holding_cost <= 0):
+            global_logger.logger.error("Inventory holding cost cannot be zero or negative.")
+            raise ValueError("Inventory holding cost cannot be negative.")
+
         super().__init__(ID=ID, name=name, node_type="manufacturer", isolated_logger=isolated_logger, **kwargs)
         self.env = env
         self.capacity = capacity
@@ -605,10 +737,10 @@ class Manufacturer(Node):
         self.suppliers = suppliers
         self.replenishment_policy = replenishment_policy
         self.policy_param = policy_param
-
         self.materials_available = True
         self.inventory_counts = {} # dictionary to store inventory counts
         self.order_placed = {} # dictionary to store order status
+        self.inventory = Inventory(capacity=self.capacity, initial_level=self.initial_level, replenishment_policy=self.replenishment_policy)
 
         self.env.process(self.behavior()) # start the behavior process
         
@@ -644,6 +776,18 @@ class Manufacturer(Node):
     
     def __repr__(self):
         return self.name
+    
+    def get_info(self):
+        """
+        Get the details of the manufacturer.
+
+        Parameters:
+            None
+
+        Returns:
+            dict: dictionary containing details of the manufacturer
+        """
+        return {"ID": self.ID, "name": self.name, "product": self.product.get_info(), "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
     
     def calculate_statistics(self):
         """
@@ -699,7 +843,6 @@ class Manufacturer(Node):
                 ini_levels = self.initial_level/len(self.suppliers)
             else:
                 ini_levels = 0
-        self.inventory = Inventory(capacity=self.capacity, initial_level=self.initial_level, replenishment_policy=self.replenishment_policy)
         self.inventory_counts = {} # dictionary to store inventory counts
         for supplier in self.suppliers: # iterate over supplier links
             self.inventory_counts[supplier.source.raw_material.ID] = ini_levels # store initial levels
@@ -746,7 +889,7 @@ class Manufacturer(Node):
         """
         for supplier in self.suppliers: # check for the supplier of the raw material
             if(supplier.source.raw_material.ID == raw_material):
-                self.logger.info(f"{self.env.now}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
+                self.logger.info(f"{self.env.now}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units.")
                 yield supplier.source.inventory.inventory.get(reorder_quantity)
                 self.logger.info(f"{self.env.now}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")                
                 # update the transportation cost at the supplier
@@ -772,7 +915,7 @@ class Manufacturer(Node):
         while True:
             yield self.env.timeout(1)
             for raw_material in self.inventory_counts:
-                if(self.inventory_counts[raw_material] < s):
+                if(self.inventory_counts[raw_material] < (s/len(self.suppliers))): # check if the inventory level is below the reorder point
                     # how to calculate reorder quantity?
                     # for multiple raw materials, reorder quantity can be different for each raw material
                     # can be based on the proportion of raw materials used to manufacture the product
@@ -822,6 +965,7 @@ class InventoryNode(Node):
         __init__: initializes the inventory node object
         __str__: returns the name of the inventory node
         __repr__: returns the name of the inventory node
+        get_info: returns a dictionary containing details of the inventory node
         calculate_statistics: calculate statistics for the inventory node
         get_statistics: get statistics for the inventory node
         place_order: place an order for the product from the suppliers
@@ -854,6 +998,19 @@ class InventoryNode(Node):
             The product buy price is set to the sell price of the supplier. The inventory node sells the product at a higher price than the buy price.
             By default, the sell price is set to 5% more than the buy price. The product sell price can be set by the user, if required.
         """
+        if(capacity <= 0):
+            global_logger.logger.error("Inventory capacity cannot be zero or negative.")
+            raise ValueError("Capacity cannot be negative.")
+        if(initial_level < 0):
+            global_logger.logger.error("Initial level cannot be negative.")
+            raise ValueError("Initial level cannot be negative.")
+        if(inventory_holding_cost <= 0):
+            global_logger.logger.error("Inventory holding cost cannot be zero or negative.")
+            raise ValueError("Inventory holding cost cannot be negative.")
+        if(capacity < initial_level):
+            global_logger.logger.error("Initial level cannot be greater than capacity.")
+            raise ValueError("Initial level cannot be greater than capacity.")        
+
         super().__init__(ID=ID, name=name, node_type=node_type)
         self.env = env
         self.node_type = node_type
@@ -890,6 +1047,18 @@ class InventoryNode(Node):
     
     def __repr__(self):
         return self.name
+    
+    def get_info(self):
+        """
+        Get the details of the inventory node.
+
+        Parameters:
+            None
+
+        Returns:
+            dict: dictionary containing details of the inventory node
+        """
+        return {"ID": self.ID, "name": self.name, "node_type": self.node_type, "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
     
     def calculate_statistics(self):
         """
@@ -1018,6 +1187,7 @@ class Demand(Node):
         __init__: initializes the demand node object
         __str__: returns the name of the demand node
         __repr__: returns the name of the demand node
+        get_info: returns a dictionary containing details of the demand node
         behavior: generates demand by calling the order arrival and order quantity models
     """
 
@@ -1036,6 +1206,20 @@ class Demand(Node):
         Returns:
             None
         """
+        if(order_arrival_model == None):
+            global_logger.logger.error("Order arrival model cannot be None.")
+            raise ValueError("Order arrival model cannot be None.")
+        if(order_quantity_model == None):
+            global_logger.logger.error("Order quantity model cannot be None.")
+            raise ValueError("Order quantity model cannot be None.")
+        if(demand_node == None):
+            global_logger.logger.error("Demand node cannot be None.")
+            raise ValueError("Demand node cannot be None.")
+        if(demand_node.node_type == "supplier"):
+            global_logger.logger.error("Demand node cannot be a supplier.")
+            raise ValueError("Demand node cannot be a supplier.")
+            
+
         super().__init__(ID=ID, name=name, node_type="demand")
         self.order_arrival_model = order_arrival_model
         self.order_quantity_model = order_quantity_model
@@ -1043,6 +1227,7 @@ class Demand(Node):
         self.env = env
         self.env.process(self.behavior())
 
+        self.total_products_sold = 0
         self.unsatisfied_demand = 0
 
     def __str__(self):
@@ -1068,6 +1253,18 @@ class Demand(Node):
             str: The name of the demand node.
         """
         return self.name
+    
+    def get_info(self):
+        """
+        Get the details of the demand node.
+
+        Parameters:
+            None
+
+        Returns:
+            dict: dictionary containing details of the demand node
+        """
+        return {"ID": self.ID, "name": self.name, "demand_node": self.demand_node}
 
     def behavior(self):
         """
@@ -1086,8 +1283,9 @@ class Demand(Node):
                 self.demand_node.inventory.inventory.get(order_quantity)
                 self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
                 # update statistics
+                self.total_products_sold += order_quantity
                 self.demand_node.products_sold = order_quantity
-                self.demand_node.total_products_sold += order_quantity                
+                self.demand_node.total_products_sold += order_quantity
             else:
                 self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}.")
                 self.unsatisfied_demand += order_quantity            
@@ -1101,10 +1299,10 @@ if __name__ == "__main__":
     # create a manufacturer
     default_product.raw_materials = [{"raw_material": default_raw_material, "quantity": 9}, {"raw_material": raw_material2, "quantity": 5}]
     manufacturer1 = Manufacturer(ID="M1", name="Manufacturer 1", capacity=500, initial_level=300, inventoty_holding_cost=3, replenishment_policy="sS", policy_param=[200])
-    link_sup1_man1 = Link(ID="L1", source=supplier1, target=manufacturer1, cost=5, lead_time=3)
-    link_sup2_man1 = Link(ID="L2", source=supplier2, target=manufacturer1, cost=7, lead_time=2)
+    link_sup1_man1 = Link(ID="L1", source=supplier1, sink=manufacturer1, cost=5, lead_time=3)
+    link_sup2_man1 = Link(ID="L2", source=supplier2, sink=manufacturer1, cost=7, lead_time=2)
     distributor1 = InventoryNode(ID="D1", name="Distributor 1", node_type="distributor", capacity=300, initial_level=50, inventory_holding_cost=3, replenishment_policy="sS", policy_param=[30])
-    link_man1_dis1 = Link(ID="L3", source=manufacturer1, target=distributor1, cost=50, lead_time=2)
+    link_man1_dis1 = Link(ID="L3", source=manufacturer1, sink=distributor1, cost=50, lead_time=2)
     demand_dis = Demand(ID="demand_D1", name="Demand 1", order_arrival_model=lambda: 1, order_quantity_model=lambda: 5, demand_node=distributor1)
     print("Simulation started.")
     #  run the simulation
