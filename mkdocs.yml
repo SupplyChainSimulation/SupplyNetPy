@@ -1,7 +1,6 @@
 site_name: SupplyNetPy Documentation
 nav:
   - Home: index.md
-  - Overview: overview.md
   - SupplyNetPy in 10 Minutes: ten_min.md
   - Examples: example.md
   - About: about.md

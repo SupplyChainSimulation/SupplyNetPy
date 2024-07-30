@@ -1,73 +1,71 @@
 # SupplyNetPy Examples
 
-## A simple three node supply chain
+## A simple six node supply chain
 
-Let's create a supply chain network for a single product inventory with three nodes, a supplier, a manufacturer, and a retailer. The retailer has the option to replenish its inventory by obtaining products directly from the manufacturer. Meanwhile, the manufacturer can restock its own inventory by sourcing materials from the supplier to produce the goods.
+Let's create a supply chain network for a single product inventory with six nodes, a supplier, a manufacturer, adistributor and three retailer. The retailer has the option to replenish its inventory by obtaining products from the distributor. Meanwhile, the manufacturer can restock its own inventory by sourcing raw materials from the supplier to produce the goods.
 
-~~~
+~~~Python
 # let us import the library
 import SupplyNetPy.Components as scm
-
-# First off, let us set up a SimPy environment where we can play around with
-# and simulate how the supply chain network operates.
-import simpy
-env = simpy.Environment()
 ~~~
+# Create a supply chain
+~~~Python
+# create supply chain nodes
+supplier1 = scm.Supplier(ID="S1", name="Supplier 1",
+                         capacity=500, initial_level=500, inventory_holding_cost=0.3)
 
-Before creating supply chain nodes, which include retailers, manufacturers, and suppliers, it is imperative to create a product. This product will serve as the fundamental element that flows through each node of the supply chain, linking all stakeholders in a cohesive and operational network.
+manufacturer1 = scm.Manufacturer(ID="M1", name="Manufacturer 1",
+                                 capacity=500, initial_level=300, inventoty_holding_cost=3,
+                                 replenishment_policy="sS", policy_param=[200])
 
-The product is defined using SupplyNetPy's `Product` class, which includes essential details such as _sku_, _name_, _description_, _product type_, and _shelf life_, ensuring a comprehensive and efficient inventory management approach.
+distributor1 = scm.InventoryNode(ID="D1", name="Distributor 1", node_type="distributor",
+                                 capacity=300, initial_level=100, inventory_holding_cost=3,
+                                 replenishment_policy="sS", policy_param=[50])
 
-~~~
-product1 = scm.Product(sku="12325",name="TShirt",description="Cloths",
-                       cost=800,profit=100,product_type="Non-perishable",shelf_life=None)
+retailer1 = scm.InventoryNode(ID="R1", name="Retailer 1", node_type="retailer",
+                              capacity=100, initial_level=50, inventory_holding_cost=3,
+                              replenishment_policy="sS", policy_param=[50])
+
+retailer2 = scm.InventoryNode(ID="R1", name="Retailer 1", node_type="retailer",
+                              capacity=100, initial_level=50, inventory_holding_cost=3,
+                              replenishment_policy="sS", policy_param=[50])
+
+retailer3 = scm.InventoryNode(ID="R1", name="Retailer 1", node_type="retailer",
+                              capacity=100, initial_level=50, inventory_holding_cost=3,
+                              replenishment_policy="sS", policy_param=[50])
 ~~~
 
 [sS]: ## "Reorder level-based inventory replenishment policy: In this approach, inventory levels are continuously monitored. When inventory levels drop below a certain threshold 's', an order is placed to restock it to its full capacity 'S'."
-
-Let's now create retailer, manufacturer, and supplier nodes in the supply chain network. These nodes will be created using SupplyNetPy's `Retailer`, `Manufacturer`, and `Supplier` classes. They will require basic information such as ID, name, node type, location, and inventory details including capacity, reorder point, inventory products, and hold cost. If the inventory type and replenishment policy are not specified, the default values will be _single product inventory_ and [(s,S) replenishment policy][sS].
-
+~~~Python
+# Create links between the nodes
+link_sup1_man1 = scm.Link(ID="L1", source=supplier1, sink=manufacturer1, cost=5, lead_time=3)
+link_man1_dis1 = scm.Link(ID="L2", source=manufacturer1, sink=distributor1, cost=50, lead_time=2)
+link_dis1_ret1 = scm.Link(ID="L3", source=distributor1, sink=retailer1, cost=50, lead_time=4)
+link_dis1_ret2 = scm.Link(ID="L4", source=distributor1, sink=retailer2, cost=50, lead_time=4)
+link_dis1_ret3 = scm.Link(ID="L5", source=distributor1, sink=retailer3, cost=50, lead_time=4)
 ~~~
-supplier1 = scm.Supplier(env=env,name="supplier1",node_id=123,location="Goa",
-                         inv_capacity=800,inv_holding_cost=1,reorder_level=600)
+To stimulate product movement within our network, we need to generate demand. Traditionally, retailers are the main points of contact for real customer demand. However, we can also create demand directly at the manufacturer node. Imagine a scenario in which a manufacturer not only supplies products to retailers but also directly responds to customer orders for personalized items. For example, consider the manufacturing of custom-designed T-shirts for a university baseball team. We use the `Demand` class from SupplyNetPy to generate deamnd at a particular node. Demand takes the order arrival and quantity models as callable functions. These can be a constant number of distribution generation functions to model order arrival and quantity.
+~~~Python
+# Create a demand
+demand_r1 = scm.Demand(ID="demand_R1", name="Demand 1", order_arrival_model=lambda: 5,
+                       order_quantity_model=lambda: 5, demand_node=retailer1)
 
-manufacturer1 = scm.Manufacturer(env=env,name="man1",node_id=124,location="Mumbai",
-                                 production_cost=100,production_level=200,products=[product1],
-                                 inv_capacity=600,inv_holding_cost=2,reorder_level=300)
+demand_r2 = scm.Demand(ID="demand_R2", name="Demand 2", order_arrival_model=lambda: 3,
+                       order_quantity_model=lambda: 7, demand_node=retailer2)
 
-retailer1 = scm.Retailer(env=env,name=f"retailer1",node_id=125,location="Mumbai",
-                         products=[product1],inv_capacity=300,
-                         inv_holding_cost=3,reorder_level=100)
-~~~
-
-To stimulate product movement within our network, we need to generate demand. Traditionally, retailers are the main points of contact for real customer demand. However, we can also create demand directly at the manufacturer node. Imagine a scenario in which a manufacturer not only supplies products to retailers but also directly responds to customer orders for personalized items. For example, consider the manufacturing of custom-designed T-shirts for a university baseball team. We use the `Demand` class from SupplyNetPy to accomplish this. The `Demand` class can currently model demand as a standard distribution. So, we need to specify the name of the distribution and distribution parameters. It will model the arrival of the customers. The `demand_dist` parameter specifies the distribution of the purchases (quantity of units in an order).
-
-~~~
-demand_ret1 = scm.Demand(env=env, arr_dist="Poisson",arr_params=[6],node=retailer1,
-                         demand_dist="Uniform",demand_params=[1,10])
-demand_man1 = scm.Demand(env=env, arr_dist="Poisson",arr_params=[1],node=manufacturer1,
-                         demand_dist="Uniform",demand_params=[1,3])
-~~~
-
-Now that we have created all the essential components in the supply chain, we need to connect them in a network. SupplyNetPy uses the `Link` class to connect any two supply chain nodes. We have to specify the "to" and "from" nodes, along with additional essential parameters like lead time, transport cost, and distance.
-
-~~~
-link1 = scm.Link(from_node=supplier1,to_node=manufacturer1,
-                 lead_time=3,transportation_cost=100,link_distance=300)
-
-link2 = scm.Link(from_node=manufacturer1,to_node=retailer1,
-                 lead_time=2,transportation_cost=70,link_distance=200)
+demand_r3 = scm.Demand(ID="demand_R3", name="Demand 3", order_arrival_model=lambda: 1,
+                       order_quantity_model=lambda: 9, demand_node=retailer3)
 ~~~
 
 Let us leverage SupplyNetPy's create_sc and simulate_sc_net functions to assemble the supply chain components we created above in a single network and simulate it. 
 
-~~~
-scnet = scm.create_sc(products=[product1],
-                      nodes = [supplier1,manufacturer1,retailer1],
-                      links = [link1, link2],
-                      demands = [demand_ret1,demand_man1])
+~~~Python
+scnet = scm.create_sc_net(nodes=[supplier1, manufacturer1, distributor1, retailer1, retailer2, retailer3],
+                          links=[link_sup1_man1, link_man1_dis1, link_dis1_ret1, link_dis1_ret2, link_dis1_ret3],
+                          demands=[demand_r1, demand_r2, demand_r3])
 
-scm.simulate_sc_net(env,scnet,sim_time=10)
+# Simulate the supply chain network
+scm.simulate_sc_net(scnet, sim_time=100)
 ~~~
 
 ### Code output
@@ -75,178 +73,384 @@ scm.simulate_sc_net(env,scnet,sim_time=10)
 Below is the simulation log printed on the console by running the above code snippet.
 <div style="overflow-y: auto; padding: 0px; max-height: 500px;">
 ```bash
-INFO 2024-07-24 17:43:16,726 sim_trace - : A link from 'supplier1' to 'man1' is created.
-INFO 2024-07-24 17:43:16,727 sim_trace - : A link from 'man1' to 'retailer1' is created.
-INFO 2024-07-24 17:43:16,727 sim_trace - Number of nodes in the network: 3
-INFO 2024-07-24 17:43:16,727 sim_trace - Number of edges in the network: 2
-INFO 2024-07-24 17:43:16,727 sim_trace -         Number of suppliers: 1
-INFO 2024-07-24 17:43:16,727 sim_trace -         Number of manufacturers: 1
-INFO 2024-07-24 17:43:16,727 sim_trace -         Number of distributors: 0
-INFO 2024-07-24 17:43:16,727 sim_trace -         Number of retailers: 1
-INFO 2024-07-24 17:43:16,727 sim_trace - Name: supplier1
-INFO 2024-07-24 17:43:16,727 sim_trace - ID: 123
-INFO 2024-07-24 17:43:16,727 sim_trace - Type: Supplier
-INFO 2024-07-24 17:43:16,733 sim_trace - Location: Goa
-INFO 2024-07-24 17:43:16,733 sim_trace - Reliability: 1
-INFO 2024-07-24 17:43:16,733 sim_trace - Resilience: 1
-INFO 2024-07-24 17:43:16,734 sim_trace - Criticality: 1
-INFO 2024-07-24 17:43:16,734 sim_trace - Inventory capacity: 800
-INFO 2024-07-24 17:43:16,734 sim_trace - Inventory holding cost: 1
-INFO 2024-07-24 17:43:16,735 sim_trace - Inventory reorder level: 0
-INFO 2024-07-24 17:43:16,735 sim_trace - Inventory reorder period: 1
-INFO 2024-07-24 17:43:16,736 sim_trace - Inventory type: Single
-INFO 2024-07-24 17:43:16,736 sim_trace - Inventory replenishment policy: sS
-INFO 2024-07-24 17:43:16,736 sim_trace - Name: man1
-INFO 2024-07-24 17:43:16,737 sim_trace - ID: 124
-INFO 2024-07-24 17:43:16,737 sim_trace - Type: Manufacturer
-INFO 2024-07-24 17:43:16,739 sim_trace - Location: Mumbai
-INFO 2024-07-24 17:43:16,739 sim_trace - Reliability: 1
-INFO 2024-07-24 17:43:16,739 sim_trace - Resilience: 1
-INFO 2024-07-24 17:43:16,739 sim_trace - Criticality: 1
-INFO 2024-07-24 17:43:16,739 sim_trace - Inventory capacity: 600
-INFO 2024-07-24 17:43:16,739 sim_trace - Inventory holding cost: 2
-INFO 2024-07-24 17:43:16,742 sim_trace - Inventory reorder level: 300
-INFO 2024-07-24 17:43:16,742 sim_trace - Inventory reorder period: 1
-INFO 2024-07-24 17:43:16,743 sim_trace - Inventory type: Single
-INFO 2024-07-24 17:43:16,743 sim_trace - Inventory replenishment policy: sS
-INFO 2024-07-24 17:43:16,744 sim_trace - Name: retailer1
-INFO 2024-07-24 17:43:16,744 sim_trace - ID: 125
-INFO 2024-07-24 17:43:16,744 sim_trace - Type: retailer
-INFO 2024-07-24 17:43:16,746 sim_trace - Location: Mumbai
-INFO 2024-07-24 17:43:16,746 sim_trace - Reliability: 1
-INFO 2024-07-24 17:43:16,747 sim_trace - Resilience: 1
-INFO 2024-07-24 17:43:16,748 sim_trace - Criticality: 1
-INFO 2024-07-24 17:43:16,748 sim_trace - Inventory capacity: 300
-INFO 2024-07-24 17:43:16,749 sim_trace - Inventory holding cost: 3
-INFO 2024-07-24 17:43:16,750 sim_trace - Inventory reorder level: 100
-INFO 2024-07-24 17:43:16,752 sim_trace - Inventory reorder period: 1
-INFO 2024-07-24 17:43:16,752 sim_trace - Inventory type: Single
-INFO 2024-07-24 17:43:16,754 sim_trace - Inventory replenishment policy: sS
-INFO 2024-07-24 17:43:16,755 sim_trace - Link from: supplier1
-INFO 2024-07-24 17:43:16,755 sim_trace - to: man1
-INFO 2024-07-24 17:43:16,756 sim_trace - Lead time: 3
-INFO 2024-07-24 17:43:16,756 sim_trace - Tranportation cost: 100
-INFO 2024-07-24 17:43:16,757 sim_trace - Distance: 300 Km
-INFO 2024-07-24 17:43:16,758 sim_trace - Transport type: road
-INFO 2024-07-24 17:43:16,759 sim_trace - Load capacity: 0
-INFO 2024-07-24 17:43:16,760 sim_trace - Min shipment quantity: 0
-INFO 2024-07-24 17:43:16,760 sim_trace - Link failuer probability: 0
-INFO 2024-07-24 17:43:16,761 sim_trace - CO2 cost: 0
-INFO 2024-07-24 17:43:16,761 sim_trace - Reliability: 1
-INFO 2024-07-24 17:43:16,762 sim_trace - Resilience: 1
-INFO 2024-07-24 17:43:16,762 sim_trace - Criticality: 0
-INFO 2024-07-24 17:43:16,763 sim_trace - Link from: man1
-INFO 2024-07-24 17:43:16,763 sim_trace - to: retailer1
-INFO 2024-07-24 17:43:16,764 sim_trace - Lead time: 2
-INFO 2024-07-24 17:43:16,764 sim_trace - Tranportation cost: 70
-INFO 2024-07-24 17:43:16,764 sim_trace - Distance: 200 Km
-INFO 2024-07-24 17:43:16,765 sim_trace - Transport type: road
-INFO 2024-07-24 17:43:16,766 sim_trace - Load capacity: 0
-INFO 2024-07-24 17:43:16,767 sim_trace - Min shipment quantity: 0
-INFO 2024-07-24 17:43:16,768 sim_trace - Link failuer probability: 0
-INFO 2024-07-24 17:43:16,768 sim_trace - CO2 cost: 0
-INFO 2024-07-24 17:43:16,769 sim_trace - Reliability: 1
-INFO 2024-07-24 17:43:16,769 sim_trace - Resilience: 1
-INFO 2024-07-24 17:43:16,770 sim_trace - Criticality: 0
-INFO 2024-07-24 17:43:16,771 sim_trace - This demand is generated for node retailer1.
-INFO 2024-07-24 17:43:16,771 sim_trace - Customer arrival is modeled by Poisson distribution.
-INFO 2024-07-24 17:43:16,772 sim_trace - The distribution parameters are [6].
-INFO 2024-07-24 17:43:16,772 sim_trace - Per customer demand is modeled using Uniform distribution.
-INFO 2024-07-24 17:43:16,772 sim_trace - parameters are: [1, 10]
-INFO 2024-07-24 17:43:16,774 sim_trace - This demand is generated for node man1.
-INFO 2024-07-24 17:43:16,774 sim_trace - Customer arrival is modeled by Poisson distribution.
-INFO 2024-07-24 17:43:16,774 sim_trace - The distribution parameters are [1].
-INFO 2024-07-24 17:43:16,775 sim_trace - Per customer demand is modeled using Uniform distribution.
-INFO 2024-07-24 17:43:16,775 sim_trace - parameters are: [1, 3]
-INFO 2024-07-24 17:43:16,775 sim_trace - Supply chain performance:
-
-INFO 2024-07-24 17:43:16,776 sim_trace - : 0.0000: (Customer 1): ordering 7 units from retailer1.
-INFO 2024-07-24 17:43:16,776 sim_trace - : 0.0000: (Customer 1): ordering 3 units from man1.
-INFO 2024-07-24 17:43:16,778 sim_trace - : 0.0000: (Customer 1): got 7 units from retailer1.
-INFO 2024-07-24 17:43:16,778 sim_trace - : 0.0000: (Customer 1): got 3 units from man1.
-INFO 2024-07-24 17:43:16,779 sim_trace - : 0.1399: (Customer 2): ordering 3 units from man1.
-INFO 2024-07-24 17:43:16,779 sim_trace - : 0.1399: (Customer 2): got 3 units from man1.
-INFO 2024-07-24 17:43:16,780 sim_trace - : 0.3883: (Customer 3): ordering 2 units from man1.
-INFO 2024-07-24 17:43:16,780 sim_trace - : 0.3883: (Customer 3): got 2 units from man1.
-INFO 2024-07-24 17:43:16,781 sim_trace - : 0.4136: (Customer 2): ordering 9 units from retailer1.
-INFO 2024-07-24 17:43:16,782 sim_trace - : 0.4136: (Customer 2): got 9 units from retailer1.
-INFO 2024-07-24 17:43:16,783 sim_trace - : 0.4595: (Customer 3): ordering 1 units from retailer1.
-INFO 2024-07-24 17:43:16,783 sim_trace - : 0.4595: (Customer 3): got 1 units from retailer1.
-INFO 2024-07-24 17:43:16,783 sim_trace - : 0.6917: (Customer 4): ordering 2 units from retailer1.
-INFO 2024-07-24 17:43:16,785 sim_trace - : 0.6917: (Customer 4): got 2 units from retailer1.
-INFO 2024-07-24 17:43:16,785 sim_trace - : 0.7288: (Customer 5): ordering 6 units from retailer1.
-INFO 2024-07-24 17:43:16,785 sim_trace - : 0.7288: (Customer 5): got 6 units from retailer1.
-INFO 2024-07-24 17:43:16,786 sim_trace - : 0.8044: (Customer 4): ordering 3 units from man1.
-INFO 2024-07-24 17:43:16,786 sim_trace - : 0.8044: (Customer 4): got 3 units from man1.
-INFO 2024-07-24 17:43:16,788 sim_trace - : 1.0000: (124): inventory level = 589.
-INFO 2024-07-24 17:43:16,788 sim_trace - : 1.0000: (125): inventory level = 275.
-INFO 2024-07-24 17:43:16,788 sim_trace - : 1.0634: (Customer 6): ordering 6 units from retailer1.
-INFO 2024-07-24 17:43:16,789 sim_trace - : 1.0634: (Customer 6): got 6 units from retailer1.
-INFO 2024-07-24 17:43:16,789 sim_trace - : 1.5257: (Customer 7): ordering 3 units from retailer1.
-INFO 2024-07-24 17:43:16,790 sim_trace - : 1.5257: (Customer 7): got 3 units from retailer1.
-INFO 2024-07-24 17:43:16,790 sim_trace - : 1.6137: (Customer 5): ordering 1 units from man1.
-INFO 2024-07-24 17:43:16,790 sim_trace - : 1.6137: (Customer 5): got 1 units from man1.
-INFO 2024-07-24 17:43:16,790 sim_trace - : 1.6271: (Customer 8): ordering 10 units from retailer1.
-INFO 2024-07-24 17:43:16,791 sim_trace - : 1.6271: (Customer 8): got 10 units from retailer1.
-INFO 2024-07-24 17:43:16,791 sim_trace - : 1.6445: (Customer 9): ordering 1 units from retailer1.
-INFO 2024-07-24 17:43:16,791 sim_trace - : 1.6445: (Customer 9): got 1 units from retailer1.
-INFO 2024-07-24 17:43:16,791 sim_trace - : 1.7474: (Customer 10): ordering 2 units from retailer1.
-INFO 2024-07-24 17:43:16,792 sim_trace - : 1.7474: (Customer 10): got 2 units from retailer1.
-INFO 2024-07-24 17:43:16,792 sim_trace - : 1.7497: (Customer 11): ordering 4 units from retailer1.
-INFO 2024-07-24 17:43:16,792 sim_trace - : 1.7497: (Customer 11): got 4 units from retailer1.
-INFO 2024-07-24 17:43:16,793 sim_trace - : 1.9797: (Customer 12): ordering 1 units from retailer1.
-INFO 2024-07-24 17:43:16,793 sim_trace - : 1.9797: (Customer 12): got 1 units from retailer1.
-INFO 2024-07-24 17:43:16,794 sim_trace - : 2.0000: (124): inventory level = 588.
-INFO 2024-07-24 17:43:16,794 sim_trace - : 2.0000: (125): inventory level = 248.
-INFO 2024-07-24 17:43:16,794 sim_trace - : 2.1268: (Customer 13): ordering 10 units from retailer1.
-INFO 2024-07-24 17:43:16,795 sim_trace - : 2.1268: (Customer 13): got 10 units from retailer1.
-INFO 2024-07-24 17:43:16,795 sim_trace - : 2.3093: (Customer 14): ordering 9 units from retailer1.
-INFO 2024-07-24 17:43:16,795 sim_trace - : 2.3093: (Customer 14): got 9 units from retailer1.
-INFO 2024-07-24 17:43:16,796 sim_trace - : 2.9855: (Customer 6): ordering 3 units from man1.
-INFO 2024-07-24 17:43:16,796 sim_trace - : 2.9855: (Customer 6): got 3 units from man1.
-INFO 2024-07-24 17:43:16,797 sim_trace - : 3.0000: (124): inventory level = 585.
-INFO 2024-07-24 17:43:16,798 sim_trace - : 3.0000: (125): inventory level = 229.
-INFO 2024-07-24 17:43:16,799 sim_trace - : 3.0486: (Customer 15): ordering 7 units from retailer1.
-INFO 2024-07-24 17:43:16,800 sim_trace - : 3.0486: (Customer 15): got 7 units from retailer1.
-INFO 2024-07-24 17:43:16,801 sim_trace - : 3.0969: (Customer 16): ordering 4 units from retailer1.
-INFO 2024-07-24 17:43:16,801 sim_trace - : 3.0969: (Customer 16): got 4 units from retailer1.
-INFO 2024-07-24 17:43:16,802 sim_trace - : 3.1938: (Customer 17): ordering 1 units from retailer1.
-INFO 2024-07-24 17:43:16,803 sim_trace - : 3.1938: (Customer 17): got 1 units from retailer1.
-INFO 2024-07-24 17:43:16,804 sim_trace - : 3.6337: (Customer 18): ordering 2 units from retailer1.
-INFO 2024-07-24 17:43:16,804 sim_trace - : 3.6337: (Customer 18): got 2 units from retailer1.
-INFO 2024-07-24 17:43:16,805 sim_trace - : 3.7353: (Customer 19): ordering 6 units from retailer1.
-INFO 2024-07-24 17:43:16,805 sim_trace - : 3.7353: (Customer 19): got 6 units from retailer1.
-INFO 2024-07-24 17:43:16,805 sim_trace - : 3.7571: (Customer 20): ordering 10 units from retailer1.
-INFO 2024-07-24 17:43:16,805 sim_trace - : 3.7571: (Customer 20): got 10 units from retailer1.
-INFO 2024-07-24 17:43:16,806 sim_trace - : 3.8512: (Customer 21): ordering 4 units from retailer1.
-INFO 2024-07-24 17:43:16,806 sim_trace - : 3.8512: (Customer 21): got 4 units from retailer1.
-INFO 2024-07-24 17:43:16,806 sim_trace - : 3.9273: (Customer 22): ordering 5 units from retailer1.
-INFO 2024-07-24 17:43:16,806 sim_trace - : 3.9273: (Customer 22): got 5 units from retailer1.
-INFO 2024-07-24 17:43:16,807 sim_trace - : 4.0000: (124): inventory level = 585.
-INFO 2024-07-24 17:43:16,807 sim_trace - : 4.0000: (125): inventory level = 190.
-INFO 2024-07-24 17:43:16,807 sim_trace - : 4.2684: (Customer 7): ordering 2 units from man1.
-INFO 2024-07-24 17:43:16,807 sim_trace - : 4.2684: (Customer 7): got 2 units from man1.
-INFO 2024-07-24 17:43:16,808 sim_trace - : 4.3855: (Customer 23): ordering 8 units from retailer1.
-INFO 2024-07-24 17:43:16,808 sim_trace - : 4.3855: (Customer 23): got 8 units from retailer1.
-INFO 2024-07-24 17:43:16,808 sim_trace - : 4.5888: (Customer 24): ordering 8 units from retailer1.
-INFO 2024-07-24 17:43:16,809 sim_trace - : 4.5888: (Customer 24): got 8 units from retailer1.
-INFO 2024-07-24 17:43:16,809 sim_trace - : 4.7026: (Customer 25): ordering 1 units from retailer1.
-INFO 2024-07-24 17:43:16,809 sim_trace - : 4.7026: (Customer 25): got 1 units from retailer1.
-INFO 2024-07-24 17:43:16,810 sim_trace - : 4.7171: (Customer 26): ordering 3 units from retailer1.
-INFO 2024-07-24 17:43:16,810 sim_trace - : 4.7171: (Customer 26): got 3 units from retailer1.
-INFO 2024-07-24 17:43:16,810 sim_trace - : 4.7298: (Customer 8): ordering 2 units from man1.
-INFO 2024-07-24 17:43:16,811 sim_trace - : 4.7298: (Customer 8): got 2 units from man1.
-INFO 2024-07-24 17:43:16,811 sim_trace - : 4.8359: (Customer 9): ordering 3 units from man1.
-INFO 2024-07-24 17:43:16,811 sim_trace - : 4.8359: (Customer 9): got 3 units from man1.
-INFO 2024-07-24 17:43:16,812 sim_trace - : 4.9682: (Customer 27): ordering 5 units from retailer1.
-INFO 2024-07-24 17:43:16,812 sim_trace - : 4.9682: (Customer 27): got 5 units from retailer1.
-INFO 2024-07-24 17:43:16,813 sim_trace - *** SC stats ***
-INFO 2024-07-24 17:43:16,813 sim_trace - Number of products sold = 157
-INFO 2024-07-24 17:43:16,813 sim_trace - SC total profit = 15700
-INFO 2024-07-24 17:43:16,815 sim_trace - SC total tranportation cost = 0
-INFO 2024-07-24 17:43:16,815 sim_trace - SC inventory cost = 9620
-INFO 2024-07-24 17:43:16,816 sim_trace - SC revenue (profit - cost) = 6080
-INFO 2024-07-24 17:43:16,816 sim_trace - Average revenue (per day) = 1216.0
-INFO 2024-07-24 17:43:16,816 sim_trace - Customers returned  = 0
+INFO sim_trace - 0:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:45.
+INFO sim_trace - 0:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:43.
+INFO sim_trace - 0:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:41.
+INFO sim_trace - 1:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 55 units.
+INFO sim_trace - 1:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 57 units.
+INFO sim_trace - 1:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 59 units.
+INFO sim_trace - 1:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:32.
+INFO sim_trace - 1:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - 1:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - 1:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - 2:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:23.
+INFO sim_trace - 3:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:36.
+INFO sim_trace - 3:R1:Inventory replenished. Inventory levels:100
+INFO sim_trace - 3:R1:Inventory replenished. Inventory levels:93
+INFO sim_trace - 3:R1:Inventory replenished. Inventory levels:82
+INFO sim_trace - 3:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:73.
+INFO sim_trace - 4:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:64.
+INFO sim_trace - 5:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:95.
+INFO sim_trace - 5:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:55.
+INFO sim_trace - 6:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:86.
+INFO sim_trace - 6:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:46.
+INFO sim_trace - 7:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 54 units.
+INFO sim_trace - 7:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:37.
+INFO sim_trace - 7:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - 8:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:28.
+INFO sim_trace - 9:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:79.
+INFO sim_trace - 9:R1:Inventory replenished. Inventory levels:82
+INFO sim_trace - 9:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:73.
+INFO sim_trace - 10:M1:Product manufactured.
+INFO sim_trace - 10:M1: Raw material inventory levels:{'RM1': 291.0}
+INFO sim_trace - 10:M1: Product inventory levels:105
+INFO sim_trace - 10:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:90.
+INFO sim_trace - 10:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:64.
+INFO sim_trace - 11:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:55.
+INFO sim_trace - 12:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:72.
+INFO sim_trace - 12:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:46.
+INFO sim_trace - 13:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 54 units.
+INFO sim_trace - 13:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:37.
+INFO sim_trace - 13:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - 14:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:28.
+INFO sim_trace - 15:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:85.
+INFO sim_trace - 15:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:65.
+INFO sim_trace - 15:R1:Inventory replenished. Inventory levels:82
+INFO sim_trace - 15:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:73.
+INFO sim_trace - 16:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:64.
+INFO sim_trace - 17:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:55.
+INFO sim_trace - 18:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:58.
+INFO sim_trace - 18:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:46.
+INFO sim_trace - 19:R1:Replenishing inventory from supplier:Distributor 1, order placed for 54 units.
+INFO sim_trace - 19:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:37.
+INFO sim_trace - 19:R1:shipment in transit from supplier:Distributor 1.
+INFO sim_trace - 20:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:80.
+INFO sim_trace - 20:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 20:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:28.
+INFO sim_trace - 21:M1:Product manufactured.
+INFO sim_trace - 21:M1: Raw material inventory levels:{'RM1': 282.0}
+INFO sim_trace - 21:M1: Product inventory levels:81
+INFO sim_trace - 21:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:51.
+INFO sim_trace - 21:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 21:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:19.
+INFO sim_trace - 22:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 22:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:10.
+INFO sim_trace - 23:R1:Inventory replenished. Inventory levels:64
+INFO sim_trace - 23:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 23:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:55.
+INFO sim_trace - 24:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:44.
+INFO sim_trace - 24:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 24:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 56 units.
+INFO sim_trace - 24:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:46.
+INFO sim_trace - 24:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - 25:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:75.
+INFO sim_trace - 25:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 25:R1:Product not available at suppliers. Required quantity:54.
+INFO sim_trace - 25:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:37.
+INFO sim_trace - 26:R1:Inventory replenished. Inventory levels:100
+INFO sim_trace - 26:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 26:R1:Product not available at suppliers. Required quantity:63.
+INFO sim_trace - 26:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:28.
+INFO sim_trace - 27:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:93.
+INFO sim_trace - 27:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 27:R1:Product not available at suppliers. Required quantity:72.
+INFO sim_trace - 27:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:19.
+INFO sim_trace - 28:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 28:R1:Product not available at suppliers. Required quantity:81.
+INFO sim_trace - 28:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:10.
+INFO sim_trace - 29:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 29:R1:Product not available at suppliers. Required quantity:90.
+INFO sim_trace - 29:demand_R3:Demand at Retailer 1, Order quantity:9 received, inventory level:1.
+INFO sim_trace - 30:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:70.
+INFO sim_trace - 30:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:86.
+INFO sim_trace - 30:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 30:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 30:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 31:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 31:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 31:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 32:M1:Product manufactured.
+INFO sim_trace - 32:M1: Raw material inventory levels:{'RM1': 273.0}
+INFO sim_trace - 32:M1: Product inventory levels:55
+INFO sim_trace - 32:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 32:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 32:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 33:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:79.
+INFO sim_trace - 33:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 33:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 33:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 34:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 34:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 34:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 35:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:65.
+INFO sim_trace - 35:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 35:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 35:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 36:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:72.
+INFO sim_trace - 36:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 36:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 36:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 37:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 37:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 37:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 38:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 38:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 38:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 39:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:65.
+INFO sim_trace - 39:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 39:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 39:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 40:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:60.
+INFO sim_trace - 40:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 40:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 40:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 41:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 41:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 41:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 42:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:58.
+INFO sim_trace - 42:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 42:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 42:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 43:M1:Product manufactured.
+INFO sim_trace - 43:M1: Raw material inventory levels:{'RM1': 264.0}
+INFO sim_trace - 43:M1: Product inventory levels:85
+INFO sim_trace - 43:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 43:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 43:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 44:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 44:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 44:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 45:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:55.
+INFO sim_trace - 45:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:51.
+INFO sim_trace - 45:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 45:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 45:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 46:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 46:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 46:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 47:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 47:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 47:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 48:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:44.
+INFO sim_trace - 48:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 48:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 56 units.
+INFO sim_trace - 48:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 48:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 48:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - 49:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 49:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 49:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 50:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:50.
+INFO sim_trace - 50:R1:Inventory replenished. Inventory levels:100
+INFO sim_trace - 50:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 50:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 50:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 51:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:93.
+INFO sim_trace - 51:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 51:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 51:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 52:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 52:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 52:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 53:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 53:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 53:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 54:M1:Product manufactured.
+INFO sim_trace - 54:M1: Raw material inventory levels:{'RM1': 255.0}
+INFO sim_trace - 54:M1: Product inventory levels:59
+INFO sim_trace - 54:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:86.
+INFO sim_trace - 54:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 54:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 54:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 55:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:45.
+INFO sim_trace - 55:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 55:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 55 units.
+INFO sim_trace - 55:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 55:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 55:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - 56:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 56:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 56:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 57:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:79.
+INFO sim_trace - 57:R1:Inventory replenished. Inventory levels:100
+INFO sim_trace - 57:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 57:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 57:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 58:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 58:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 58:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 59:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 59:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 59:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 60:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:95.
+INFO sim_trace - 60:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:72.
+INFO sim_trace - 60:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 60:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 60:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 61:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 61:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 61:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 62:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 62:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 62:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 63:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:65.
+INFO sim_trace - 63:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 63:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 63:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 64:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 64:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 64:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 65:M1:Product manufactured.
+INFO sim_trace - 65:M1: Raw material inventory levels:{'RM1': 246.0}
+INFO sim_trace - 65:M1: Product inventory levels:34
+INFO sim_trace - 65:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:90.
+INFO sim_trace - 65:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 65:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 65:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 66:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:58.
+INFO sim_trace - 66:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 66:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 66:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 67:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 67:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 67:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 68:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 68:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 68:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 69:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:51.
+INFO sim_trace - 69:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 69:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 69:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 70:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:85.
+INFO sim_trace - 70:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 70:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 70:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 71:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 71:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 71:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 72:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:44.
+INFO sim_trace - 72:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 72:R1:Product not available at suppliers. Required quantity:56.
+INFO sim_trace - 72:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 72:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 73:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 73:R1:Product not available at suppliers. Required quantity:56.
+INFO sim_trace - 73:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 73:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 74:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 74:R1:Product not available at suppliers. Required quantity:56.
+INFO sim_trace - 74:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 74:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 75:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:80.
+INFO sim_trace - 75:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:37.
+INFO sim_trace - 75:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 75:R1:Product not available at suppliers. Required quantity:63.
+INFO sim_trace - 75:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 75:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 76:M1:Product manufactured.
+INFO sim_trace - 76:M1: Raw material inventory levels:{'RM1': 237.0}
+INFO sim_trace - 76:M1: Product inventory levels:64
+INFO sim_trace - 76:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 76:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 63 units.
+INFO sim_trace - 76:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 76:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 76:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - 77:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 77:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 77:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 78:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:30.
+INFO sim_trace - 78:R1:Inventory replenished. Inventory levels:93
+INFO sim_trace - 78:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 78:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 78:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 79:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 79:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 79:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 80:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:75.
+INFO sim_trace - 80:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 80:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 80:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 81:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:86.
+INFO sim_trace - 81:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 81:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 81:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 82:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 82:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 82:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 83:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 83:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 83:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 84:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:79.
+INFO sim_trace - 84:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 84:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 84:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 85:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:70.
+INFO sim_trace - 85:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 85:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 85:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 86:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 86:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 86:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 87:M1:Product manufactured.
+INFO sim_trace - 87:M1: Raw material inventory levels:{'RM1': 228.0}
+INFO sim_trace - 87:M1: Product inventory levels:31
+INFO sim_trace - 87:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:72.
+INFO sim_trace - 87:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 87:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 87:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 88:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 88:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 88:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 89:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 89:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 89:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 90:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:65.
+INFO sim_trace - 90:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:65.
+INFO sim_trace - 90:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 90:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 90:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 91:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 91:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 91:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 92:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 92:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 92:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 93:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:58.
+INFO sim_trace - 93:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 93:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 93:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 94:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 94:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 94:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 95:demand_R1:Demand at Retailer 1, Order quantity:5 received, inventory level:60.
+INFO sim_trace - 95:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 95:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 95:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 96:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:51.
+INFO sim_trace - 96:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 96:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 96:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 97:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 97:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 97:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 98:M1:Product manufactured.
+INFO sim_trace - 98:M1: Raw material inventory levels:{'RM1': 219.0}
+INFO sim_trace - 98:M1: Product inventory levels:61
+INFO sim_trace - 98:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 98:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 98:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 99:demand_R2:Demand at Retailer 1, Order quantity:7 received, inventory level:44.
+INFO sim_trace - 99:D1:Product not available at suppliers. Required quantity:254.
+INFO sim_trace - 99:R1:Replenishing inventory from supplier:Manufacturer 1, order placed for 56 units.
+INFO sim_trace - 99:R1:Product not available at suppliers. Required quantity:99.
+INFO sim_trace - 99:demand_R3:Demand at Retailer 1, Order quantity:9 not available, inventory level:1.
+INFO sim_trace - 99:R1:shipment in transit from supplier:Manufacturer 1.
+INFO sim_trace - *** Supply chain statistics ***
+INFO sim_trace - Number of products sold = 608
+INFO sim_trace - SC total profit = -47217.2
+INFO sim_trace - SC total tranportation cost = 550
+INFO sim_trace - SC total cost = 120731.0
+INFO sim_trace - SC inventory cost = 93231.0
+INFO sim_trace - Customers returned  = 630
 ```
 </div>
