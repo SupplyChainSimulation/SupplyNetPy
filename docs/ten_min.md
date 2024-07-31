@@ -17,7 +17,7 @@ pip install -i https://test.pypi.org/simple/ supplynetpy
 import SupplyNetPy.Components as scm
 ~~~
 
-SupplyNetPy's __Components__ module provides fundamental constructs for creating supply chain components such as supply chain nodes, node demand, products, inventory, and linking them in a network.
+SupplyNetPy's __Components__ module provides fundamental constructs for creating supply chain components such as supply chain nodes, demand, products, inventory, and linking them in a network.
 
 ##### Create Supply Chain Nodes
 Let us create a supplier node in the supply chain that provides some raw material to the manufacturer for manufacturing a product. It takes arguments such as ID, name, and inventory parameters. The supplier maintains inventory to make raw materials readily available. The supplier node is created using the `default_raw_material`. The default raw material is configured to have 1 unit cost per item; 30 units are mined per extraction cycle of 3 days. We can change the configuration of `default_raw_material` or create a new one according to our needs.
@@ -26,6 +26,8 @@ Let us create a supplier node in the supply chain that provides some raw materia
 supplier1 = scm.Supplier(ID="S1", name="Supplier 1", capacity=600, 
                          initial_level=600, inventory_holding_cost=1)
 ~~~
+
+The supplier's behavior is to mine or extract the raw material and make it available for the manufacturer by maintaining an inventory. By default, the supplier is assumed to be associated with mining a single raw material and has infinite access to it.
 
 Let us create a manufacturing node and a distributor node in the supply chain network. These can be created with parameters quite similar to those above. These nodes take a `Product` as a parameter, which is produced by the `Manufacturer` and stored by `InventoryNode`. If no product object is passed, they will be initialized with a `default_product`. The `dafult_product` is configured to include manufacturing costs, time to manufacture, sell price, buy price, and number of units produced per cycle initialized to some values. We can check the parameter values by running `scm.default_product.get_info()` instruction. We can reconfigure the default product or create a new one.
 
@@ -46,6 +48,10 @@ distributor1 = scm.InventoryNode(ID="D1",
                                  replenishment_policy="sS",
                                  policy_param=[30])
 ~~~
+[qt]: ## "(Q,T): Replenish inventory every T days with Q units."
+[ss]: ## "Continuously monitor inventory; replenish it to capacity S when the level goes below s."
+
+When creating other supply chain nodes, we must specify the inventory replenishment policy and policy parameters. Currently, we have only two replenishment policies: [periodic][qt] replenishment and [reorder-level (s,S)][ss] replenishment.
 
 ##### Creating Links 
 Let us link these nodes in a supply chain network. In this example, we are creating a simple supply chain of three nodes; let us link the manufacturer to get the raw material from the supplier and the distributor to get the product from the manufacturer. We need to specify the link's transportation cost and lead time when we create them.

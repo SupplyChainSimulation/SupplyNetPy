@@ -2,7 +2,7 @@
 
 ## A simple six node supply chain
 
-Let's create a supply chain network for a single product inventory with six nodes, a supplier, a manufacturer, adistributor and three retailer. The retailer has the option to replenish its inventory by obtaining products from the distributor. Meanwhile, the manufacturer can restock its own inventory by sourcing raw materials from the supplier to produce the goods.
+Let's create a supply chain network for a single product inventory with six nodes, a supplier, a manufacturer, a distributor and three retailer. The retailer has the option to replenish its inventory by obtaining products from the distributor. Meanwhile, the manufacturer can restock its own inventory by sourcing raw materials from the supplier to produce the goods.
 
 ~~~Python
 # let us import the library
