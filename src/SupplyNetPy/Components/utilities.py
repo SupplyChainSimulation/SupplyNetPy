@@ -1,5 +1,3 @@
-import numpy as np
-import random
 import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -27,7 +25,7 @@ def visualize_sc_net(supplychainnet):
     for edge in edges:
         from_node = edge.source.ID
         to_node = edge.sink.ID
-        G.add_edge(from_node, to_node, weight=edge.lead_time)
+        G.add_edge(from_node, to_node, weight=edge.lead_time())
 
     # Generate the layout of the graph
     pos = nx.spring_layout(G)
@@ -115,11 +113,11 @@ def create_sc_net(nodes: list, links: list, demand: list):
     demand_instances = []
 
     for node in nodes:
-        if node["node_type"].lower() == "supplier":
+        if node["node_type"].lower() == "supplier" or node["node_type"].lower() == "infinite_supplier":
             nodes_instances.append(Supplier(env, **node))
         elif node["node_type"].lower() == "manufacturer":
             nodes_instances.append(Manufacturer(env, **node))
-        elif node["node_type"].lower() == "distributor":
+        elif node["node_type"].lower() == "distributor" or node["node_type"].lower() == "warehouse":
             nodes_instances.append(InventoryNode(env, **node))
         elif node["node_type"].lower() == "retailer":
             nodes_instances.append(InventoryNode(env, **node))
@@ -208,13 +206,13 @@ def simulate_sc_net(supplychainnet, sim_time):
         "total_unsatisfied_demand": sc_total_unsatisfied_demand
     }
     
-    logger.info("*** Supply chain statistics ***")
+    logger.info("\nSupply chain performance:")
     logger.info(f"Number of products sold = {sc_total_unit_sold}") 
     logger.info(f"SC total profit = {sc_net_profit}") 
     logger.info(f"SC total tranportation cost = {sc_net_transport_cost}") 
     logger.info(f"SC total cost = {sc_net_node_cost}")
     logger.info(f"SC inventory cost = {sc_net_inventory_cost}") 
-    logger.info(f"Customers returned  = {sc_total_unsatisfied_demand}")
+    logger.info(f"Unsatisfied demand  = {sc_total_unsatisfied_demand}")
     
     return supplychainnet
 
@@ -222,24 +220,51 @@ if __name__ == "__main__":
     
     # nodes input as netlist
     # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
-    nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'supplier', 'capacity': 600, 'initial_level': 600, 'inventory_holding_cost': 0.2},
-             {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': 'sS', 'policy_param': [150]},
-             {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 1, 'replenishment_policy': 'sS', 'policy_param': [40]}
+    nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
+             {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': 'sS', 'policy_param': [200],'product_sell_price': 350},
+             {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 1, 'replenishment_policy': 'sS', 'policy_param': [100],'product_sell_price': 360}
     ]
     
     # nodes input as netlist
     # ID, from_node, to_node, transportation_cost, lead_time
-    links = [{'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 5, 'lead_time': 3},
-             {'ID': 'L2', 'source': 'M1', 'sink': 'D1', 'cost': 5, 'lead_time': 2}
+    links = [{'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 5, 'lead_time': lambda: 3},
+             {'ID': 'L2', 'source': 'M1', 'sink': 'D1', 'cost': 5, 'lead_time': lambda: 2}
     ]
     
     # demands input as netlist
     # ID, name, node_type, order_arrival_model, order_quantity_model, demand_node
-    demands = [{'ID': 'demand_D1', 'name': 'Demand 1', 'node_type': 'demand', 'order_arrival_model': lambda: 1, 'order_quantity_model': lambda: 30, 'demand_node': 'D1'}]
+    demands = [{'ID': 'demand_D1', 'name': 'Demand 1', 'node_type': 'demand', 'order_arrival_model': lambda: 1, 'order_quantity_model': lambda: 10, 'demand_node': 'D1'}]
 
+    # enable/disable logging
     global_logger.enable_logging()
-    supplychainnet = simulate_sc_net(create_sc_net(nodes, links, demands), sim_time=30)
-    visualize_sc_net(supplychainnet)
     
+    # create the supply chain model and visualize it
+    supplychainnet = create_sc_net(nodes, links, demands)
+    visualize_sc_net(supplychainnet)
+
+    # get the supply chain network information
     for node in supplychainnet["nodes"]:
-        global_logger.logger.info(node.get_info())
+        str_details = ""
+        for key, value in node.get_info().items():
+            str_details += f"{key}: {value}, "
+        global_logger.logger.info(f"{node}: {str_details}\n")
+    
+    # simulate the supply chain model
+    supplychainnet = simulate_sc_net(supplychainnet, sim_time=60)
+
+    # lets plot inventory levels for each node
+    for node in supplychainnet["nodes"]:
+        # get level data and timedata from the inventory
+        levels = node.inventory.inventory.leveldata 
+        times = node.inventory.inventory.timedata
+        # check if it is not a supplier and has a replenishment policy
+        if("supplier" not in node.node_type and node.policy_param != []):
+            if(node.replenishment_policy == 'sS'): # check if it is sS policy, plot threshold line s
+                s = node.policy_param[0]    
+                plt.axhline(y=s, color='r', linestyle='--',label='s (sS replenish)')    
+            plt.title(f"Inventory Level for {node.ID}")
+            plt.plot(times, levels, label=node.ID, marker='.', linestyle='-')
+            plt.xlabel("Time")
+            plt.ylabel("Inventory Level")
+            plt.legend()
+            plt.show()
