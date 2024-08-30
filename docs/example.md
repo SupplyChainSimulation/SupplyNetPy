@@ -12,67 +12,49 @@ import SupplyNetPy.Components as scm
 
 #### Creating Nodes
 ~~~Python
-# create supply chain nodes
-supplier1 = scm.Supplier(ID="S1", name="Supplier 1",
-                         capacity=500, initial_level=500, inventory_holding_cost=0.3)
-
-manufacturer1 = scm.Manufacturer(ID="M1", name="Manufacturer 1",
-                                 capacity=500, initial_level=300, inventoty_holding_cost=3,
-                                 replenishment_policy="sS", policy_param=[200])
-
-distributor1 = scm.InventoryNode(ID="D1", name="Distributor 1", node_type="distributor",
-                                 capacity=300, initial_level=100, inventory_holding_cost=3,
-                                 replenishment_policy="sS", policy_param=[50])
-
-retailer1 = scm.InventoryNode(ID="R1", name="Retailer 1", node_type="retailer",
-                              capacity=100, initial_level=50, inventory_holding_cost=3,
-                              replenishment_policy="sS", policy_param=[50])
-
-retailer2 = scm.InventoryNode(ID="R1", name="Retailer 1", node_type="retailer",
-                              capacity=100, initial_level=50, inventory_holding_cost=3,
-                              replenishment_policy="sS", policy_param=[50])
-
-retailer3 = scm.InventoryNode(ID="R1", name="Retailer 1", node_type="retailer",
-                              capacity=100, initial_level=50, inventory_holding_cost=3,
-                              replenishment_policy="sS", policy_param=[50])
+# defining supply chain nodes
+# ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
+# ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
+nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
+            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': 'sS', 'policy_param': [150],'product_sell_price': 310},
+            {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 1, 'replenishment_policy': 'sS', 'policy_param': [40],'product_sell_price': 320},
+            {'ID': 'R1', 'name': 'Retailer 1', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': 'sS', 'policy_param': [50],'product_sell_price': 330},
+            {'ID': 'R2', 'name': 'Retailer 2', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': 'sS', 'policy_param': [50],'product_sell_price': 335},
+            {'ID': 'R3', 'name': 'Retailer 3', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': 'sS', 'policy_param': [50],'product_sell_price': 325}
+        ]
 ~~~
 
 [sS]: ## "Reorder level-based inventory replenishment policy: In this approach, inventory levels are continuously monitored. When inventory levels drop below a certain threshold 's', an order is placed to restock it to its full capacity 'S'."
 
 #### Creating Links
 ~~~Python
-# Create links between the nodes
-link_sup1_man1 = scm.Link(ID="L1", source=supplier1, sink=manufacturer1, cost=5, lead_time=3)
-link_man1_dis1 = scm.Link(ID="L2", source=manufacturer1, sink=distributor1, cost=50, lead_time=2)
-link_dis1_ret1 = scm.Link(ID="L3", source=distributor1, sink=retailer1, cost=50, lead_time=4)
-link_dis1_ret2 = scm.Link(ID="L4", source=distributor1, sink=retailer2, cost=50, lead_time=4)
-link_dis1_ret3 = scm.Link(ID="L5", source=distributor1, sink=retailer3, cost=50, lead_time=4)
+# defining links between the nodes
+# ID, from_node, to_node, transportation_cost, lead_time
+links = [{'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 5, 'lead_time': lambda: 3},
+            {'ID': 'L2', 'source': 'M1', 'sink': 'D1', 'cost': 5, 'lead_time': lambda: 2},
+            {'ID': 'L3', 'source': 'D1', 'sink': 'R1', 'cost': 5, 'lead_time': lambda: 2},
+            {'ID': 'L4', 'source': 'D1', 'sink': 'R2', 'cost': 5, 'lead_time': lambda: 2},
+            {'ID': 'L5', 'source': 'D1', 'sink': 'R3', 'cost': 5, 'lead_time': lambda: 2}
+        ]
 ~~~
 To stimulate product movement within our network, we need to generate demand. Traditionally, retailers are the main points of contact for real customer demand. However, we can also create demand directly at the manufacturer node. Imagine a scenario in which a manufacturer not only supplies products to retailers but also directly responds to customer orders for personalized items. For example, consider the manufacturing of custom-designed T-shirts for a university baseball team. We use the `Demand` class from SupplyNetPy to generate deamnd at a particular node. Demand takes the order arrival and quantity models as callable functions. These can be a constant number or distribution generation functions to model order arrival and quantity. In this example we create a deterministic demand.
 
 #### Creating Demand
 ~~~Python
 # Create a demand
-demand_r1 = scm.Demand(ID="demand_R1", name="Demand 1", order_arrival_model=lambda: 5,
-                       order_quantity_model=lambda: 5, demand_node=retailer1)
-
-demand_r2 = scm.Demand(ID="demand_R2", name="Demand 2", order_arrival_model=lambda: 3,
-                       order_quantity_model=lambda: 7, demand_node=retailer2)
-
-demand_r3 = scm.Demand(ID="demand_R3", name="Demand 3", order_arrival_model=lambda: 1,
-                       order_quantity_model=lambda: 9, demand_node=retailer3)
+# ID, name, node_type, order_arrival_model, order_quantity_model, demand_node
+demands = [{'ID': 'demand_R1', 'name': 'Demand 1', 'node_type': 'demand', 'order_arrival_model': lambda: 1, 'order_quantity_model': lambda: 10, 'demand_node': 'R1'},
+            {'ID': 'demand_R2', 'name': 'Demand 2', 'node_type': 'demand', 'order_arrival_model': lambda: 2, 'order_quantity_model': lambda: 20, 'demand_node': 'R2'},
+            {'ID': 'demand_R3', 'name': 'Demand 3', 'node_type': 'demand', 'order_arrival_model': lambda: 3, 'order_quantity_model': lambda: 15, 'demand_node': 'R3'}
+          ]
 ~~~
 
 Let us leverage SupplyNetPy's create_sc and simulate_sc_net functions to assemble the supply chain components we created above in a single network and simulate it. 
 
 #### Running simulations
 ~~~Python
-scnet = scm.create_sc_net(nodes=[supplier1, manufacturer1, distributor1, retailer1, retailer2, retailer3],
-                          links=[link_sup1_man1, link_man1_dis1, link_dis1_ret1, link_dis1_ret2, link_dis1_ret3],
-                          demands=[demand_r1, demand_r2, demand_r3])
-
-# Simulate the supply chain network
-scm.simulate_sc_net(scnet, sim_time=100)
+scm.global_logger.enable_logging()
+supplychainnet = scm.simulate_sc_net(scm.create_sc_net(nodes, links, demands), sim_time=30)
 ~~~
 
 #### Code output
