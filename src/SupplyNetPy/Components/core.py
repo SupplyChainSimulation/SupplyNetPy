@@ -315,7 +315,7 @@ class Inventory():
         if(capacity <= 0):
             global_logger.logger.error("Capacity cannot be zero or negative.")
             raise ValueError("Capacity cannot be negative.")
-        if(replenishment_policy not in ["continuous", "sS", "periodic"]):
+        if(replenishment_policy not in ["sS", "periodic"]):
             global_logger.logger.error(f"Invalid replenishment policy. {replenishment_policy} is not yet available.")
             raise ValueError(f"Invalid replenishment policy. {replenishment_policy} is not yet available.")
 
@@ -377,7 +377,7 @@ class Node():
         Returns:
             None
         """
-        if(node_type.lower() not in ["supplier", "manufacturer", "warehouse", "distributor", "inventory", "retailer", "demand"]):
+        if(node_type.lower() not in ["infinite_supplier","supplier", "manufacturer", "warehouse", "distributor", "inventory", "retailer", "demand"]):
             global_logger.logger.error(f"Invalid node type. Node type: {node_type}")
             raise ValueError("Invalid node type.")
         
@@ -443,7 +443,7 @@ class Link():
         get_info: returns a dictionary containing details of the link
     """
 
-    def __init__(self, env: simpy.Environment, ID: str, source: Node, sink: Node, cost: float, lead_time: int) -> None:
+    def __init__(self, env: simpy.Environment, ID: str, source: Node, sink: Node, cost: float, lead_time: callable) -> None:
         """
         Initialize the link object.
 
@@ -453,14 +453,14 @@ class Link():
             source (Node): source node of the link
             sink (Node): sink node of the link
             cost (float): cost of transportation over the link
-            lead_time (int): lead time of the link
+            lead_time (function): a function to model stochastic lead time
 
         Returns:
             None
         """
-        if(lead_time < 0):
-            global_logger.logger.error("Lead time cannot be negative.")
-            raise ValueError("Lead time cannot be negative.")
+        if(lead_time == None):
+            global_logger.logger.error("Lead time cannot be None. Provide a function to model stochastic lead time.")
+            raise ValueError("Lead time cannot be None. Provide a function to model stochastic lead time.")
         if(cost <= 0):
             global_logger.logger.error("Cost cannot be zero or negative.")
             raise ValueError("Cost cannot be negative.")
@@ -544,7 +544,7 @@ class Supplier(Node):
         The supplier keeps extracting raw material whenever the inventory is not full (infinite supply).
         Assume that a supplier can extract a single type of raw material. By default, it is the default raw material.
     """
-    def __init__(self, env: simpy.Environment, ID: str, name: str, capacity: int, initial_level: int, inventory_holding_cost:float, raw_material: RawMaterial = default_raw_material, isolated_logger:bool = False, node_type: str = "supplier", **kwargs) -> None:
+    def __init__(self, env: simpy.Environment, ID: str, name: str, capacity: int = 0, initial_level: int = 0, inventory_holding_cost:float = 1, raw_material: RawMaterial = default_raw_material, isolated_logger:bool = False, node_type: str = "supplier", **kwargs) -> None:
         """
         Initialize the supplier object.
 
@@ -567,9 +567,12 @@ class Supplier(Node):
         super().__init__(env=env, ID=ID, name=name, node_type=node_type, isolated_logger=isolated_logger, **kwargs)
         self.env = env
         self.raw_material = raw_material # raw material supplied by the supplier. By default, it is the default raw material.
-        self.inventory = Inventory(env=env, capacity=capacity, initial_level=initial_level, replenishment_policy="continuous")
+        if(self.node_type!="infinite_supplier"):
+            self.inventory = Inventory(env=env, capacity=capacity, initial_level=initial_level, replenishment_policy="sS")
+            self.env.process(self.behavior()) # start the behavior process
+        else:
+            self.inventory = Inventory(env=env, capacity=float('inf'), initial_level=float('inf'), replenishment_policy="sS")
         self.inventory_holding_cost = inventory_holding_cost # inventory holding cost
-        self.env.process(self.behavior()) # start the behavior process
 
         # statistics
         self.total_raw_materials_mined = 0 # total raw materials mined/extracted
@@ -615,7 +618,7 @@ class Supplier(Node):
         Returns:
             dict: dictionary containing details of the supplier
         """
-        return {"ID": self.ID, "name": self.name, "raw_material": self.raw_material.get_info(), "inventory": self.inventory.get_info()}
+        return {"ID": self.ID, "name": self.name, "type": self.node_type, "raw_material": self.raw_material.get_info(), "inventory": self.inventory.get_info()}
     
     def calculate_statistics(self):
         """
@@ -629,7 +632,8 @@ class Supplier(Node):
         """
         while True:
             yield self.env.timeout(1)
-            self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
+            if(self.node_type!="infinite_supplier"):
+                self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
             self.total_material_cost = self.total_raw_materials_mined * self.raw_material.cost
             self.node_cost = self.total_material_cost + self.inventory_cost + self.transportation_cost
 
@@ -647,7 +651,7 @@ class Supplier(Node):
         
     def behavior(self):
         """
-        Supplier behavior: The supplier keeps extracting raw material whenever the inventory is not full (infinite supply).
+        Supplier behavior: The supplier keeps extracting raw material whenever the inventory is not full.
         Assume that a supplier can extract a single type of raw material.
 
         Parameters:
@@ -697,13 +701,18 @@ class Manufacturer(Node):
         behavior: manufacturer behavior - consume raw materials, produce the product, and put the product in the inventory
 
     Behavior:
-        The manufacturer consumes raw materials and produces the product if raw materials are available, and puts the product in the inventory. 
-        It maintains inventory levels for raw materials and the product. Initial raw material inventory is equally distributed to store
-        raw materials from suppliers. The raw materials inventory is replenished from the suppliers according to the replenishment policy.
-        The profit is calculated as the difference between the sell price and the buy price of the product. By default, the buy price is set 
-        as the manufacturing cost of the product, and the sell price is set to 5% more than the buy price.
+        The manufacturer consumes raw materials and produces the product if raw materials are available.
+        It maintains inventory levels for raw materials and the product. Depending on the replenishment policy for product inventory,
+        manufacturer decides when to replenish the raw material inventory. The manufacturer can be connected to multiple suppliers.
+
+    Assumptions:
+        The manufacturer can be connected to multiple suppliers. Manufacturer can have multiple raw materials to produce a single product.
+        Manufacturer can produce a single product. Manufacturer has separate inventories for raw materials and the product.
+        Manufacturer maintains raw material inventory levels according to the raw material required to produce N products to replenish 
+        the product inventory. Raw materials inventory is initially empty.
+        
     """
-    def __init__(self, env: simpy.Environment, ID: str, name: str, capacity: int, initial_level: int, inventory_holding_cost:float, product: Product = default_product, suppliers: list = [], replenishment_policy: str = "sS", policy_param: list = [], node_type: str = "manufacturer", isolated_logger: bool = False, **kwargs) -> None:
+    def __init__(self, env: simpy.Environment, ID: str, name: str, capacity: int, initial_level: int, inventory_holding_cost: float, product_sell_price: float, product: Product = default_product, suppliers: list = [], replenishment_policy: str = "sS", policy_param: list = [], node_type: str = "manufacturer", isolated_logger: bool = False, **kwargs) -> None:
         """
         Initialize the manufacturer object.
 
@@ -735,12 +744,14 @@ class Manufacturer(Node):
         self.initial_level = initial_level
         self.inventory_holding_cost = inventory_holding_cost
         self.product = product # product manufactured by the manufacturer
+        self.product.sell_price = product_sell_price
         self.suppliers = suppliers
         self.replenishment_policy = replenishment_policy
         self.policy_param = policy_param
         self.materials_available = True
-        self.inventory_counts = {} # dictionary to store inventory counts
+        self.raw_inventory_counts = {} # dictionary to store inventory counts for raw products inventory
         self.order_placed = {} # dictionary to store order status
+        self.product_order_placed = False # order status for the product
         self.inventory = Inventory(env=env, capacity=self.capacity, initial_level=self.initial_level, replenishment_policy=self.replenishment_policy)
 
         self.env.process(self.behavior()) # start the behavior process
@@ -770,7 +781,10 @@ class Manufacturer(Node):
         self.node_cost = 0 # total node cost
         self.net_profit = 0 # net profit
         self.env.process(self.calculate_statistics()) # calculate statistics
-        
+
+        if(self.env == None):
+            global_logger.logger.error("Simulation environment not provided.")
+            raise ValueError("Simulation environment not provided.")
         
     def __str__(self):
         return self.name
@@ -825,9 +839,9 @@ class Manufacturer(Node):
 
     def behavior(self):
         """
-        Manufacturer behavior:  Consume raw materials and produce the product if raw materials are available, put the product in the inventory. 
-        It maintains inventory levels for raw materials and the product. Initial raw material inventory is equally distributed to store
-        raw materials from suppliers. The raw materials inventory is replenished from the suppliers according to the replenishment policy.
+        The manufacturer consumes raw materials and produces the product if raw materials are available.
+        It maintains inventory levels for raw materials and the product. Depending on the replenishment policy for product inventory,
+        manufacturer decides when to replenish the raw material inventory. The manufacturer can be connected to multiple suppliers.
         
         Parameters:
             None
@@ -835,48 +849,52 @@ class Manufacturer(Node):
         Returns:
             None
         """
-        ini_levels = self.initial_level
-        # create an inventory for the manufacturer
-        if(len(self.suppliers) > 0):
-            if(self.initial_level>0):
-                # calculate initial inventory levels, by default all suppliers have equal share
-                # an alternate way is to take initial levels as input from the user
-                ini_levels = self.initial_level/len(self.suppliers)
-            else:
-                ini_levels = 0
-        self.inventory_counts = {} # dictionary to store inventory counts
-        for supplier in self.suppliers: # iterate over supplier links
-            self.inventory_counts[supplier.source.raw_material.ID] = ini_levels # store initial levels
-            self.order_placed[supplier.source.raw_material.ID] = False # store order status
+        if(len(self.suppliers)==0):
+            global_logger.logger.warning("No suppliers connected to the manufacturer.")
+
+        # create an inventory for storing raw materials as a dictionary. Key: raw material ID, Value: inventory level
+        if(len(self.suppliers)>0):
+            for supplier in self.suppliers: # iterate over supplier links
+                self.raw_inventory_counts[supplier.source.raw_material.ID] = 0 # store initial levels
+                #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_leveldata"] = []
+                #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_timesdata"] = []
+                self.order_placed[supplier.source.raw_material.ID] = False # store order status
+                
+        if(len(self.suppliers)!=len(self.product.raw_materials)):
+            global_logger.logger.warning("Number of suppliers should be equal to the number of raw materials.")
 
         # behavior of the manufacturer: consume raw materials, produce the product, and put the product in the inventory
         while True:
+            yield self.env.timeout(1)
             self.materials_available = True
             # check if raw materials are available
-            for raw_material in self.product.raw_materials:
-                if(self.inventory_counts[raw_material["raw_material"].ID] < raw_material["quantity"]):
-                    self.materials_available = False
-                    self.logger.info(f"{self.env.now}:{self.ID}: Raw materials not available.")
-
-            # if raw materials are available then produce the product    
-            if(self.materials_available and self.inventory.inventory.level < self.inventory.inventory.capacity):
-                # produce the product
-                yield self.env.timeout(self.product.manufacturing_time)
-                self.logger.info(f"{self.env.now}:{self.ID}:Product manufactured.")
-                # consume raw materials
+            if(len(self.suppliers)==len(self.product.raw_materials)): # check if required number of suppliers are connected
                 for raw_material in self.product.raw_materials:
-                    self.inventory_counts[raw_material["raw_material"].ID] -= raw_material["quantity"]
-                self.logger.info(f"{self.env.now}:{self.ID}: Raw material inventory levels:{self.inventory_counts}")
-                # put the product units in the inventory
-                if(self.inventory.inventory.level + self.product.units_per_cycle <= self.inventory.inventory.capacity):
-                    self.inventory.inventory.put(self.product.units_per_cycle)
-                else:
-                    self.logger.info(f"{self.env.now}:{self.ID}:Inventory full, product not added.")
-                    self.inventory.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level)
-                self.logger.info(f"{self.env.now}:{self.ID}: Product inventory levels:{self.inventory.inventory.level}")
-                # update statistics
-                self.total_products_manufactured += self.product.units_per_cycle
-            yield self.env.timeout(1)
+                    if(self.raw_inventory_counts[raw_material["raw_material"].ID] < raw_material["quantity"]):
+                        self.materials_available = False
+                        self.logger.info(f"{self.env.now}:{self.ID}: Raw materials not available.")
+
+                # if raw materials are available then produce the product    
+                if(self.materials_available):
+                    # produce the product
+                    yield self.env.timeout(self.product.manufacturing_time)
+                    # consume raw materials
+                    for raw_material in self.product.raw_materials:
+                        self.raw_inventory_counts[raw_material["raw_material"].ID] -= raw_material["quantity"]
+                        #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_leveldata"].append(self.raw_inventory_counts[raw_material["raw_material"].ID])
+                        #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_timesdata"].append(self.env.now)
+
+                    self.logger.info(f"{self.env.now}:{self.ID}: Raw material inventory levels:{self.raw_inventory_counts}")
+                    self.logger.info(f"{self.env.now}:{self.ID}: {self.product.units_per_cycle} units manufactured.")
+                    # put the product units in the inventory
+                    if(self.inventory.inventory.level + self.product.units_per_cycle <= self.inventory.inventory.capacity):
+                        self.inventory.inventory.put(self.product.units_per_cycle)
+                    else:
+                        self.logger.info(f"{self.env.now}:{self.ID}:Inventory full, product not added.")
+                        self.inventory.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level)
+                    self.logger.info(f"{self.env.now}:{self.ID}: Product inventory levels:{self.inventory.inventory.level}")
+                    # update statistics
+                    self.total_products_manufactured += self.product.units_per_cycle
 
     def place_order(self, raw_material, reorder_quantity):
         """
@@ -897,10 +915,14 @@ class Manufacturer(Node):
                 supplier.source.transportation_cost += supplier.cost
                 # update the product sold at the raw material supplier
                 supplier.source.total_raw_materials_sold += reorder_quantity
-                yield self.env.timeout(supplier.lead_time) # lead time for the order
+                yield self.env.timeout(supplier.lead_time()) # lead time for the order
                 self.order_placed[raw_material] = False
-                self.inventory_counts[raw_material] += reorder_quantity
-                self.logger.info(f"{self.env.now}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.inventory_counts}")
+                self.raw_inventory_counts[raw_material] += reorder_quantity
+                # record inventory levels and times for raw material inventory
+                #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_leveldata"].append(self.raw_inventory_counts[raw_material])
+                #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_timesdata"].append(self.env.now)
+                
+                self.logger.info(f"{self.env.now}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
 
     def ss_replenishment(self, s):
         """
@@ -915,17 +937,21 @@ class Manufacturer(Node):
         """
         while True:
             yield self.env.timeout(1)
-            for raw_material in self.inventory_counts:
-                if(self.inventory_counts[raw_material] < (s/len(self.suppliers))): # check if the inventory level is below the reorder point
-                    # how to calculate reorder quantity?
-                    # for multiple raw materials, reorder quantity can be different for each raw material
-                    # can be based on the proportion of raw materials used to manufacture the product
-                    # currently, reorder quantity is calculated based on the remaining capacity of the inventory
-                    # every raw material is allocated equal portion of the remaining capacity
-                    reorder_quantity = (self.inventory.inventory.capacity - self.inventory.inventory.level)/len(self.suppliers)
-                    if(not self.order_placed[raw_material] and reorder_quantity>0):
-                        self.order_placed[raw_material] = True
-                        self.env.process(self.place_order(raw_material, reorder_quantity))
+            if(self.inventory.inventory.level<s and not self.product_order_placed): # product inventory level is below the reorder point
+                self.product_order_placed = True
+                product_reorder_quantity = self.inventory.inventory.capacity - self.inventory.inventory.level # how many product units to order 
+                for raw_material in self.product.raw_materials: # order all raw materials required to produce the product
+                    reorder_quantity = product_reorder_quantity * raw_material["quantity"] # calculate the reorder quantity for raw material
+                    reorder_quantity = reorder_quantity - self.raw_inventory_counts[raw_material["raw_material"].ID] # calculate the remaining quantity to order
+                    if(not self.order_placed[raw_material["raw_material"].ID] and reorder_quantity>0): # check if the order is already placed                        
+                        self.order_placed[raw_material["raw_material"].ID] = True # set the order status to True
+                        self.env.process(self.place_order(raw_material["raw_material"].ID, reorder_quantity)) # place the order
+            self.logger.info(f"{self.env.now}:{self.ID}: Raw materials' inventory levels:{self.raw_inventory_counts}, Product inventory levels:{self.inventory.inventory.level}")
+            if(any(self.order_placed.values()) == True):
+                self.product_order_placed = True
+            if(all(self.order_placed.values()) == False):
+                self.product_order_placed = False
+                
 
     def periodic_replenishment(self, interval, reorder_quantity):
         """
@@ -939,11 +965,14 @@ class Manufacturer(Node):
         """
         while True:
             yield self.env.timeout(interval) # time interval for replenishment
-            for raw_material in self.inventory_counts:
-                inventory_available = self.inventory.inventory.capacity - self.inventory.inventory.level
-                if(not self.order_placed[raw_material] and inventory_available > reorder_quantity):
-                    self.order_placed[raw_material] = True
-                    self.env.process(self.place_order(raw_material, reorder_quantity))
+            product_reorder_quantity = reorder_quantity # how many product units to order
+            for raw_material in self.product.raw_materials: # order all raw materials required to produce the product
+                reorder_quantity_raw = product_reorder_quantity * raw_material["quantity"] # calculate the reorder quantity for raw material
+                reorder_quantity_raw = reorder_quantity_raw - self.raw_inventory_counts[raw_material["raw_material"].ID] # calculate the remaining quantity to order
+                if(not self.order_placed[raw_material["raw_material"].ID] and reorder_quantity_raw>0): # check if the order is already placed
+                    self.order_placed[raw_material["raw_material"].ID] = True # set the order status to True
+                    self.env.process(self.place_order(raw_material["raw_material"].ID, reorder_quantity_raw)) # place the order
+            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.raw_inventory_counts}")
 
 class InventoryNode(Node):
     """
@@ -974,7 +1003,7 @@ class InventoryNode(Node):
         periodic_replenishment: monitored inventory replenishment policy (periodic)
     """
 
-    def __init__(self, env: simpy.Environment, ID: str, name: str, node_type: str, capacity: int, initial_level: int, inventory_holding_cost:float, suppliers: list = [], replenishment_policy: str = "sS", policy_param: list = [2], product:Product = default_product) -> None:
+    def __init__(self, env: simpy.Environment, ID: str, name: str, node_type: str, capacity: int, initial_level: int, inventory_holding_cost:float, product_sell_price: float, suppliers: list = [], replenishment_policy: str = "sS", policy_param: list = [2], product:Product = default_product) -> None:
         """
         Initialize the inventory node object.
 
@@ -1023,6 +1052,7 @@ class InventoryNode(Node):
         self.policy_param = policy_param
         self.inventory = Inventory(env=env, capacity=capacity, initial_level=initial_level, replenishment_policy=replenishment_policy)
         self.product = copy.deepcopy(product) # product that the inventory node sells
+        self.product.sell_price = product_sell_price
         self.product.sell_price = 0 # set the sell price of the product initially to 0, since buy price will be updated based on the supplier
         self.order_placed = False # flag to check if the order is placed
     
@@ -1059,7 +1089,7 @@ class InventoryNode(Node):
         Returns:
             dict: dictionary containing details of the inventory node
         """
-        return {"ID": self.ID, "name": self.name, "node_type": self.node_type, "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
+        return {"ID": self.ID, "name": self.name, "node_type": self.node_type, "product": self.product.get_info(), "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
     
     def calculate_statistics(self):
         """
@@ -1095,7 +1125,7 @@ class InventoryNode(Node):
             dict: dictionary containing statistics for the inventory node
         """
         return {"total_products_sold": self.total_products_sold, "products_sold": self.products_sold, "total_product_cost": self.total_product_cost, "total_revenue": self.total_revenue, "total_profit": self.total_profit, "inventory_cost": self.inventory_cost, "transportation_cost": self.transportation_cost, "node_cost": self.node_cost, "net_profit": self.net_profit}
-    
+
     def place_order(self, supplier, reorder_quantity):
         """
         Place an order for the product from the suppliers.
@@ -1117,7 +1147,7 @@ class InventoryNode(Node):
         supplier.source.total_products_sold += reorder_quantity
         # log the shipment
         self.logger.info(f"{self.env.now}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
-        yield self.env.timeout(supplier.lead_time) # lead time for the order
+        yield self.env.timeout(supplier.lead_time()) # lead time for the order
         self.inventory.inventory.put(reorder_quantity)
         self.logger.info(f"{self.env.now}:{self.ID}:Inventory replenished. Inventory levels:{self.inventory.inventory.level}")
         self.order_placed = False
@@ -1151,6 +1181,7 @@ class InventoryNode(Node):
                     # Get whatever is available, and place the order for the remaining quantity from another supplier and so on.
                     # If the required quantity is still not satisfied, then backlog the order.clear
                     self.logger.info(f"{self.env.now}:{self.ID}:Product not available at suppliers. Required quantity:{reorder_quantity}.")
+            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.inventory.inventory.level}")
     
     def periodic_replenishment(self, interval, reorder_quantity):
         """
@@ -1170,7 +1201,7 @@ class InventoryNode(Node):
                 for supplier in self.suppliers:
                     if(supplier.source.inventory.inventory.level > reorder_quantity and self.order_placed == False):
                         self.order_placed = True
-                        env.process(self.place_order(supplier, reorder_quantity))
+                        self.env.process(self.place_order(supplier, reorder_quantity))
 
 class Demand(Node):
     """
@@ -1308,40 +1339,47 @@ class Demand(Node):
 
 if __name__ == "__main__": 
     """
-    This code is executed when the file is run as a script. The following example demonstrates the use of the core components of
-    the supply network. Instances of the components are created, and the simulation is run to observe the behavior of the supply network.
+    This code is executed when the file is run as a script. It simply demonstrates the use of the core components of the supply network.
+    The following example demonstrates the use of the core components of the supply network. 
+    Instances of the components are created, and the simulation is run to observe the behavior of the supply network.
     """
     env = simpy.Environment()
     
     # create another raw material
-    raw_material2 = RawMaterial(ID="RM2", name="Raw Material 2", extraction_quantity=20, extraction_time=2, cost=15)
+    raw_material2 = RawMaterial(ID="RM2", name="Raw Material 2", extraction_quantity=20, extraction_time=2, cost=1)
 
     # update the default product to require raw_material2 for manufacturing
     default_product.raw_materials = [{"raw_material": default_raw_material, "quantity": 9}, {"raw_material": raw_material2, "quantity": 5}]
 
     # create suppliers
-    supplier1 = Supplier(env=env, ID="S1", name="Supplier 1", capacity=600, initial_level=600, inventory_holding_cost=1)
-    supplier2 = Supplier(env=env, ID="S2", name="Supplier 2", capacity=600, initial_level=600, inventory_holding_cost=1, raw_material=raw_material2)
+    supplier1 = Supplier(env=env, ID="S1", name="Supplier 1", node_type="infinite_supplier")
+    supplier2 = Supplier(env=env, ID="S2", name="Supplier 2", node_type="infinite_supplier", raw_material=raw_material2)
     
     # create a manufacturer
-    manufacturer1 = Manufacturer(env=env, ID="M1", name="Manufacturer 1", capacity=500, initial_level=300, inventory_holding_cost=3, replenishment_policy="sS", policy_param=[200])
+    manufacturer1 = Manufacturer(env=env, ID="M1", name="Manufacturer 1", 
+                                 capacity=500, initial_level=300, inventory_holding_cost=3, 
+                                 replenishment_policy="sS", policy_param=[200], product_sell_price=300)
     
     # create a distributor
-    distributor1 = InventoryNode(env=env,ID="D1", name="Distributor 1", node_type="distributor", capacity=300, initial_level=50, inventory_holding_cost=3, replenishment_policy="sS", policy_param=[30])
+    distributor1 = InventoryNode(env=env,ID="D1", name="Distributor 1", node_type="distributor", 
+                                 capacity=300, initial_level=50, inventory_holding_cost=3, 
+                                 replenishment_policy="sS", policy_param=[30], product_sell_price=350)
 
     # create a demand node
     demand_dis = Demand(env=env,ID="demand_D1", name="Demand 1", order_arrival_model=lambda: 1, order_quantity_model=lambda: 10, demand_node=distributor1)
     
     # connect the nodes with links
-    link_sup1_man1 = Link(env=env,ID="L1", source=supplier1, sink=manufacturer1, cost=5, lead_time=3)
-    link_sup2_man1 = Link(env=env,ID="L2", source=supplier2, sink=manufacturer1, cost=7, lead_time=2)
-    link_man1_dis1 = Link(env=env,ID="L3", source=manufacturer1, sink=distributor1, cost=50, lead_time=2)
+    link_sup1_man1 = Link(env=env,ID="L1", source=supplier1, sink=manufacturer1, cost=5, lead_time=lambda: 3)
+    link_sup2_man1 = Link(env=env,ID="L2", source=supplier2, sink=manufacturer1, cost=7, lead_time=lambda: 2)
+    link_man1_dis1 = Link(env=env,ID="L3", source=manufacturer1, sink=distributor1, cost=50, lead_time=lambda: 2)
     
     #  run the simulation
     env.run(until=30)
 
     nodes = [supplier1,supplier2,manufacturer1,distributor1]
+    #nodes = [manufacturer1,distributor1]
     links = [link_sup1_man1,link_sup2_man1,link_man1_dis1]
+    #links = [link_man1_dis1]
     demands = [demand_dis]
 
     # Let's create some variables to store stats
@@ -1363,6 +1401,10 @@ if __name__ == "__main__":
     for demand in demands:
         sc_total_unit_sold += demand.total_products_sold
         sc_total_unsatisfied_demand += demand.unsatisfied_demand
+
+    global_logger.logger.info(f"Deafult product details: {default_product.get_info()}")
+    global_logger.logger.info(f"Deafult raw material details: {default_raw_material.get_info()}")
+    global_logger.logger.info(f"Raw material 2 details: {raw_material2.get_info()}")
 
     global_logger.logger.info("*** Supply chain statistics ***")
     global_logger.logger.info(f"Number of products sold = {sc_total_unit_sold}") 
