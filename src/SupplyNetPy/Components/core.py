@@ -712,7 +712,7 @@ class Manufacturer(Node):
         the product inventory. Raw materials inventory is initially empty.
         
     """
-    def __init__(self, env: simpy.Environment, ID: str, name: str, capacity: int, initial_level: int, inventory_holding_cost: float, product_sell_price: float, product: Product = default_product, suppliers: list = [], replenishment_policy: str = "sS", policy_param: list = [], node_type: str = "manufacturer", isolated_logger: bool = False, **kwargs) -> None:
+    def __init__(self, env: simpy.Environment, ID: str, name: str, capacity: int, initial_level: int, inventory_holding_cost: float, product_sell_price: float, product: Product = default_product, replenishment_policy: str = "sS", policy_param: list = [], node_type: str = "manufacturer", isolated_logger: bool = False, **kwargs) -> None:
         """
         Initialize the manufacturer object.
 
@@ -745,7 +745,7 @@ class Manufacturer(Node):
         self.inventory_holding_cost = inventory_holding_cost
         self.product = product # product manufactured by the manufacturer
         self.product.sell_price = product_sell_price
-        self.suppliers = suppliers
+        self.suppliers = []
         self.replenishment_policy = replenishment_policy
         self.policy_param = policy_param
         self.materials_available = True
@@ -1003,7 +1003,7 @@ class InventoryNode(Node):
         periodic_replenishment: monitored inventory replenishment policy (periodic)
     """
 
-    def __init__(self, env: simpy.Environment, ID: str, name: str, node_type: str, capacity: int, initial_level: int, inventory_holding_cost:float, product_sell_price: float, suppliers: list = [], replenishment_policy: str = "sS", policy_param: list = [2], product:Product = default_product) -> None:
+    def __init__(self, env: simpy.Environment, ID: str, name: str, node_type: str, capacity: int, initial_level: int, inventory_holding_cost:float, product_sell_price: float, replenishment_policy: str = "sS", policy_param: list = [2], product:Product = default_product) -> None:
         """
         Initialize the inventory node object.
 
@@ -1047,7 +1047,7 @@ class InventoryNode(Node):
         self.capacity = capacity
         self.initial_level = initial_level
         self.inventory_holding_cost = inventory_holding_cost
-        self.suppliers = suppliers
+        self.suppliers = []
         self.replenishment_policy = replenishment_policy
         self.policy_param = policy_param
         self.inventory = Inventory(env=env, capacity=capacity, initial_level=initial_level, replenishment_policy=replenishment_policy)

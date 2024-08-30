@@ -111,8 +111,14 @@ def create_sc_net(nodes: list, links: list, demand: list):
     nodes_instances = []
     links_instances = []
     demand_instances = []
+    used_ids = []
 
     for node in nodes:
+        if(node["ID"] in used_ids):
+            global_logger.logger.error(f"Duplicate node ID {node['ID']}")
+            raise ValueError("Invalid node type")
+        
+        used_ids.append(node["ID"])
         if node["node_type"].lower() == "supplier" or node["node_type"].lower() == "infinite_supplier":
             nodes_instances.append(Supplier(env, **node))
         elif node["node_type"].lower() == "manufacturer":
@@ -122,6 +128,8 @@ def create_sc_net(nodes: list, links: list, demand: list):
         elif node["node_type"].lower() == "retailer":
             nodes_instances.append(InventoryNode(env, **node))
         else:
+            used_ids.remove(node["ID"])
+            global_logger.logger.error(f"Invalid node type {node['node_type']}")
             raise ValueError("Invalid node type")
     
     for link in links:
