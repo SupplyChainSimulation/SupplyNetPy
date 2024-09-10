@@ -4,10 +4,10 @@ SupplyNetPy: Python library for modelling, simulation, design exploration and op
 
 ## Table of Contents
 
-- [SupplyNetPy in 10 Minutes](ten_min.md)
+- [SupplyNetPy in 10 minutes](ten_min.md)
     - [Installation](ten_min.md#installation)
-    - [Creating a Supply Chain network](ten_min.md#lets-create-a-supply-chain-network)
-    - [Simulation](example.md)
+    - [Creating a supply chain network](ten_min.md#lets-create-a-supply-chain-network)
+    - [Simulating supply chains](example.md)
 - [Examples](example.md)
-- [API References](api-reference/api-intro.md)
+- [API references](api-reference/api-intro.md)
 - [About](about.md)
