@@ -860,15 +860,15 @@ class Manufacturer(Node):
                 #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_timesdata"] = []
                 self.order_placed[supplier.source.raw_material.ID] = False # store order status
                 
-        if(len(self.suppliers)!=len(self.product.raw_materials)):
-            global_logger.logger.warning("Number of suppliers should be equal to the number of raw materials.")
+        if(len(self.suppliers)<=len(self.product.raw_materials)):
+            global_logger.logger.warning(f"{self.ID}: {self.name}: The number of suppliers are less than the number of raw materials required to manufacture the product! This leads to no products being manufactured.")
 
         # behavior of the manufacturer: consume raw materials, produce the product, and put the product in the inventory
         while True:
             yield self.env.timeout(1)
             self.materials_available = True
             # check if raw materials are available
-            if(len(self.suppliers)==len(self.product.raw_materials)): # check if required number of suppliers are connected
+            if(len(self.suppliers)>=len(self.product.raw_materials)): # check if required number of suppliers are connected
                 for raw_material in self.product.raw_materials:
                     if(self.raw_inventory_counts[raw_material["raw_material"].ID] < raw_material["quantity"]):
                         self.materials_available = False
@@ -921,8 +921,8 @@ class Manufacturer(Node):
                 # record inventory levels and times for raw material inventory
                 #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_leveldata"].append(self.raw_inventory_counts[raw_material])
                 #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_timesdata"].append(self.env.now)
-                
                 self.logger.info(f"{self.env.now}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
+                break
 
     def ss_replenishment(self, s):
         """

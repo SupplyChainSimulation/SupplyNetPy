@@ -26,20 +26,24 @@ print(scm.default_product.get_info())
 print(scm.default_raw_material.get_info())
 
 # inventory replenishment parameter for D1 (Note: Ss replenishment: check inventory levels every day, if it goes below threshold 's' then order to replenish it back to capacity 'S')
-s = 40
-for i in range(10):
+start = 10
+end = 150
+step = 10
+simulation_period = 60
+s = start
+while(s<end):
     # change 's' for 'D1'
     nodes[2]['policy_param'] = [s]
     # run the simulations
     supplychainnet = scm.create_sc_net(nodes, links, demands)
-    supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=60)
+    supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=simulation_period)
     # record the perfomance of the model (in our case, the sc_profit)
     net_profit.append(supplychainnet['performance']['sc_profit'])
     # next value for 's', the inventory parameter
-    s += 10
+    s += step
     del supplychainnet
 
-plt.plot(range(40,140,10),net_profit,label='Net Profit',marker='.', linestyle='-', color='b')
+plt.plot(range(start,end,step),net_profit,label='Net Profit',marker='.', linestyle='-', color='b')
 plt.title('Net Profit vs Inventory Replenishment Parameter (D1)')
 plt.xlabel('Inventory Replenishment Parameter (D1)')
 plt.ylabel('Net Profit')
