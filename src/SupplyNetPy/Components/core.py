@@ -889,7 +889,7 @@ class Manufacturer(Node):
                     # put the product units in the inventory
                     if(self.inventory.inventory.level + self.product.units_per_cycle <= self.inventory.inventory.capacity):
                         self.inventory.inventory.put(self.product.units_per_cycle)
-                    else:
+                    elif(self.inventory.inventory.capacity>self.inventory.inventory.level):
                         self.logger.info(f"{self.env.now}:{self.ID}:Inventory full, product not added.")
                         self.inventory.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level)
                     self.logger.info(f"{self.env.now}:{self.ID}: Product inventory levels:{self.inventory.inventory.level}")
