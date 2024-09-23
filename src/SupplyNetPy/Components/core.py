@@ -860,7 +860,7 @@ class Manufacturer(Node):
                 #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_timesdata"] = []
                 self.order_placed[supplier.source.raw_material.ID] = False # store order status
                 
-        if(len(self.suppliers)<=len(self.product.raw_materials)):
+        if(len(self.suppliers)<len(self.product.raw_materials)):
             global_logger.logger.warning(f"{self.ID}: {self.name}: The number of suppliers are less than the number of raw materials required to manufacture the product! This leads to no products being manufactured.")
 
         # behavior of the manufacturer: consume raw materials, produce the product, and put the product in the inventory
@@ -880,7 +880,7 @@ class Manufacturer(Node):
                     yield self.env.timeout(self.product.manufacturing_time)
                     # consume raw materials
                     for raw_material in self.product.raw_materials:
-                        self.raw_inventory_counts[raw_material["raw_material"].ID] -= raw_material["quantity"]
+                        self.raw_inventory_counts[raw_material["raw_material"].ID] -= raw_material["quantity"]*self.product.units_per_cycle
                         #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_leveldata"].append(self.raw_inventory_counts[raw_material["raw_material"].ID])
                         #self.raw_inventory_counts[f"{supplier.source.raw_material.ID}_timesdata"].append(self.env.now)
 
@@ -1172,7 +1172,7 @@ class InventoryNode(Node):
                 # choose a supplier to replenish the inventory based on the availablity of the product
                 # check availablity of the product at suppliers
                 for supplier in self.suppliers:
-                    if(supplier.source.inventory.inventory.level > reorder_quantity and self.order_placed == False):
+                    if(supplier.source.inventory.inventory.level => reorder_quantity and self.order_placed == False):
                         self.order_placed = True
                         self.env.process(self.place_order(supplier, reorder_quantity))
                 if(self.order_placed == False):
