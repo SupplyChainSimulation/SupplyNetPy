@@ -26,3 +26,4 @@ demands = [{'ID': 'demand_R1', 'name': 'Demand 1', 'node_type': 'demand', 'order
 
 scm.global_logger.enable_logging()
 supplychainnet = scm.simulate_sc_net(scm.create_sc_net(nodes, links, demands), sim_time=30)
+scm.visualize_sc_net(supplychainnet)

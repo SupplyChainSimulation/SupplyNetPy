@@ -161,7 +161,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
             lead_time = Lead_time_dist().gauss
             links.append(scm.Link(env=env,ID=Id, source=nodes[j], sink=nodes[-1], cost=cost, lead_time=lead_time))
 
-    supplynet = {"nodes": nodes, "links": links, "demand": demand}
+    supplynet = {"nodes": nodes, "edges": links, "demand": demand}
     #print(supplynet)
     #scm.global_logger.disable_logging()
     env.run(until=simtime)
@@ -190,3 +190,5 @@ for node in supplynet["nodes"]:
         i += 1
 fig.legend()
 plt.show()
+
+scm.visualize_sc_net(supplynet)

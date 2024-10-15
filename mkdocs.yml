@@ -2,8 +2,9 @@ site_name: SupplyNetPy Documentation
 nav:
   - Home: index.md
   - SupplyNetPy in 10 Minutes: ten_min.md
-  - Examples: example.md
   - About: about.md
+  - Examples: 
+    - Basic: example.md
   - API reference:
     - Introduction: api-reference/api-intro.md
     - Components.core: api-reference/api-ref-core.md
