@@ -325,6 +325,7 @@ class Inventory():
         self.level = initial_level # initial inventory level
         self.replenishment_policy = replenishment_policy # replenishment policy for the inventory
         self.inventory = MonitoredContainer(env=self.env, enable_monitoring=True, capacity=capacity, init=initial_level) # create a monitored container
+        self.inventory_levels = []
 
     def __str__(self):
         return self.name
@@ -340,6 +341,16 @@ class Inventory():
             dict: dictionary containing details of the inventory
         """
         return {"capacity": self.capacity, "level": self.level, "replenishment_policy": self.replenishment_policy}
+    
+    def record_inventory_levels(self):
+        """
+        Record the inventory levels.
+
+        This method records the inventory levels at regular intervals.
+        """
+        while True:
+            yield self.env.timeout(1)
+            self.inventory_levels.append([self.env.now, self.inventory.level])
 
 class Node():
     """
