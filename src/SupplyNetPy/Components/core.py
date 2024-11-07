@@ -326,10 +326,7 @@ class Inventory():
         self.replenishment_policy = replenishment_policy # replenishment policy for the inventory
         self.inventory = MonitoredContainer(env=self.env, enable_monitoring=True, capacity=capacity, init=initial_level) # create a monitored container
         self.inventory_levels = []
-<<<<<<< HEAD
         self.env.process(self.record_inventory_levels()) # start recording the inventory levels
-=======
->>>>>>> 52c49f7c73dbc12d9a36d8a8ceac574dddbfe105
 
     def __str__(self):
         return self.name
