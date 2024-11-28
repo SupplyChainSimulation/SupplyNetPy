@@ -1,10 +1,17 @@
 # this script creates supply chain networks with increasing number of nodes 
 # and measures the time taken to run a single simulation
+
+# local import for testing
+import sys, os
+sys.path.insert(1, 'src/SupplyNetPy/Components')
+import core as scm
+import utilities as scm
+
 import simpy
 import random
 import time
 import matplotlib.pyplot as plt
-import SupplyNetPy.Components as scm
+# import SupplyNetPy.Components as scm
 
 class Demand_dist:
     def __init__(self,mean=10,var=5):
@@ -169,9 +176,9 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
 
 #Following code is to measure the time taken to run a single simulation
 num_of_nodes_low = 5
-inc_step = 5
-num_of_nodes_high = 100
-sim_time = 1000
+inc_step = 10
+num_of_nodes_high = 50
+sim_time = 360
 num_of_sim_runs = 50
 
 scm.global_logger.disable_logging()

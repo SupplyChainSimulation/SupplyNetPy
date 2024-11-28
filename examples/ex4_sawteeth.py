@@ -1,10 +1,17 @@
 # this script creates supply chain networks with increasing number of nodes 
 # and measures the time taken to run a single simulation
+
+# local import for testing
+import sys, os
+sys.path.insert(1, 'src/SupplyNetPy/Components')
+import core as scm
+import utilities as scm
+
 import simpy
 import random
-import time
+import numpy as np
 import matplotlib.pyplot as plt
-import SupplyNetPy.Components as scm
+#import SupplyNetPy.Components as scm
 
 class Demand_dist:
     def __init__(self,mean=10,var=5):
@@ -185,7 +192,8 @@ i = 0
 colors = ['red','green','blue','yellow','black','orange','purple','brown','pink','gray']
 for node in supplynet["nodes"]:
     if(node.node_type != "infinite_supplier"):
-        axs[i].plot(node.inventory.inventory.timedata, node.inventory.inventory.leveldata, label=node.ID, marker='.', color=colors[i%len(colors)])
+        inv_levels = np.array((node.inventory.instantaneous_levels))
+        axs[i].plot(inv_levels[:,0], inv_levels[:,1], label=node.ID, marker='.', color=colors[i%len(colors)])
         axs[i].axhline(y=node.policy_param[0], color='r', linestyle='--',label=f's = {node.policy_param[0]}')  
         i += 1
 fig.legend()

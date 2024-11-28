@@ -1,5 +1,12 @@
+# local import for testing
+import sys, os
+sys.path.insert(1, 'src/SupplyNetPy/Components')
+import core as scm
+import utilities as ut
+
 # import the library
-import SupplyNetPy.Components as scm
+# import SupplyNetPy.Components as scm
+
 
 # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
 nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
@@ -16,4 +23,4 @@ links = [{'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 5, 'lead_time': lamb
 demands = [{'ID': 'demand_D1', 'name': 'Demand 1', 'node_type': 'demand', 'order_arrival_model': lambda: 1, 'order_quantity_model': lambda: 10, 'demand_node': 'D1'}]
 
 scm.global_logger.enable_logging()
-supplychainnet = scm.simulate_sc_net(scm.create_sc_net(nodes, links, demands), sim_time=30)
+supplychainnet = ut.simulate_sc_net(ut.create_sc_net(nodes, links, demands), sim_time=30)
