@@ -2,11 +2,7 @@ import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
-#from SupplyNetPy.Components.core import *
-# Local import
-import sys, os
-sys.path.insert(1, 'src/SupplyNetPy/Components')
-from core import *
+from SupplyNetPy.Components.core import *
 
 def visualize_sc_net(supplychainnet):
     """
@@ -149,7 +145,7 @@ def create_sc_net(nodes: list, links: list, demand: list):
         if(source is None or sink is None):
             global_logger.logger.error(f"Invalid source or sink node {link['source']} {link['sink']}")
             raise ValueError("Invalid source or sink node")
-        links_instances.append(Link(env=env,ID=link['ID'],source=source,sink=sink,link['cost'],link['lead_time']))
+        links_instances.append(Link(env=env,ID=link['ID'],source=source,sink=sink,cost=link['cost'],lead_time=link['lead_time']))
 
     for d in demand:
         # check for which node the demand is
