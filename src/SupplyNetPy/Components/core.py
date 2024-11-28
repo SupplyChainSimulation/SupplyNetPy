@@ -1,9 +1,10 @@
 from SupplyNetPy.Components.logger import GlobalLogger
 import simpy
 import copy
-
+import random
 # global variables
 global_logger = GlobalLogger() # create a global logger
+
 class RawMaterial():
     """
     RawMaterial class represents a raw material in the supply network.
@@ -28,7 +29,11 @@ class RawMaterial():
         extraction_time (float): time to extract the raw material
         cost (float): cost of the raw material (per item)
     """
-    def __init__(self, ID: str, name: str, extraction_quantity: float, extraction_time: float, cost: float) -> None:
+    def __init__(self, ID: str, 
+                 name: str, 
+                 extraction_quantity: float, 
+                 extraction_time: float, 
+                 cost: float) -> None:
         """
         Initialize the raw material object.
 
@@ -85,8 +90,6 @@ class RawMaterial():
         """
         return {"ID": self.ID, "name": self.name, "extraction_quantity": self.extraction_quantity, "extraction_time": self.extraction_time, "cost": self.cost}
 
-default_raw_material = RawMaterial(ID="RM1", name="Raw Material 1", extraction_quantity=30, extraction_time=3, cost=1) # create a default raw material
-
 class Product():
     """
     Product class represents a product in the supply network.
@@ -107,7 +110,14 @@ class Product():
         __repr__: returns the name of the product
         get_info: returns a dictionary containing details of the product
     """
-    def __init__(self, ID: str, name: str, manufacturing_cost: float, manufacturing_time: int, sell_price: float, raw_materials: list, units_per_cycle: int, buy_price: float = 0) -> None:
+    def __init__(self, ID: str, 
+                 name: str, 
+                 manufacturing_cost: float, 
+                 manufacturing_time: int, 
+                 sell_price: float, 
+                 raw_materials: list, 
+                 units_per_cycle: int, 
+                 buy_price: float = 0) -> None:
         """
         Initialize the product object.
 
@@ -175,93 +185,9 @@ class Product():
             dict: dictionary containing details of the product
         """
         return {"ID": self.ID, "name": self.name, "manufacturing_cost": self.manufacturing_cost, "manufacturing_time": self.manufacturing_time, "sell_price": self.sell_price, "buy_price": self.buy_price, "raw_materials": self.raw_materials, "units_per_cycle": self.units_per_cycle}
-    
+
+default_raw_material = RawMaterial(ID="RM1", name="Raw Material 1", extraction_quantity=30, extraction_time=3, cost=1) # create a default raw material
 default_product = Product(ID="P1", name="Product 1", manufacturing_cost=340, manufacturing_time=3, sell_price=350, raw_materials=[{"raw_material": default_raw_material, "quantity": 3}], units_per_cycle=30) # create a default product
-
-class MonitoredContainer(simpy.Container):
-    """
-    Extension of SimPy's Container class with monitoring capabilities.
-    This class allows monitoring of the container's level over time.
-    It records the inventory level and time at regular intervals
-    to analyze and visualize the behavior of the container.
-    
-    Parameters:
-        enable_monitoring (bool): Enable or disable monitoring of the container's level.
-
-    Inherits from:
-        simpy.Container
-
-    Attributes:
-        leveldata (list): A list to store recorded inventory levels.
-        timedata (list): A list to store corresponding timestamps for recorded levels.
-        avg_level (float): Time-averaged inventory level.
-        last_level (int): Last recorded inventory level.
-        last_timestamp (float): Timestamp of the last recorded level change.
-    """
-
-    def __init__(self, enable_monitoring, *args, **kwargs):
-        """
-        Initialize the MonitoredContainer.
-
-        Parameters:
-            enable_monitoring (bool): Enable or disable monitoring of the container's level.
-            *args, **kwargs: Additional arguments to be passed to the simpy.Container constructor.
-        """
-        self.enable_monitoring = enable_monitoring
-        super().__init__(*args, **kwargs)
-        self.leveldata = []
-        self.timedata = []
-
-        self.avg_level = 0  # time-averaged inventory level
-        self.last_level = super().capacity
-        self.last_timestamp = 0
-
-    def record_level(self):
-        """
-        Record the current level of the container.
-
-        This method is called whenever the container's level changes.
-        It records the current level and timestamp, and updates the time-averaged inventory level.
-        """
-        # update the time-averaged inventory level
-        delta_t = self._env.now - self.last_timestamp
-        if delta_t > 0:
-            self.avg_level = ((self.avg_level * self.last_timestamp) + (delta_t * self.last_level)) / float(self._env.now)
-        # record the current level
-        self.last_timestamp = self._env.now
-        self.last_level = self._level
-
-        if self.enable_monitoring:
-            self.leveldata.append(self._level)
-            self.timedata.append(self._env.now)
-
-    def _do_put(self, *args, **kwargs):
-        """
-        Internal method to handle a put operation on the container.
-
-        This method overrides the _do_put method of simpy.Container.
-        It records the container's level after the put operation.
-
-        Returns:
-            result: Result of the put operation.
-        """
-        result = super()._do_put(*args, **kwargs)
-        self.record_level()
-        return result
-
-    def _do_get(self, *args, **kwargs):
-        """
-        Internal method to handle a get operation on the container.
-
-        This method overrides the _do_get method of simpy.Container.
-        It records the container's level after the get operation.
-
-        Returns:
-            result: Result of the get operation.
-        """
-        result = super()._do_get(*args, **kwargs)
-        self.record_level()
-        return result
 
 class Inventory():
     """
@@ -286,7 +212,10 @@ class Inventory():
         __repr__: returns the name of the inventory
         get_info: returns a dictionary containing details of the inventory
     """
-    def __init__(self, env: simpy.Environment, capacity: int, initial_level: int, replenishment_policy: str) -> None:
+    def __init__(self, env: simpy.Environment, 
+                 capacity: int, 
+                 initial_level: int, 
+                 replenishment_policy: str) -> None:
         """
         Initialize the inventory object.
 
@@ -323,9 +252,9 @@ class Inventory():
         self.capacity = capacity # maximum capacity of the inventory
         self.init_level = initial_level # initial inventory level
         self.level = initial_level # initial inventory level
+        self.inventory = simpy.Container(env=self.env,capacity=self.capacity, init=self.init_level) # create a container
         self.replenishment_policy = replenishment_policy # replenishment policy for the inventory
-        self.inventory = MonitoredContainer(env=self.env, enable_monitoring=True, capacity=capacity, init=initial_level) # create a monitored container
-        self.inventory_levels = []
+        self.instantaneous_levels = []
         self.env.process(self.record_inventory_levels()) # start recording the inventory levels
 
     def __str__(self):
@@ -351,7 +280,7 @@ class Inventory():
         """
         while True:
             yield self.env.timeout(1)
-            self.inventory_levels.append([self.env.now, self.inventory.level])
+            self.instantaneous_levels.append([self.env.now, self.inventory.level])
 
 class Node():
     """
@@ -374,7 +303,14 @@ class Node():
         __repr__: returns the name of the node
         get_info: returns a dictionary containing details of the node
     """
-    def __init__(self, env: simpy.Environment, ID: str, name: str, node_type: str, isolated_logger: bool = False, **kwargs) -> None:
+    def __init__(self, env: simpy.Environment, 
+                 ID: str, 
+                 name: str, 
+                 node_type: str, 
+                 failure_p:float = 0.0, 
+                 node_recovery_time:float = 1.0,
+                 isolated_logger: bool = False, 
+                 **kwargs) -> None:
         """
         Initialize the node object.
 
@@ -398,15 +334,24 @@ class Node():
         self.node_type = node_type  # type of the node
         self.logger = global_logger.logger  # global logger
         self.env = env  # simulation environment
+        self.node_failure_p = failure_p  # node failure probability
+        self.node_status = "active"  # node status (active/inactive)
+        self.node_recovery_time = node_recovery_time  # node recovery time
 
         if isolated_logger:  # if individual logger is required
             self.logger = GlobalLogger(logger_name=self.name, **kwargs).logger  # create an isolated logger
 
+        # performance metrics for node
         self.inventory_cost = 0  # total inventory cost
-        self.transportation_cost = 0  # total transportation cost
-        self.node_cost = 0  # total node cost
-        self.profit = 0  # profit
-        self.net_profit = 0  # net profit
+        self.transportation_cost = 0  # total transportation cost (from this node to its consumers)
+        self.node_cost = 0  # total node cost (establishment cost)
+        self.profit = 0  # profit (node profit)
+        self.net_profit = 0  # net profit (profit - node cost)
+        self.products_sold = 0 # products/raw materials sold by this node in the current cycle/period/day
+        self.total_products_sold = 0 # total product units sold by this node
+
+        if(self.node_failure_p>0): # if node failure probability is greater than 0
+            self.env.process(self.disruption())
 
     def __str__(self):
         """
@@ -434,8 +379,23 @@ class Node():
             dict: dictionary containing details of the node
         """
         return {"ID": self.ID, "name": self.name, "node_type": self.node_type}
+    
+    def disruption(self):
+        """
+        Disrupt the node.
 
-
+        This method disrupts the node by changing the node status to "inactive".
+        """
+        while True:
+            yield self.env.timeout(1)
+            # disrupt the node with a probability node_failure_p
+            if(random.random() < self.node_failure_p):
+                self.node_status = "inactive"
+                self.logger.warning(f"{self.env.now}:{self.ID}: Node disrupted.")
+                # recover the node after node_recovery_time
+                yield self.env.timeout(self.node_recovery_time)
+                self.node_status = "active"
+            
 class Link():
     """
     Link class represents a link in the supply network.
@@ -455,7 +415,14 @@ class Link():
         get_info: returns a dictionary containing details of the link
     """
 
-    def __init__(self, env: simpy.Environment, ID: str, source: Node, sink: Node, cost: float, lead_time: callable) -> None:
+    def __init__(self, env: simpy.Environment, 
+                 ID: str, 
+                 source: Node, 
+                 sink: Node, 
+                 cost: float, # transportation cost
+                 lead_time: callable,
+                 link_failure_p: float = 0.0,
+                 link_recovery_time: float = 1.0) -> None:
         """
         Initialize the link object.
 
@@ -498,8 +465,13 @@ class Link():
         self.sink = sink  # sink node of the link
         self.cost = cost  # cost of the link
         self.lead_time = lead_time  # lead time of the link
+        self.link_failure_p = link_failure_p  # link failure probability
+        self.status = "active"  # link status (active/inactive)
+        self.link_recovery_time = link_recovery_time  # link recovery time
 
         self.sink.suppliers.append(self)  # add the link as a supplier link to the sink node
+        if(self.link_failure_p>0): # disrupt the link if link_failure_p > 0
+            self.env.process(self.disruption())
 
     def __str__(self):
         """
@@ -527,6 +499,22 @@ class Link():
             dict: dictionary containing details of the link
         """
         return {"ID": self.ID, "source": self.source, "sink": self.sink, "trnsportation cost": self.cost, "lead_time": self.lead_time}
+    
+    def disruption(self):
+        """
+        Disrupt the link.
+
+        This method disrupts the link by changing the link status to "inactive".
+        """
+        while True:
+            yield self.env.timeout(1)
+            # disrupt the link with a probability link_failure_p
+            if(random.random() < self.link_failure_p):
+                self.status = "inactive"
+                self.logger.warning(f"{self.env.now}:{self.ID}: Link disrupted.")
+                # recover the link after link_recovery_time
+                yield self.env.timeout(self.link_recovery_time)
+                self.status = "active"
 
 class Supplier(Node):
     """
@@ -556,7 +544,13 @@ class Supplier(Node):
         The supplier keeps extracting raw material whenever the inventory is not full (infinite supply).
         Assume that a supplier can extract a single type of raw material. By default, it is the default raw material.
     """
-    def __init__(self, env: simpy.Environment, ID: str, name: str, capacity: int = 0, initial_level: int = 0, inventory_holding_cost:float = 1, raw_material: RawMaterial = default_raw_material, isolated_logger:bool = False, node_type: str = "supplier", **kwargs) -> None:
+    def __init__(self, 
+                 capacity: int = 0, 
+                 initial_level: int = 0, 
+                 inventory_holding_cost:float = 1, 
+                 raw_material: RawMaterial = default_raw_material, 
+                 node_type: str = "supplier",
+                 **kwargs) -> None:
         """
         Initialize the supplier object.
 
@@ -576,24 +570,23 @@ class Supplier(Node):
             global_logger.logger.error("Inventory holding cost cannot be zero or negative.")
             raise ValueError("Inventory holding cost cannot be negative.")
 
-        super().__init__(env=env, ID=ID, name=name, node_type=node_type, isolated_logger=isolated_logger, **kwargs)
-        self.env = env
+        super().__init__(node_type=node_type,**kwargs)
         self.raw_material = raw_material # raw material supplied by the supplier. By default, it is the default raw material.
         if(self.node_type!="infinite_supplier"):
-            self.inventory = Inventory(env=env, capacity=capacity, initial_level=initial_level, replenishment_policy="sS")
-            self.env.process(self.behavior()) # start the behavior process
+            self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, replenishment_policy="sS")
+            if(self.raw_material):
+                self.env.process(self.behavior()) # start the behavior process
+            else:
+                self.logger.error(f"{self.ID}:Raw material not provided for this supplier. Recreate it with a raw material.")
+                raise ValueError("Raw material not provided.")
         else:
-            self.inventory = Inventory(env=env, capacity=float('inf'), initial_level=float('inf'), replenishment_policy="sS")
+            self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), replenishment_policy="sS")
         self.inventory_holding_cost = inventory_holding_cost # inventory holding cost
 
-        # statistics
+        # performance metrics (listed only for the supplier, rest common are created and initiated by __init__ of the base class)
         self.total_raw_materials_mined = 0 # total raw materials mined/extracted
         self.total_material_cost = 0 # total cost of the raw materials mined/extracted
         self.total_raw_materials_sold = 0 # total raw materials sold
-        self.profit = 0 # profit from the raw materials mined/extracted
-        self.inventory_cost = 0 # total inventory cost
-        self.transportation_cost = 0 # total transportation cost
-        self.node_cost = 0 # total node cost
         self.env.process(self.calculate_statistics()) # calculate statistics
 
     def __str__(self):
@@ -630,7 +623,11 @@ class Supplier(Node):
         Returns:
             dict: dictionary containing details of the supplier
         """
-        return {"ID": self.ID, "name": self.name, "type": self.node_type, "raw_material": self.raw_material.get_info(), "inventory": self.inventory.get_info()}
+        if(self.raw_material):
+            info = {"ID": self.ID, "name": self.name, "type": self.node_type, "raw_material": self.raw_material.get_info(), "inventory": self.inventory.get_info()}
+        else:
+            info = {"ID": self.ID, "name": self.name, "type": self.node_type, "inventory": self.inventory.get_info()}
+        return info
     
     def calculate_statistics(self):
         """
@@ -646,7 +643,8 @@ class Supplier(Node):
             yield self.env.timeout(1)
             if(self.node_type!="infinite_supplier"):
                 self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
-            self.total_material_cost = self.total_raw_materials_mined * self.raw_material.cost
+            if(self.raw_material):
+                self.total_material_cost = self.total_raw_materials_mined * self.raw_material.cost
             self.node_cost = self.total_material_cost + self.inventory_cost + self.transportation_cost
 
     def get_statistics(self):
@@ -674,12 +672,12 @@ class Supplier(Node):
         """
         while True:
             yield self.env.timeout(1)
-            if(self.inventory.inventory.level < self.inventory.capacity): # check if the inventory is not full
+            if(self.inventory.inventory.level < self.inventory.inventory.capacity): # check if the inventory is not full
                 yield self.env.timeout(self.raw_material.extraction_time)
-                if(self.inventory.inventory.level + self.raw_material.extraction_quantity <= self.inventory.capacity): # check if the inventory can accommodate the extracted quantity
+                if(self.inventory.inventory.level + self.raw_material.extraction_quantity <= self.inventory.inventory.capacity): # check if the inventory can accommodate the extracted quantity
                     self.inventory.inventory.put(self.raw_material.extraction_quantity)
                 else: # else put the remaining capacity in the inventory
-                    self.inventory.inventory.put(self.inventory.capacity - self.inventory.inventory.level)
+                    self.inventory.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level)
                 self.logger.info(f"{self.env.now}:{self.ID}:Raw material mined/extracted. Inventory levels:{self.inventory.inventory.level}")
                 # update statistics
                 self.total_raw_materials_mined += self.raw_material.extraction_quantity
@@ -724,7 +722,15 @@ class Manufacturer(Node):
         the product inventory. Raw materials inventory is initially empty.
         
     """
-    def __init__(self, env: simpy.Environment, ID: str, name: str, capacity: int, initial_level: int, inventory_holding_cost: float, product_sell_price: float, product: Product = default_product, replenishment_policy: str = "sS", policy_param: list = [], node_type: str = "manufacturer", isolated_logger: bool = False, **kwargs) -> None:
+    def __init__(self,
+                 capacity: int, 
+                 initial_level: int, 
+                 inventory_holding_cost: float, 
+                 product_sell_price: float, 
+                 product: Product = default_product, 
+                 replenishment_policy: str = "sS", 
+                 policy_param: list = [], 
+                 **kwargs) -> None:
         """
         Initialize the manufacturer object.
 
@@ -749,25 +755,22 @@ class Manufacturer(Node):
             global_logger.logger.error("Inventory holding cost cannot be zero or negative.")
             raise ValueError("Inventory holding cost cannot be negative.")
 
-        super().__init__(env=env, ID=ID, name=name, node_type=node_type, isolated_logger=isolated_logger, **kwargs)
-        self.env = env
+        super().__init__(node_type="manufacturer",**kwargs)
         self.capacity = capacity
-        self.product = product
         self.initial_level = initial_level
         self.inventory_holding_cost = inventory_holding_cost
         self.product = product # product manufactured by the manufacturer
-        self.product.sell_price = product_sell_price
         self.suppliers = []
         self.replenishment_policy = replenishment_policy
         self.policy_param = policy_param
+        self.product.sell_price = product_sell_price
+        
         self.materials_available = True
         self.production_cycle = False # production cycle status
         self.raw_inventory_counts = {} # dictionary to store inventory counts for raw products inventory
         self.order_placed = {} # dictionary to store order status
         self.product_order_placed = False # order status for the product
-        self.inventory = Inventory(env=env, capacity=self.capacity, initial_level=self.initial_level, replenishment_policy=self.replenishment_policy)
-
-        self.env.process(self.behavior()) # start the behavior process
+        self.inventory = Inventory(env=self.env, capacity=self.capacity, initial_level=self.initial_level, replenishment_policy=self.replenishment_policy)
         
         if(self.replenishment_policy == "sS"):
             self.env.process(self.ss_replenishment(s=self.policy_param[0])) # start the inventory replenishment process
@@ -780,18 +783,13 @@ class Manufacturer(Node):
             self.product.buy_price += raw_material["raw_material"].cost * raw_material["quantity"] # calculate total cost of the product (per unit)
         
         self.profit = self.product.sell_price - self.product.buy_price # set the sell price as the buy price
+        self.env.process(self.behavior()) # start the behavior process
 
-        # statistics
+        # performance metrics (listed only for the manufacturer, rest common are created and initiated by __init__ of the base class)
         self.total_products_manufactured = 0 # total products manufactured
         self.total_manufacturing_cost = 0 # total cost of the products manufactured
         self.total_profit = 0 # total profit from the products manufactured
-        self.products_sold = 0 # products sold in the current cycle/period
-        self.total_products_sold = 0 # total products sold
         self.revenue = 0 # revenue from the products sold
-        self.inventory_cost = 0 # total inventory cost
-        self.transportation_cost = 0 # total transportation_cost cost
-        self.node_cost = 0 # total node cost
-        self.net_profit = 0 # net profit
         self.env.process(self.calculate_statistics()) # calculate statistics
 
         if(self.env == None):
@@ -814,7 +812,11 @@ class Manufacturer(Node):
         Returns:
             dict: dictionary containing details of the manufacturer
         """
-        return {"ID": self.ID, "name": self.name, "product": self.product.get_info(), "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
+        info = {"ID": self.ID, "name": self.name, "product": self.product.get_info(), 
+                "inventory": self.inventory.get_info(), 
+                "inventory_replenishment_policy": self.replenishment_policy, 
+                "policy_param": self.policy_param}
+        return info
     
     def calculate_statistics(self):
         """
@@ -829,9 +831,9 @@ class Manufacturer(Node):
         while True:
             yield self.env.timeout(1)
             self.inventory_cost += self.inventory.inventory.level * self.inventory_holding_cost
-            self.total_manufacturing_cost = self.total_products_manufactured * self.product.manufacturing_cost
-
-            self.revenue = self.total_products_sold * self.product.sell_price
+            if(self.product):
+                self.total_manufacturing_cost = self.total_products_manufactured * self.product.manufacturing_cost
+                self.revenue = self.total_products_sold * self.product.sell_price
             self.total_profit = self.total_products_sold * self.profit # profit = sell price - buy price (profit per product unit)
             
             self.node_cost = self.inventory_cost + self.transportation_cost # manufacturing cost is included when calculating the buy price
@@ -936,6 +938,7 @@ class Manufacturer(Node):
                     supplier.source.transportation_cost += supplier.cost
                     # update the product sold at the raw material supplier
                     supplier.source.total_raw_materials_sold += reorder_quantity
+                    supplier.source.total_products_sold += reorder_quantity
                     yield self.env.timeout(supplier.lead_time()) # lead time for the order
                     self.order_placed[raw_material] = False
                     self.raw_inventory_counts[raw_material] += reorder_quantity
@@ -1027,7 +1030,16 @@ class InventoryNode(Node):
         periodic_replenishment: monitored inventory replenishment policy (periodic)
     """
 
-    def __init__(self, env: simpy.Environment, ID: str, name: str, node_type: str, capacity: int, initial_level: int, inventory_holding_cost:float, product_sell_price: float, replenishment_policy: str = "sS", policy_param: list = [2], product:Product = default_product) -> None:
+    def __init__(self,
+                 node_type: str, 
+                 capacity: int, 
+                 initial_level: int, 
+                 inventory_holding_cost:float, 
+                 replenishment_policy: str = "sS", 
+                 product_sell_price: float = 0.0, 
+                 policy_param: list = [2], 
+                 product:Product = None,
+                 **kwargs) -> None:
         """
         Initialize the inventory node object.
 
@@ -1065,8 +1077,7 @@ class InventoryNode(Node):
             global_logger.logger.error("Initial level cannot be greater than capacity.")
             raise ValueError("Initial level cannot be greater than capacity.")        
 
-        super().__init__(env=env, ID=ID, name=name, node_type=node_type)
-        self.env = env
+        super().__init__(node_type=node_type,**kwargs)
         self.node_type = node_type
         self.capacity = capacity
         self.initial_level = initial_level
@@ -1074,10 +1085,11 @@ class InventoryNode(Node):
         self.suppliers = []
         self.replenishment_policy = replenishment_policy
         self.policy_param = policy_param
-        self.inventory = Inventory(env=env, capacity=capacity, initial_level=initial_level, replenishment_policy=replenishment_policy)
+        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, replenishment_policy=replenishment_policy)
         self.product = copy.deepcopy(product) # product that the inventory node sells
-        self.product.sell_price = product_sell_price
-        self.product.buy_price = 0 # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
+        if(self.product):
+            self.product.sell_price = product_sell_price
+            self.product.buy_price = 0 # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
         self.order_placed = False # flag to check if the order is placed
     
         if(self.replenishment_policy == "sS"):
@@ -1086,15 +1098,9 @@ class InventoryNode(Node):
             self.env.process(self.periodic_replenishment(interval=self.policy_param[0], reorder_quantity=self.policy_param[1]))
 
         # statistics
-        self.total_products_sold = 0 # total products sold
-        self.products_sold = 0 # products sold in the current cycle/period/day
-        self.total_product_cost = 0 # total cost of the products bought
+        self.total_product_cost = 0 # total cost of buying products (units) at this node
         self.total_revenue = 0 # total revenue from the products sold
         self.total_profit = 0 # total profit from the products sold
-        self.inventory_cost = 0 # total inventory cost
-        self.transportation_cost = 0 # total transportation cost
-        self.node_cost = 0 # total node cost
-        self.net_profit = 0 # net profit
         self.env.process(self.calculate_statistics()) # calculate statistics
     
     def __str__(self):
@@ -1113,8 +1119,11 @@ class InventoryNode(Node):
         Returns:
             dict: dictionary containing details of the inventory node
         """
-        return {"ID": self.ID, "name": self.name, "node_type": self.node_type, "product": self.product.get_info(), "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
-    
+        if(self.product):
+            info = {"ID": self.ID, "name": self.name, "node_type": self.node_type, "product": self.product.get_info(), "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
+        else:
+            info = {"ID": self.ID, "name": self.name, "node_type": self.node_type, "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
+        return info
     def calculate_statistics(self):
         """
         Calculate statistics for the inventory node.
@@ -1129,11 +1138,12 @@ class InventoryNode(Node):
             # reset the products sold in the current cycle
             self.products_sold = 0
             yield self.env.timeout(1)
-            if(self.product.sell_price == 0):
-                self.product.sell_price = self.product.buy_price + 0.05 * self.product.buy_price
+            if(self.product):
+                if(self.product.sell_price == 0):
+                    self.product.sell_price = self.product.buy_price + 0.05 * self.product.buy_price
+                self.total_product_cost += self.products_sold * self.product.buy_price
+                self.total_revenue = self.total_products_sold * self.product.sell_price
             self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
-            self.total_product_cost += self.products_sold * self.product.buy_price
-            self.total_revenue = self.total_products_sold * self.product.sell_price
             self.total_profit = self.total_revenue - self.total_product_cost
             self.node_cost = self.inventory_cost + self.transportation_cost
             self.net_profit = self.total_profit - self.node_cost
@@ -1162,8 +1172,9 @@ class InventoryNode(Node):
         """
         self.logger.info(f"{self.env.now}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
         yield supplier.source.inventory.inventory.get(reorder_quantity) # get the product from the supplier inventory
-        # update the product costs
-        self.product.buy_price = supplier.source.product.sell_price
+        if(self.product):
+            # update the product costs
+            self.product.buy_price = supplier.source.product.sell_price
         # update the transportation cost at the supplier
         supplier.source.transportation_cost += supplier.cost
         # update the product sold at the supplier
@@ -1247,7 +1258,11 @@ class Demand(Node):
         behavior: generates demand by calling the order arrival and order quantity models
     """
 
-    def __init__(self, env: simpy.Environment, ID: str, name: str, order_arrival_model: callable, order_quantity_model: callable, demand_node: Node,  node_type:str = "demand", product: Product = default_product) -> None:
+    def __init__(self, 
+                 order_arrival_model: callable, 
+                 order_quantity_model: callable, 
+                 demand_node: Node,
+                 **kwargs) -> None:
         """
         Initialize the demand node object.
 
@@ -1276,13 +1291,10 @@ class Demand(Node):
             raise ValueError("Demand node cannot be a supplier.")
             
 
-        super().__init__(env=env, ID=ID, name=name, node_type=node_type)
-        self.ID = ID
-        self.name = name
+        super().__init__(node_type="demand",**kwargs)
         self.order_arrival_model = order_arrival_model
         self.order_quantity_model = order_quantity_model
         self.demand_node = demand_node
-        self.env = env
         self.env.process(self.behavior())
 
         self.total_products_sold = 0
@@ -1376,17 +1388,17 @@ if __name__ == "__main__":
     default_product.raw_materials = [{"raw_material": default_raw_material, "quantity": 9}, {"raw_material": raw_material2, "quantity": 5}]
 
     # create suppliers
-    supplier1 = Supplier(env=env, ID="S1", name="Supplier 1", node_type="infinite_supplier")
+    supplier1 = Supplier(env=env, ID="S1", name="Supplier 1", node_type="infinite_supplier", raw_material=default_raw_material)
     supplier2 = Supplier(env=env, ID="S2", name="Supplier 2", node_type="infinite_supplier", raw_material=raw_material2)
     
     # create a manufacturer
-    manufacturer1 = Manufacturer(env=env, ID="M1", name="Manufacturer 1", 
+    manufacturer1 = Manufacturer(env=env, ID="M1", name="Manufacturer 1", product=default_product,
                                  capacity=500, initial_level=300, inventory_holding_cost=3, 
                                  replenishment_policy="sS", policy_param=[200], product_sell_price=300)
     
     # create a distributor
     distributor1 = InventoryNode(env=env,ID="D1", name="Distributor 1", node_type="distributor", 
-                                 capacity=300, initial_level=50, inventory_holding_cost=3, 
+                                 capacity=300, initial_level=50, inventory_holding_cost=3, product=default_product,
                                  replenishment_policy="sS", policy_param=[30], product_sell_price=350)
 
     # create a demand node

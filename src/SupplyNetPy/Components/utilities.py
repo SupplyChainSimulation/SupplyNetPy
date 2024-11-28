@@ -1,7 +1,12 @@
 import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
-from SupplyNetPy.Components.core import *
+import numpy as np
+#from SupplyNetPy.Components.core import *
+# Local import
+import sys, os
+sys.path.insert(1, 'src/SupplyNetPy/Components')
+from core import *
 
 def visualize_sc_net(supplychainnet):
     """
@@ -117,16 +122,17 @@ def create_sc_net(nodes: list, links: list, demand: list):
         if(node["ID"] in used_ids):
             global_logger.logger.error(f"Duplicate node ID {node['ID']}")
             raise ValueError("Invalid node type")
-        
         used_ids.append(node["ID"])
         if node["node_type"].lower() == "supplier" or node["node_type"].lower() == "infinite_supplier":
-            nodes_instances.append(Supplier(env, **node))
+            nodes_instances.append(Supplier(env=env, **node))
         elif node["node_type"].lower() == "manufacturer":
-            nodes_instances.append(Manufacturer(env, **node))
+            # excluding key 'node_type', since it is not required for Manufacturer class
+            node_ex = {key: node[key] for key in node if key != 'node_type'}
+            nodes_instances.append(Manufacturer(env=env, **node_ex))
         elif node["node_type"].lower() == "distributor" or node["node_type"].lower() == "warehouse":
-            nodes_instances.append(InventoryNode(env, **node))
+            nodes_instances.append(InventoryNode(env=env, **node))
         elif node["node_type"].lower() == "retailer":
-            nodes_instances.append(InventoryNode(env, **node))
+            nodes_instances.append(InventoryNode(env=env, **node))
         else:
             used_ids.remove(node["ID"])
             global_logger.logger.error(f"Invalid node type {node['node_type']}")
@@ -143,9 +149,10 @@ def create_sc_net(nodes: list, links: list, demand: list):
         if(source is None or sink is None):
             global_logger.logger.error(f"Invalid source or sink node {link['source']} {link['sink']}")
             raise ValueError("Invalid source or sink node")
-        links_instances.append(Link(env,link['ID'],source,sink,link['cost'],link['lead_time']))
+        links_instances.append(Link(env=env,ID=link['ID'],source=source,sink=sink,link['cost'],link['lead_time']))
 
     for d in demand:
+        # check for which node the demand is
         demand_node = None
         for node in nodes_instances:
             if node.ID == d["demand_node"]:
@@ -153,7 +160,8 @@ def create_sc_net(nodes: list, links: list, demand: list):
         if(demand_node is None):
             global_logger.logger.error(f"Invalid demand node {d['demand_node']}")
             raise ValueError("Invalid demand node")
-        demand_instances.append(Demand(env,d['ID'],d['name'],d['order_arrival_model'],d['order_quantity_model'],demand_node))
+        demand_instances.append(Demand(env=env,ID=d['ID'],name=d['name'],order_arrival_model=d['order_arrival_model'],
+                                       order_quantity_model=d['order_quantity_model'],demand_node=demand_node))
 
     supplychainnet = {
         "env":env,
@@ -227,7 +235,7 @@ def simulate_sc_net(supplychainnet, sim_time):
 if __name__ == "__main__": 
     
     # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
-    nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
+    nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier', 'raw_material': default_raw_material},
              {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': 'sS', 'policy_param': [200],'product_sell_price': 350},
              {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 1, 'replenishment_policy': 'sS', 'policy_param': [100],'product_sell_price': 360}
     ]
@@ -260,15 +268,14 @@ if __name__ == "__main__":
     # lets plot inventory levels for each node
     for node in supplychainnet["nodes"]:
         # get level data and timedata from the inventory
-        levels = node.inventory.inventory.leveldata 
-        times = node.inventory.inventory.timedata
+        levels = np.array((node.inventory.instantaneous_levels))
         # check if it is not a supplier and has a replenishment policy
         if("supplier" not in node.node_type and node.policy_param != []):
             if(node.replenishment_policy == 'sS'): # check if it is sS policy, plot threshold line s
                 s = node.policy_param[0]    
                 plt.axhline(y=s, color='r', linestyle='--',label='s (sS replenish)')    
             plt.title(f"Inventory Level for {node.ID}")
-            plt.plot(times, levels, label=node.ID, marker='.', linestyle='-')
+            plt.plot(levels[:,0], levels[:,1], label=node.ID, marker='.', linestyle='-')
             plt.xlabel("Time")
             plt.ylabel("Inventory Level")
             plt.legend()
