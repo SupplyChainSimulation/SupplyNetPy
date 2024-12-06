@@ -45,30 +45,30 @@ Assumptions:
  - all demand that is not met is lost
  - first in first out protocol is followed when serving orders
 
- T = number of days
- l = deterministic lead time
- e = shelf life of the drugs (months)
- R = number of simulation replication
- b = shortage cost
- z = waste cost
- h = holding cost
- o = ordering cost
- dt = demand on day t (stochastic)
- yt = binary variable for supply disruption status (yt=0 disrupted, yt=1 available) (stochastic)
+ T = number of days (360 days)
+ l = deterministic lead time (6 days)
+ e = shelf life of the drugs (months) (3 months)
+ R = number of simulation replication (5000)
+ b = shortage cost (5 units)
+ z = waste cost (1 units)
+ h = holding cost (0.001 units)
+ o = ordering cost (0.5 units)
+ dt = demand on day t (stochastic) (Poission 25/day)
+ yt = binary variable for supply disruption status on day t (yt=0 disrupted, yt=1 available) (stochastic) (p=0.01)
 
  No restriction on the probability distribution of these sources of uncertainty
 
 """
 
 # Create the model
-import sys, os
-sys.path.insert(1, 'src/SupplyNetPy/Components')
-import core as scm
-import utilities as scm
+# import sys, os
+# sys.path.insert(1, 'src/SupplyNetPy/Components')
+# import core as scm
+# import utilities as scm
 
 import simpy
 import numpy as np
-# import SupplyNetPy.Components as scm
+import SupplyNetPy.Components as scm
 
 class Distributions:
     def __init__(self,mu,lam):
@@ -82,20 +82,25 @@ class Distributions:
         return np.random.exponential(self.mu)
 
 class PerishableInventory(scm.Inventory):
-    def __init__(self, env: simpy.Environment, capacity: int, initial_level: int, replenishment_policy: str) -> None:
+    def __init__(self, env: simpy.Environment, shelf_life:int, capacity: int, initial_level: int, replenishment_policy: str) -> None:
         super().__init__(env, capacity, initial_level, replenishment_policy)
         self.waste = []
+        self.shelf_life = shelf_life
         self.inventory_position = self.inventory.level
+        self.inventory_counts = [] # create a bucket to keep count of drugs according to their shelf life
         self.env.process(self.remove_expired_drugs())
 
     def remove_expired_drugs(self):
         while True:
             yield self.env.timeout(30)
-            # all drugs in the inventory are expired at the end of the month
-            self.waste.append(self.inventory.level)
-            self.inventory.get(self.inventory.level)
-            if(self.inventory_position >= self.inventory.level):
-                self.inventory_position -= self.inventory.level
+            # add drugs to the shelf life bucket
+            # all drugs came in this month have the same expiration date
+            self.inventory_counts.append(self.inventory.level)
+            # remove expired drugs
+            if(len(self.inventory_counts)==3):
+                self.waste.append(self.inventory_counts[0])
+                self.inventory_counts.pop(0)
+                self.inventory.get(self.waste[-1])
 
 
 st = Distributions(mu=0.5,lam=10)
@@ -106,19 +111,21 @@ supplier1 = scm.Supplier(env=env, ID="S1", name="Supplier 1", node_type="infinit
 
 #create the distributor
 distributor1 = scm.InventoryNode(env=env, ID="D1", name="Distributor 1", node_type="distributor",
-                                 capacity=2000, initial_level=1000, inventory_holding_cost=1, 
+                                 capacity=2000, initial_level=1000, inventory_holding_cost=0.001, 
                                  replenishment_policy="sS", policy_param=[1500], product_sell_price=360)
 # set perishable inventory for it
-distributor1.inventory = PerishableInventory(env=env, capacity=2000, initial_level=1000, replenishment_policy="sS")
+distributor1.inventory = PerishableInventory(env=env, shelf_life=3, capacity=2000, initial_level=1000, replenishment_policy="sS")
 
 # set demand
 demand1 = scm.Demand(env=env,ID="d1", name="demand 1", 
                     order_arrival_model=st.expo_arrival, 
                     order_quantity_model=st.poisson_demand, demand_node=distributor1)
 # link the nodes
-link1 = scm.Link(env=env,ID="l1", source=supplier1, sink=distributor1, cost=5, lead_time=lambda: 1)
+link1 = scm.Link(env=env,ID="l1", source=supplier1, sink=distributor1, cost=0.5, lead_time=lambda: 6)
 # create a sc net
 supplynet = {"nodes": [supplier1,distributor1], "links": [link1], "demand": [demand1]}
 
+
 # run the simulation
 env.run(until=360)
+

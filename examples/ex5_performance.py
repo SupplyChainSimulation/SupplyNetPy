@@ -2,16 +2,16 @@
 # and measures the time taken to run a single simulation
 
 # local import for testing
-import sys, os
-sys.path.insert(1, 'src/SupplyNetPy/Components')
-import core as scm
-import utilities as scm
+# import sys, os
+# sys.path.insert(1, 'src/SupplyNetPy/Components')
+# import core as scm
+# import utilities as scm
 
 import simpy
 import random
 import time
 import matplotlib.pyplot as plt
-# import SupplyNetPy.Components as scm
+import SupplyNetPy.Components as scm
 
 class Demand_dist:
     def __init__(self,mean=10,var=5):

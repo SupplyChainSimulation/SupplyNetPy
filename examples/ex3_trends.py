@@ -1,12 +1,12 @@
 # # local import for testing
-import sys, os
-sys.path.insert(1, 'src/SupplyNetPy/Components')
-import core as scm
-import utilities as scm
+# import sys, os
+# sys.path.insert(1, 'src/SupplyNetPy/Components')
+# import core as scm
+# import utilities as scm
 
 # import the library
 import matplotlib.pyplot as plt
-# import SupplyNetPy.Components as scm
+import SupplyNetPy.Components as scm
 
 # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
 nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
