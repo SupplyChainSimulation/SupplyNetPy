@@ -308,7 +308,7 @@ class Node():
                  name: str, 
                  node_type: str, 
                  failure_p:float = 0.0, 
-                 node_recovery_time:float = 1.0,
+                 node_recovery_time:callable = lambda: 1,
                  isolated_logger: bool = False, 
                  **kwargs) -> None:
         """
@@ -1170,21 +1170,24 @@ class InventoryNode(Node):
         Returns:
             None
         """
-        self.logger.info(f"{self.env.now}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
-        yield supplier.source.inventory.inventory.get(reorder_quantity) # get the product from the supplier inventory
-        if(self.product):
-            # update the product costs
-            self.product.buy_price = supplier.source.product.sell_price
-        # update the transportation cost at the supplier
-        supplier.source.transportation_cost += supplier.cost
-        # update the product sold at the supplier
-        supplier.source.products_sold = reorder_quantity
-        supplier.source.total_products_sold += reorder_quantity
-        # log the shipment
-        self.logger.info(f"{self.env.now}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
-        yield self.env.timeout(supplier.lead_time()) # lead time for the order
-        self.inventory.inventory.put(reorder_quantity)
-        self.logger.info(f"{self.env.now}:{self.ID}:Inventory replenished. Inventory levels:{self.inventory.inventory.level}")
+        if(supplier.source.node_status == "active"):
+            self.logger.info(f"{self.env.now}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
+            yield supplier.source.inventory.inventory.get(reorder_quantity) # get the product from the supplier inventory
+            if(self.product):
+                # update the product costs
+                self.product.buy_price = supplier.source.product.sell_price
+            # update the transportation cost at the supplier
+            supplier.source.transportation_cost += supplier.cost
+            # update the product sold at the supplier
+            supplier.source.products_sold = reorder_quantity
+            supplier.source.total_products_sold += reorder_quantity
+            # log the shipment
+            self.logger.info(f"{self.env.now}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
+            yield self.env.timeout(supplier.lead_time()) # lead time for the order
+            self.inventory.inventory.put(reorder_quantity)
+            self.logger.info(f"{self.env.now}:{self.ID}:Inventory replenished. Inventory levels:{self.inventory.inventory.level}")
+        else:
+            self.logger.info(f"{self.env.now}:{self.ID}:Supplier:{supplier.source.name} is disrupted. Order not placed.")
         self.order_placed = False
         
     
@@ -1262,6 +1265,7 @@ class Demand(Node):
                  order_arrival_model: callable, 
                  order_quantity_model: callable, 
                  demand_node: Node,
+                 tolerance: float = 0.0,
                  **kwargs) -> None:
         """
         Initialize the demand node object.
@@ -1295,10 +1299,12 @@ class Demand(Node):
         self.order_arrival_model = order_arrival_model
         self.order_quantity_model = order_quantity_model
         self.demand_node = demand_node
+        self.customer_tolerance = tolerance
         self.env.process(self.behavior())
 
         self.total_products_sold = 0
         self.unsatisfied_demand = 0
+        self.shortage = 0
 
     def __str__(self):
         """
@@ -1348,6 +1354,31 @@ class Demand(Node):
         """
         return {"total_products_sold": self.total_products_sold, "unsatisfied_demand": self.unsatisfied_demand}
 
+    def wait_for_order(self,order_quantity):
+        """
+
+        """
+        if(self.customer_tolerance==float('inf')): # wait for the order to arrive
+            self.demand_node.inventory.inventory.get(order_quantity)
+            self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
+            # update statistics
+            self.total_products_sold += order_quantity
+            self.demand_node.products_sold = order_quantity
+            self.demand_node.total_products_sold += order_quantity
+            return
+        
+        self.env.timeout(self.customer_tolerance)
+        if(order_quantity <= self.demand_node.inventory.inventory.level):
+            self.demand_node.inventory.inventory.get(order_quantity)
+            self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
+            # update statistics
+            self.total_products_sold += order_quantity
+            self.demand_node.products_sold = order_quantity
+            self.demand_node.total_products_sold += order_quantity
+        else:
+            self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}.")
+            self.unsatisfied_demand += order_quantity
+
     def behavior(self):
         """
         Generate demand by calling the order arrival and order quantity models.
@@ -1368,6 +1399,9 @@ class Demand(Node):
                 self.total_products_sold += order_quantity
                 self.demand_node.products_sold = order_quantity
                 self.demand_node.total_products_sold += order_quantity
+            elif(self.customer_tolerance>0):
+                self.shortage += order_quantity
+                self.env.process(self.wait_for_order(order_quantity))
             else:
                 self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}.")
                 self.unsatisfied_demand += order_quantity            
