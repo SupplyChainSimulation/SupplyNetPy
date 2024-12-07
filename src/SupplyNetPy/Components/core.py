@@ -1359,7 +1359,7 @@ class Demand(Node):
 
         """
         if(self.customer_tolerance==float('inf')): # wait for the order to arrive
-            self.demand_node.inventory.inventory.get(order_quantity)
+            yield self.demand_node.inventory.inventory.get(order_quantity)
             self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
             # update statistics
             self.total_products_sold += order_quantity
@@ -1367,17 +1367,21 @@ class Demand(Node):
             self.demand_node.total_products_sold += order_quantity
             return
         
-        self.env.timeout(self.customer_tolerance)
-        if(order_quantity <= self.demand_node.inventory.inventory.level):
-            self.demand_node.inventory.inventory.get(order_quantity)
-            self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
-            # update statistics
-            self.total_products_sold += order_quantity
-            self.demand_node.products_sold = order_quantity
-            self.demand_node.total_products_sold += order_quantity
-        else:
-            self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}.")
-            self.unsatisfied_demand += order_quantity
+        wait_time = 0
+        while(wait_time<self.customer_tolerance):
+            wait_time += 1
+            yield self.env.timeout(1)
+            if(order_quantity <= self.demand_node.inventory.inventory.level):
+                self.demand_node.inventory.inventory.get(order_quantity)
+                self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
+                # update statistics
+                self.total_products_sold += order_quantity
+                self.demand_node.products_sold = order_quantity
+                self.demand_node.total_products_sold += order_quantity
+                return
+                
+        self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}.")
+        self.unsatisfied_demand += order_quantity
 
     def behavior(self):
         """
