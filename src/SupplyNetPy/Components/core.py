@@ -1,4 +1,4 @@
-from logger import GlobalLogger
+from SupplyNetPy.Components.logger import GlobalLogger
 import simpy
 import copy
 import random

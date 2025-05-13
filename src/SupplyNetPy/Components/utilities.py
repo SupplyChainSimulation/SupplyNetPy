@@ -2,7 +2,7 @@ import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
-from core import *
+from SupplyNetPy.Components.core import *
 
 def visualize_sc_net(supplychainnet):
     """
