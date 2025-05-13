@@ -1,4 +1,4 @@
-from SupplyNetPy.Components.logger import GlobalLogger
+from logger import GlobalLogger
 import simpy
 import copy
 import random
@@ -14,6 +14,13 @@ class RawMaterial():
         name (str): name of the raw material
         extraction_quantity (float): quantity of the raw material that can be extracted in extraction_time
         extraction_time (float): time to extract the raw material
+        cost (float): sell cost of the raw material (per item) 
+
+    Attributes:
+        ID (str): ID of the raw material (alphanumeric)
+        name (str): name of the raw material
+        extraction_quantity (float): quantity of the raw material that can be extracted in extraction_time
+        extraction_time (float): time to extract the raw material
         cost (float): cost of the raw material (per item)
 
     Functions:
@@ -22,12 +29,6 @@ class RawMaterial():
         __repr__: returns the name of the raw material
         get_info: returns a dictionary containing details of the raw material
 
-    Attributes:
-        ID (str): ID of the raw material (alphanumeric)
-        name (str): name of the raw material
-        extraction_quantity (float): quantity of the raw material that can be extracted in extraction_time
-        extraction_time (float): time to extract the raw material
-        cost (float): cost of the raw material (per item)
     """
     def __init__(self, ID: str, 
                  name: str, 
@@ -60,8 +61,8 @@ class RawMaterial():
         self.ID = ID # ID of the raw material (alphanumeric)
         self.name = name # name of the raw material
         self.extraction_quantity = extraction_quantity # quantity of the raw material that can be extracted in extraction_time
-        self.cost = cost # cost of the raw material
         self.extraction_time = extraction_time # time to extract the raw material
+        self.cost = cost # mining cost of the raw material
 
     def __str__(self):
         """
@@ -95,6 +96,16 @@ class Product():
     Product class represents a product in the supply network.
 
     Parameters:
+        ID (str): ID of the product (alphanumeric)
+        name (str): name of the product
+        manufacturing_cost (float): manufacturing cost of the product
+        manufacturing_time (int): time (days) to manufacture the product
+        sell_price (float): price at which the product is sold
+        buy_price (float): price at which the product is bought
+        raw_materials (list): list of raw materials and quantity required to manufacture a single product unit
+        units_per_cycle (int): number of units manufactured per manufacturing cycle
+
+    Attributes:
         ID (str): ID of the product (alphanumeric)
         name (str): name of the product
         manufacturing_cost (float): manufacturing cost of the product
@@ -187,7 +198,135 @@ class Product():
         return {"ID": self.ID, "name": self.name, "manufacturing_cost": self.manufacturing_cost, "manufacturing_time": self.manufacturing_time, "sell_price": self.sell_price, "buy_price": self.buy_price, "raw_materials": self.raw_materials, "units_per_cycle": self.units_per_cycle}
 
 default_raw_material = RawMaterial(ID="RM1", name="Raw Material 1", extraction_quantity=30, extraction_time=3, cost=1) # create a default raw material
-default_product = Product(ID="P1", name="Product 1", manufacturing_cost=340, manufacturing_time=3, sell_price=350, raw_materials=[{"raw_material": default_raw_material, "quantity": 3}], units_per_cycle=30) # create a default product
+default_product = Product(ID="P1", name="Product 1", manufacturing_cost=340, manufacturing_time=3, sell_price=341, raw_materials=[{"raw_material": default_raw_material, "quantity": 3}], units_per_cycle=30) # create a default product
+
+class PerishableInventory(simpy.Container):
+    """
+    PerishableInventory class represents a perishable inventory in the supply network.
+
+    Parameters:
+        env (simpy.Environment): simulation environment
+        capacity (int): maximum capacity of the inventory
+        initial_level (int): initial inventory level
+        shelf_life (int): shelf life of the product
+        replenishment_policy (str): replenishment policy for the inventory
+
+    Attributes:
+        env (simpy.Environment): simulation environment
+        shelf_life (int): shelf life of the product
+        replenishment_policy (str): replenishment policy for the inventory
+        waste (list): list to store wasted products
+        perish_queue (list): list to store perishable products
+        logger (GlobalLogger): global logger
+
+    Functions:
+        __init__: initializes the perishable inventory object
+        __str__: returns the name of the perishable inventory
+        __repr__: returns the name of the perishable inventory
+        get_info: returns a dictionary containing details of the perishable inventory
+        record_inventory_levels: record perishable inventory levels
+    """
+    def __init__(self, env: simpy.Environment, 
+                 capacity: int, 
+                 initial_level: int, 
+                 shelf_life: int, 
+                 replenishment_policy: str) -> None:
+        """
+        Initialize the perishable inventory object.
+
+        Parameters:
+            env (simpy.Environment): simulation environment
+            capacity (int): maximum capacity of the inventory
+            initial_level (int): initial inventory level
+            shelf_life (int): shelf life of the product
+            replenishment_policy (str): replenishment policy for the inventory
+
+        Returns:
+            None
+        """
+        if(shelf_life <= 0):
+            global_logger.logger.error("Shelf life cannot be zero or negative.")
+            raise ValueError("Shelf life cannot be negative.")
+        if(replenishment_policy not in ["sS", "periodic"]):
+            global_logger.logger.error(f"Invalid replenishment policy. {replenishment_policy} is not yet available.")
+            raise ValueError(f"Invalid replenishment policy. {replenishment_policy} is not yet available.")
+
+        super().__init__(env, capacity, initial_level)
+        self.env = env # simulation environment
+        self.shelf_life = shelf_life # shelf life of the product
+        self.replenishment_policy = replenishment_policy # replenishment policy for the inventory
+        self.waste = [] # list to store wasted products
+        self.perish_queue = [(0,initial_level)] # list to store perishable products
+        self.logger = global_logger.logger # global logger
+        self.env.process(self.remove_expired()) # start the process to remove expired products
+
+    def put(self,amount:int,manufacturing_date:int):
+        """
+        Overriding the put method of simpy.Container.
+
+        Records the amount and manufacturing date in the perish_queue.
+
+        Parameters:
+            amount (int): The amount to put in the inventory.
+            manufacturing_date (int): The manufacturing date of the product.
+
+        Returns:
+            None
+        """
+        self.perish_queue.append((manufacturing_date, amount))
+        return super().put(amount)
+    
+    def get(self, amount):
+        """
+        Overriding the get method of simpy.Container.
+
+        Removes the specified amount from the perish_queue.
+
+        Parameters:
+            amount (int): The amount to get from the inventory.
+
+        Returns:
+            tuple: A tuple containing the get event and the manufacturing date list.
+        """
+        if(amount==0):
+            return
+        man_date_ls = []
+        x_amount = amount
+        while x_amount>0:
+            if(len(self.perish_queue)>0):
+                if(self.perish_queue[0][1] <= x_amount):
+                    man_date_ls.append((self.perish_queue[0],x_amount))
+                    x_amount -= self.perish_queue[0][1]
+                    self.perish_queue.pop(0)
+                else:
+                    man_date_ls.append((self.perish_queue[0][0], self.perish_queue[0][1] - x_amount))
+                    self.perish_queue[0] = (self.perish_queue[0][0], self.perish_queue[0][1] - x_amount)
+                    x_amount = 0
+            else:
+                break
+        return super().get(amount), man_date_ls
+    
+    def remove_expired(self):
+        """
+        Remove expired products from the perishable inventory.
+
+        Parameters:
+            None
+
+        Returns:    
+            None
+        """
+        while True:
+            yield self.env.timeout(1)
+            # remove the expired products
+            while len(self.perish_queue)>0 and self.env.now - self.perish_queue[0][0] >= self.shelf_life:
+                self.logger.info(f"{self.env.now}:{self.perish_queue[0][1]} units expired.")
+                self.waste.append((self.env.now, self.perish_queue[0][1])) # add to wasted products
+                self.perish_queue.pop(0) # remove from perish queue
+                if(self.waste[-1][1]>0):
+                    super().get(self.waste[-1][1]) # remove from the inventory
+                self.logger.info(f"Current inventory levels:{self.level}")
+                
 
 class Inventory():
     """
@@ -197,25 +336,32 @@ class Inventory():
         env (simpy.Environment): simulation environment
         capacity (int): maximum capacity of the inventory
         initial_level (int): initial inventory level
+        shelf_life (int): shelf life of the product
         replenishment_policy (str): replenishment policy for the inventory
+        type (str): type of the inventory (non-perishable/perishable)
 
     Attributes:
         env (simpy.Environment): simulation environment
         capacity (int): maximum capacity of the inventory
+        init_level (int): initial inventory level
         level (int): current inventory level
+        inventory (simpy.Container): inventory container
         replenishment_policy (str): replenishment policy for the inventory
-        inventory (MonitoredContainer): monitored container to store the inventory level
+        instantaneous_levels (list): list to store inventory levels at regular intervals
 
     Functions:
         __init__: initializes the inventory object
         __str__: returns the name of the inventory
         __repr__: returns the name of the inventory
         get_info: returns a dictionary containing details of the inventory
+        record_inventory_levels: records inventory levels every day
     """
     def __init__(self, env: simpy.Environment, 
                  capacity: int, 
                  initial_level: int, 
-                 replenishment_policy: str) -> None:
+                 replenishment_policy: str,
+                 shelf_life: int = 0,
+                 type: str = "non-perishable") -> None:
         """
         Initialize the inventory object.
 
@@ -224,13 +370,17 @@ class Inventory():
             capacity (int): maximum capacity of the inventory
             initial_level (int): initial inventory level
             replenishment_policy (str): replenishment policy for the inventory
+            type (str): type of the inventory (non-perishable/perishable)
+            shelf_life (int): shelf life of the product
 
         Attributes:
             env (simpy.Environment): simulation environment
             capacity (int): maximum capacity of the inventory
+            init_level (int): initial inventory level
             level (int): current inventory level
+            inventory (simpy.Container): inventory container
             replenishment_policy (str): replenishment policy for the inventory
-            inventory (MonitoredContainer): monitored container to store the inventory level
+            instantaneous_levels (list): list to store inventory levels at regular intervals
 
         Returns:
             None
@@ -253,6 +403,9 @@ class Inventory():
         self.init_level = initial_level # initial inventory level
         self.level = initial_level # initial inventory level
         self.inventory = simpy.Container(env=self.env,capacity=self.capacity, init=self.init_level) # create a container
+        self.type = type
+        if(self.type=="perishable"):
+            self.inventory = PerishableInventory(env=self.env, capacity=self.capacity, initial_level=self.init_level, shelf_life=shelf_life, replenishment_policy=replenishment_policy)
         self.replenishment_policy = replenishment_policy # replenishment policy for the inventory
         self.instantaneous_levels = []
         self.env.process(self.record_inventory_levels()) # start recording the inventory levels
@@ -277,6 +430,9 @@ class Inventory():
         Record the inventory levels.
 
         This method records the inventory levels at regular intervals.
+
+        Returns:
+            None
         """
         while True:
             yield self.env.timeout(1)
@@ -291,17 +447,34 @@ class Node():
         ID (str): ID of the node (alphanumeric)
         name (str): name of the node
         node_type (str): type of the node
+        failure_p (float): node failure probability
+        node_recovery_time (callable): function to model node recovery time
         isolated_logger (bool): flag to enable/disable isolated logger
         **kwargs: additional keyword arguments for logger
 
     Attributes:
+        ID (str): ID of the node (alphanumeric)
+        name (str): name of the node
+        node_type (str): type of the node
+        env (simpy.Environment): simulation environment
+        node_failure_p (float): node failure probability
+        node_status (str): status of the node (active/inactive)
+        node_recovery_time (callable): function to model node recovery time
         logger (GlobalLogger): logger object
+        inventory_cost (float): total inventory cost
+        transportation_cost (float): total transportation cost
+        node_cost (float): total node cost
+        profit (float): profit
+        net_profit (float): net profit
+        products_sold (int): products/raw materials sold by this node in the current cycle/period/day
+        total_products_sold (int): total product units sold by this node
         
     Functions:
         __init__: initializes the node object
         __str__: returns the name of the node
         __repr__: returns the name of the node
         get_info: returns a dictionary containing details of the node
+        disruption: disrupt the node
     """
     def __init__(self, env: simpy.Environment, 
                  ID: str, 
@@ -336,14 +509,14 @@ class Node():
         self.env = env  # simulation environment
         self.node_failure_p = failure_p  # node failure probability
         self.node_status = "active"  # node status (active/inactive)
-        self.node_recovery_time = node_recovery_time  # node recovery time
+        self.node_recovery_time = node_recovery_time  # callable function to model node recovery time
 
         if isolated_logger:  # if individual logger is required
             self.logger = GlobalLogger(logger_name=self.name, **kwargs).logger  # create an isolated logger
 
         # performance metrics for node
         self.inventory_cost = 0  # total inventory cost
-        self.transportation_cost = 0  # total transportation cost (from this node to its consumers)
+        self.transportation_cost = [] # list to store transportation costs (env.now, cost)
         self.node_cost = 0  # total node cost (establishment cost)
         self.profit = 0  # profit (node profit)
         self.net_profit = 0  # net profit (profit - node cost)
@@ -384,16 +557,20 @@ class Node():
         """
         Disrupt the node.
 
-        This method disrupts the node by changing the node status to "inactive".
+        This method disrupts the node by changing the node status to "inactive" and
+        recovers it after the specified recovery time.
+
+        Returns:
+            None
         """
         while True:
             yield self.env.timeout(1)
             # disrupt the node with a probability node_failure_p
             if(random.random() < self.node_failure_p):
                 self.node_status = "inactive"
-                self.logger.warning(f"{self.env.now}:{self.ID}: Node disrupted.")
+                # self.logger.warning(f"{self.env.now}:{self.ID}: Node disrupted.")
                 # recover the node after node_recovery_time
-                yield self.env.timeout(self.node_recovery_time)
+                yield self.env.timeout(self.node_recovery_time())
                 self.node_status = "active"
             
 class Link():
@@ -407,6 +584,8 @@ class Link():
         sink (Node): sink node of the link
         cost (float): cost of transportation over the link
         lead_time (int): lead time of the link
+        link_failure_p (float): link failure probability
+        link_recovery_time (callable): function to model link recovery time
 
     Functions:
         __init__: initializes the link object
@@ -422,7 +601,7 @@ class Link():
                  cost: float, # transportation cost
                  lead_time: callable,
                  link_failure_p: float = 0.0,
-                 link_recovery_time: float = 1.0) -> None:
+                 link_recovery_time: callable = lambda: 1) -> None:
         """
         Initialize the link object.
 
@@ -473,6 +652,11 @@ class Link():
         if(self.link_failure_p>0): # disrupt the link if link_failure_p > 0
             self.env.process(self.disruption())
 
+        if("supplier" not in self.source.node_type): # if the source node is not a supplier, set the buy price of the sink node to the sell price of the source node
+            if(self.source.product):
+                self.sink.buy_price = self.source.product.sell_price # set the buy price of the sink node to the buy price of the source node
+            else:
+                self.sink.buy_price = self.source.sell_price
     def __str__(self):
         """
         Return the name of the link.
@@ -504,16 +688,20 @@ class Link():
         """
         Disrupt the link.
 
-        This method disrupts the link by changing the link status to "inactive".
+        This method disrupts the link by changing the link status to "inactive" and
+        recovers it after the specified recovery time.
+
+        Returns:
+            None
         """
         while True:
             yield self.env.timeout(1)
             # disrupt the link with a probability link_failure_p
             if(random.random() < self.link_failure_p):
                 self.status = "inactive"
-                self.logger.warning(f"{self.env.now}:{self.ID}: Link disrupted.")
+                #self.logger.warning(f"{self.env.now}:{self.ID}: Link disrupted.")
                 # recover the link after link_recovery_time
-                yield self.env.timeout(self.link_recovery_time)
+                yield self.env.timeout(self.link_recovery_time())
                 self.status = "active"
 
 class Supplier(Node):
@@ -522,14 +710,15 @@ class Supplier(Node):
 
     Parameters:
         env (simpy.Environment): simulation environment
-        ID (str): ID of the supplier (alphanumeric)
-        name (str): name of the supplier
+        ID (str): ID of the node (alphanumeric)
+        name (str): name of the node
+        node_type (str): type of the node
         capacity (int): maximum capacity of the inventory
         initial_level (int): initial inventory level
         inventory_holding_cost (float): inventory holding cost
         raw_material (RawMaterial): raw material supplied by the supplier
         isolated_logger (bool): flag to enable/disable isolated logger
-        **krwargs: additional keyword arguments for logger
+        **kwargs: any additional keyword arguments for the Node class and logger
 
     Functions:
         __init__: initializes the supplier object
@@ -544,7 +733,7 @@ class Supplier(Node):
         The supplier keeps extracting raw material whenever the inventory is not full (infinite supply).
         Assume that a supplier can extract a single type of raw material. By default, it is the default raw material.
     """
-    def __init__(self, 
+    def __init__(self,
                  capacity: int = 0, 
                  initial_level: int = 0, 
                  inventory_holding_cost:float = 1, 
@@ -555,13 +744,20 @@ class Supplier(Node):
         Initialize the supplier object.
 
         Parameters:
-            env (simpy.Environment): simulation environment
-            ID (str): ID of the supplier (alphanumeric)
-            name (str): name of the supplier
-            raw_material (RawMaterial): raw material supplied by the supplier
-            isolated_logger (bool): flag to enable/disable isolated logger
             capacity (int): maximum capacity of the inventory
             initial_level (int): initial inventory level
+            inventory_holding_cost (float): inventory holding cost
+            raw_material (RawMaterial): raw material supplied by the supplier
+            node_type (str): type of the node
+            **kwargs: any additional keyword arguments for the Node class and logger
+
+        Attributes:
+            raw_material (RawMaterial): raw material supplied by the supplier
+            inventory (Inventory): inventory of the supplier
+            inventory_holding_cost (float): inventory holding cost
+            total_raw_materials_mined (int): total raw materials mined/extracted
+            total_material_cost (float): total cost of the raw materials mined/extracted
+            total_raw_materials_sold (int): total raw materials sold
             
         Returns:
             None
@@ -631,7 +827,7 @@ class Supplier(Node):
     
     def calculate_statistics(self):
         """
-        Calculate statistics for the supplier.
+        Calculate and record everyday node level statistics for the supplier.
 
         Parameters:
             None
@@ -645,7 +841,7 @@ class Supplier(Node):
                 self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
             if(self.raw_material):
                 self.total_material_cost = self.total_raw_materials_mined * self.raw_material.cost
-            self.node_cost = self.total_material_cost + self.inventory_cost + self.transportation_cost
+            self.node_cost = self.total_material_cost + self.inventory_cost + sum([x[1] for x in self.transportation_cost])
 
     def get_statistics(self):
         """
@@ -657,7 +853,7 @@ class Supplier(Node):
         Returns:
             dict: dictionary containing statistics for the supplier
         """
-        return {"total_raw_materials_mined": self.total_raw_materials_mined, "total_material_cost": self.total_material_cost, "total_raw_material_sold":self.total_raw_materials_sold, "profit": self.profit, "inventory_cost": self.inventory_cost, "transportation_cost": self.transportation_cost, "node_cost": self.node_cost}
+        return {"total_raw_materials_mined": self.total_raw_materials_mined, "total_material_cost": self.total_material_cost, "total_raw_material_sold":self.total_raw_materials_sold, "profit": self.profit, "inventory_cost": self.inventory_cost, "transportation_cost": sum([x[1] for x in self.transportation_cost]), "node_cost": self.node_cost}
         
     def behavior(self):
         """
@@ -676,11 +872,295 @@ class Supplier(Node):
                 yield self.env.timeout(self.raw_material.extraction_time)
                 if(self.inventory.inventory.level + self.raw_material.extraction_quantity <= self.inventory.inventory.capacity): # check if the inventory can accommodate the extracted quantity
                     self.inventory.inventory.put(self.raw_material.extraction_quantity)
+                    # update statistics
+                    self.total_raw_materials_mined += self.raw_material.extraction_quantity
                 else: # else put the remaining capacity in the inventory
                     self.inventory.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level)
-                self.logger.info(f"{self.env.now}:{self.ID}:Raw material mined/extracted. Inventory levels:{self.inventory.inventory.level}")
-                # update statistics
-                self.total_raw_materials_mined += self.raw_material.extraction_quantity
+                    # update statistics
+                    self.total_raw_materials_mined += self.inventory.inventory.capacity - self.inventory.inventory.level
+                self.logger.info(f"{self.env.now}:{self.ID}:Raw material mined/extracted. Inventory level:{self.inventory.inventory.level}")
+                
+            self.logger.info(f"{self.env.now}:{self.ID}: Inventory level:{self.inventory.inventory.level}")
+
+class InventoryNode(Node):
+    """
+    InventoryNode class represents an inventory node in the supply network.
+
+    Parameters:
+        env (simpy.Environment): simulation environment
+        ID (str): ID of the inventory node (alphanumeric)
+        name (str): name of the inventory node
+        node_type (str): type of the inventory node (retailer or distributor)
+        capacity (int): maximum capacity of the inventory
+        initial_level (int): initial inventory level
+        inventory_holding_cost (float): inventory holding cost
+        suppliers (list): list of supplier links from which the inventory node can replenish inventory
+        replenishment_policy (str): replenishment policy for the inventory
+        policy_param (list): parameters for the replenishment policy
+        product (Product): product that the inventory node sells
+
+    Attributes:
+        node_type (str): type of the inventory node (retailer or distributor)
+        capacity (int): maximum capacity of the inventory
+        initial_level (int): initial inventory level
+        inventory_holding_cost (float): inventory holding cost
+        suppliers (list): list of supplier links from which the inventory node can replenish inventory
+        replenishment_policy (str): replenishment policy for the inventory
+        policy_param (list): parameters for the replenishment policy
+        inventory (Inventory): inventory object
+        product (Product): product that the inventory node sells
+        order_placed (bool): flag to check if the order is placed
+
+    Functions:
+        __init__: initializes the inventory node object
+        __str__: returns the name of the inventory node
+        __repr__: returns the name of the inventory node
+        get_info: returns a dictionary containing details of the inventory node
+        calculate_statistics: calculate statistics for the inventory node
+        get_statistics: get statistics for the inventory node
+        place_order: place an order for the product from the suppliers
+        ss_replenishment: monitored inventory replenishment policy (s,S)
+        periodic_replenishment: monitored inventory replenishment policy (periodic)
+    """
+
+    def __init__(self,
+                 node_type: str, 
+                 capacity: int, 
+                 initial_level: int, 
+                 inventory_holding_cost:float,
+                 inventory_type:str = "non-perishable", 
+                 shelf_life:int = 0,
+                 manufactur_date:callable = None,
+                 replenishment_policy: str = "sS", 
+                 product_sell_price: float = 0.0, 
+                 policy_param: list = [2], 
+                 product:Product = None,
+                 **kwargs) -> None:
+        """
+        Initialize the inventory node object.
+
+        Parameters:
+            env (simpy.Environment): simulation environment
+            ID (str): ID of the inventory node (alphanumeric)
+            name (str): name of the inventory node
+            inventory (Inventory): inventory object
+            node_type (str): type of the inventory node (retailer or distributor)
+            capacity (int): maximum capacity of the inventory
+            initial_level (int): initial inventory level
+            suppliers (list): list of supplier links from which the inventory node can replenish inventory
+            replenishment_policy (str): replenishment policy for the inventory
+            policy_param (list): parameters for the replenishment policy
+
+        Returns:
+            None
+
+        Behavior:
+            The inventory node sells the product to the customers. It replenishes the inventory from the suppliers according to the replenishment policy. 
+            The inventory node can have multiple suppliers. It chooses a supplier based on the availability of the product at the suppliers.
+            The product buy price is set to the sell price of the supplier. The inventory node sells the product at a higher price than the buy price.
+            By default, the sell price is set to 5% more than the buy price. The product sell price can be set by the user, if required.
+        """
+        if(capacity <= 0):
+            global_logger.logger.error("Inventory capacity cannot be zero or negative.")
+            raise ValueError("Capacity cannot be negative.")
+        if(initial_level < 0):
+            global_logger.logger.error("Initial level cannot be negative.")
+            raise ValueError("Initial level cannot be negative.")
+        if(inventory_holding_cost <= 0):
+            global_logger.logger.error("Inventory holding cost cannot be zero or negative.")
+            raise ValueError("Inventory holding cost cannot be negative.")
+        if(capacity < initial_level):
+            global_logger.logger.error("Initial level cannot be greater than capacity.")
+            raise ValueError("Initial level cannot be greater than capacity.")        
+
+        super().__init__(node_type=node_type,**kwargs)
+        self.node_type = node_type
+        self.capacity = capacity
+        self.initial_level = initial_level
+        self.inventory_holding_cost = inventory_holding_cost
+        self.suppliers = []
+        self.replenishment_policy = replenishment_policy
+        self.policy_param = policy_param
+        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, type=inventory_type, replenishment_policy=replenishment_policy, shelf_life=shelf_life)
+        self.product = copy.deepcopy(product) # product that the inventory node sells
+        self.manufactur_date = manufactur_date
+        if(self.product):
+            self.product.sell_price = product_sell_price
+            self.product.buy_price = 0 # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
+        else:
+            self.sell_price = product_sell_price # set the sell price of the product
+            self.buy_price = 0 # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
+        self.order_placed = False # flag to check if the order is placed
+    
+        if(self.replenishment_policy == "sS"):
+            self.env.process(self.ss_replenishment(s=self.policy_param[0]))
+        elif(self.replenishment_policy == "periodic"):
+            self.env.process(self.periodic_replenishment(interval=self.policy_param[0], reorder_quantity=self.policy_param[1]))
+
+        # statistics
+        self.products_sold_daily = [] # list to store the product sold in the current cycle
+        self.products_sold = 0
+        self.env.process(self.calculate_statistics()) # calculate statistics
+    
+    def __str__(self):
+        return self.name
+    
+    def __repr__(self):
+        return self.name
+    
+    def get_info(self):
+        """
+        Get the details of the inventory node.
+
+        Parameters:
+            None
+
+        Returns:
+            dict: dictionary containing details of the inventory node
+        """
+        if(self.product):
+            info = {"ID": self.ID, "name": self.name, "node_type": self.node_type, "product": self.product.get_info(), "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
+        else:
+            info = {"ID": self.ID, "name": self.name, "node_type": self.node_type, "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
+        return info
+    def calculate_statistics(self):
+        """
+        Calculate statistics for the inventory node.
+
+        Parameters:
+            None
+
+        Returns:
+            None
+        """
+        while True:
+            # reset the products sold in the current cycle
+            self.products_sold = 0
+            yield self.env.timeout(1)
+            self.products_sold_daily.append((self.env.now, self.products_sold)) # append the product sold in the current cycle
+
+    def get_statistics(self):
+        """
+        Get statistics for the inventory node.
+
+        Parameters:
+            None
+
+        Returns:
+            dict: dictionary containing statistics for the inventory node
+        """
+        #return {"total_product_cost": self.total_product_cost, "total_revenue": self.total_revenue, "total_profit": self.total_profit, "inventory_cost": self.inventory_cost, "transportation_cost": self.transportation_cost, "node_cost": self.node_cost, "net_profit": self.net_profit}
+        total_units_sold = sum([x[1] for x in self.products_sold_daily])
+        daily_inv_levels = sum([x[1] for x in self.inventory.instantaneous_levels])
+        return {"total_units_sold":total_units_sold,"total_product_cost": total_units_sold*self.buy_price,
+                "total_revenue": total_units_sold*self.product.sell_price, "total_profit": total_units_sold*(self.product.sell_price-self.buy_price),
+                "inventory_cost": self.inventory_holding_cost * daily_inv_levels}
+
+    def place_order(self, supplier, reorder_quantity):
+        """
+        Place an order for the product from the suppliers.
+
+        Parameters:
+            supplier (Link): The supplier link from which the order is placed.
+            reorder_quantity (int): The quantity of the product to reorder.
+
+        Returns:
+            None
+        """
+        if(supplier.source.node_status == "active"):
+            self.logger.info(f"{self.env.now}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
+            if(supplier.source.inventory.type=="perishable"):
+                event, man_date_ls = supplier.source.inventory.inventory.get(reorder_quantity)
+                yield event
+            else:
+                yield supplier.source.inventory.inventory.get(reorder_quantity) # get the product from the supplier inventory
+            if(self.product):
+                # update the product costs
+                self.product.buy_price = supplier.source.product.sell_price
+            # update the transportation cost at the supplier
+            supplier.source.transportation_cost.append((self.env.now,supplier.cost))
+            # update the product sold at the supplier
+            supplier.source.products_sold = reorder_quantity
+            supplier.source.total_products_sold += reorder_quantity
+            # log the shipment
+            self.logger.info(f"{self.env.now}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
+            yield self.env.timeout(supplier.lead_time()) # lead time for the order
+            if(supplier.source.inventory.type=="perishable" and self.inventory.type=="perishable"):
+                for ele in man_date_ls:
+                    self.inventory.inventory.put(ele[1],ele[0])
+            elif(supplier.source.inventory.type=="perishable"):
+                for ele in man_date_ls:
+                    self.inventory.inventory.put(ele[1])
+            elif(self.inventory.type=="perishable"):
+                if(self.manufactur_date):
+                    self.inventory.inventory.put(reorder_quantity,self.manufactur_date(self.env.now))
+                else:
+                    self.inventory.inventory.put(reorder_quantity,self.env.now)
+            else:
+                self.inventory.inventory.put(reorder_quantity)
+
+            self.logger.info(f"{self.env.now}:{self.ID}:Inventory replenished. Inventory levels:{self.inventory.inventory.level}")
+        else:
+            self.logger.info(f"{self.env.now}:{self.ID}:Supplier:{supplier.source.name} is disrupted. Order not placed.")
+        self.order_placed = False
+        
+    
+    def ss_replenishment(self, s):
+        """
+        Monitored inventory replenishment policy (s,S): s represents the reorder point and S represents the inventory capacity. 
+        Behavior: Replenish the inventory from the suppliers whenever the inventory level is below the reorder point (s). 
+
+        Parameters:
+            s (int): reorder point
+
+        Returns:
+            None
+        """
+        while True:
+            yield self.env.timeout(1)
+            if(self.inventory.inventory.level < s):
+                # reorder quantity is calculated based on the remaining capacity of the inventory
+                reorder_quantity = self.inventory.inventory.capacity - self.inventory.inventory.level
+                if(reorder_quantity>0):
+                    # choose a supplier to replenish the inventory based on the availablity of the product
+                    # check availablity of the product at suppliers
+                    for supplier in self.suppliers:
+                        if(supplier.source.inventory.inventory.level >= reorder_quantity and self.order_placed == False):
+                            self.order_placed = True
+                            self.env.process(self.place_order(supplier, reorder_quantity))
+                    if(self.order_placed == False):
+                        # required quantity not available at any suppliers
+                        # backlog order logic can be added here. 
+                        # Get whatever is available, and place the order for the remaining quantity from another supplier and so on.
+                        # If the required quantity is still not satisfied, then backlog the order.clear
+                        self.logger.info(f"{self.env.now}:{self.ID}:Product not available at suppliers. Required quantity:{reorder_quantity}.")
+            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.inventory.inventory.level}")
+    
+    def periodic_replenishment(self, interval, reorder_quantity):
+        """
+        Monitored inventory replenishment policy (periodic): Replenish the inventory from the suppliers at regular intervals. 
+
+        Parameters:
+            interval (int): time interval for replenishment
+
+        Returns:
+            None
+        """
+        while True:
+            yield self.env.timeout(interval)
+            if(self.inventory.inventory.level < self.inventory.inventory.capacity):
+                # choose a supplier to replenish the inventory based on the availablity of the product
+                # check availablity of the product at suppliers
+                for supplier in self.suppliers:
+                    if(supplier.source.inventory.inventory.level > reorder_quantity and self.order_placed == False):
+                        self.order_placed = True
+                        self.env.process(self.place_order(supplier, reorder_quantity))
+                if(self.order_placed == False):
+                    # required quantity not available at any suppliers
+                    # backlog order logic can be added here. 
+                    # Get whatever is available, and place the order for the remaining quantity from another supplier and so on.
+                    # If the required quantity is still not satisfied, then backlog the order.clear
+                    self.logger.info(f"{self.env.now}:{self.ID}:Product not available at suppliers. Required quantity:{reorder_quantity}.")
             self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.inventory.inventory.level}")
 
 class Manufacturer(Node):
@@ -691,6 +1171,7 @@ class Manufacturer(Node):
         env (simpy.Environment): simulation environment
         ID (str): ID of the manufacturer (alphanumeric)
         name (str): name of the manufacturer
+        node_type (str): type of the manufacturer
         capacity (int): maximum capacity of the inventory
         initial_level (int): initial inventory level
         inventory_holding_cost (float): inventory holding cost
@@ -698,7 +1179,6 @@ class Manufacturer(Node):
         suppliers (list): list of suppliers from which the manufacturer can replenish inventory
         replenishment_policy (str): replenishment policy for the inventory
         policy_param (list): parameters for the replenishment policy
-        isolated_logger (bool): flag to enable/disable isolated logger
         **kwargs: additional keyword arguments for logger
 
     Functions:
@@ -728,6 +1208,8 @@ class Manufacturer(Node):
                  inventory_holding_cost: float, 
                  product_sell_price: float, 
                  product: Product = default_product, 
+                 inventory_type: str = "non-perishable",
+                 shelf_life: int = 0,
                  replenishment_policy: str = "sS", 
                  policy_param: list = [], 
                  **kwargs) -> None:
@@ -735,9 +1217,16 @@ class Manufacturer(Node):
         Initialize the manufacturer object.
 
         Parameters:
-            env (simpy.Environment): simulation environment
-            ID (str): ID of the manufacturer (alphanumeric)
-            name (str): name of the manufacturer
+            capacity (int): maximum capacity of the inventory
+            initial_level (int): initial inventory level
+            inventory_holding_cost (float): inventory holding cost
+            product_sell_price (float): sell price of the product
+            product (Product): product manufactured by the manufacturer
+            replenishment_policy (str): replenishment policy for the inventory
+            policy_param (list): parameters for the replenishment policy
+            **kwargs: additional keyword arguments for logger
+
+        Attributes:
             capacity (int): maximum capacity of the inventory
             initial_level (int): initial inventory level
             inventory_holding_cost (float): inventory holding cost
@@ -745,8 +1234,17 @@ class Manufacturer(Node):
             suppliers (list): list of suppliers from which the manufacturer can replenish inventory
             replenishment_policy (str): replenishment policy for the inventory
             policy_param (list): parameters for the replenishment policy
+            product_order_placed (bool): order status for the product
+            inventory (Inventory): inventory of the manufacturer
+            materials_available (bool): flag to check if raw materials are available
+            production_cycle (bool): production cycle status
+            raw_inventory_counts (dict): dictionary to store inventory counts for raw products inventory
+            order_placed (dict): dictionary to store order status
+            total_products_manufactured (int): total products manufactured
+            total_manufacturing_cost (float): total cost of the products manufactured
+            total_profit (float): total profit from the products manufactured
+            revenue (float): revenue from the products sold
             isolated_logger (bool): flag to enable/disable isolated logger
-            **kwargs: additional keyword arguments for logger
 
         Returns:
             None
@@ -770,7 +1268,7 @@ class Manufacturer(Node):
         self.raw_inventory_counts = {} # dictionary to store inventory counts for raw products inventory
         self.order_placed = {} # dictionary to store order status
         self.product_order_placed = False # order status for the product
-        self.inventory = Inventory(env=self.env, capacity=self.capacity, initial_level=self.initial_level, replenishment_policy=self.replenishment_policy)
+        self.inventory = Inventory(env=self.env, capacity=self.capacity, initial_level=self.initial_level, type=inventory_type, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life)
         
         if(self.replenishment_policy == "sS"):
             self.env.process(self.ss_replenishment(s=self.policy_param[0])) # start the inventory replenishment process
@@ -813,7 +1311,7 @@ class Manufacturer(Node):
             dict: dictionary containing details of the manufacturer
         """
         info = {"ID": self.ID, "name": self.name, "product": self.product.get_info(), 
-                "inventory": self.inventory.get_info(), 
+                "inventory": self.inventory.get_info(),
                 "inventory_replenishment_policy": self.replenishment_policy, 
                 "policy_param": self.policy_param}
         return info
@@ -834,10 +1332,11 @@ class Manufacturer(Node):
             if(self.product):
                 self.total_manufacturing_cost = self.total_products_manufactured * self.product.manufacturing_cost
                 self.revenue = self.total_products_sold * self.product.sell_price
+        
             self.total_profit = self.total_products_sold * self.profit # profit = sell price - buy price (profit per product unit)
-            
-            self.node_cost = self.inventory_cost + self.transportation_cost # manufacturing cost is included when calculating the buy price
-            self.net_profit += self.total_profit - self.node_cost
+            self.node_cost = self.inventory_cost + sum([x[1] for x in self.transportation_cost]) # manufacturing cost is included when calculating the buy price
+            self.net_profit = self.total_profit - self.node_cost
+            #print(f"{self.ID}:{self.env.now}: product sold = {self.total_products_sold}, profit= {self.total_profit}, inventory cost = {self.inventory_cost}, transportation cost = {sum([x[1] for x in self.transportation_cost])}, node cost = {self.node_cost}, net profit = {self.net_profit}")
     
     def get_statistics(self):
         """
@@ -849,11 +1348,17 @@ class Manufacturer(Node):
         Returns:
             dict: dictionary containing statistics for the manufacturer
         """
-        return {"total_products_manufactured": self.total_products_manufactured, "total_manufacturing_cost": self.total_manufacturing_cost, "total_profit": self.total_profit, "products_sold": self.products_sold, "total_products_sold": self.total_products_sold, "revenue": self.revenue, "inventory_cost": self.inventory_cost, "tranportation_cost": self.transportation_cost, "node_cost": self.node_cost, "net_profit": self.net_profit}    
+        return {"total_products_manufactured": self.total_products_manufactured, "total_manufacturing_cost": self.total_manufacturing_cost, "total_profit": self.total_profit, "products_sold": self.products_sold, "total_products_sold": self.total_products_sold, "revenue": self.revenue, "inventory_cost": self.inventory_cost, "tranportation_cost": sum([x[1] for x in self.transportation_cost]), "node_cost": self.node_cost, "net_profit": self.net_profit}    
 
     def manufacture_product(self):
         """
         Manufacture the product.
+
+        This method handles the production of the product, consuming raw materials
+        and adding the manufactured product to the inventory.
+
+        Returns:
+            None
         """
         self.production_cycle = True
         # produce the product
@@ -868,10 +1373,16 @@ class Manufacturer(Node):
         self.logger.info(f"{self.env.now}:{self.ID}: {self.product.units_per_cycle} units manufactured.")
         # put the product units in the inventory
         if(self.inventory.inventory.level + self.product.units_per_cycle <= self.inventory.inventory.capacity):
-            self.inventory.inventory.put(self.product.units_per_cycle)
+            if(self.inventory.type == "perishable"):
+                self.inventory.inventory.put(self.product.units_per_cycle, manufacturing_date=self.env.now)
+            else:
+                self.inventory.inventory.put(self.product.units_per_cycle)
         elif(self.inventory.inventory.capacity>self.inventory.inventory.level):
             self.logger.info(f"{self.env.now}:{self.ID}:Inventory full, product not added.")
-            self.inventory.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level)
+            if(self.inventory.type == "perishable"):
+                self.inventory.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level, manufacturing_date=self.env.now)
+            else:
+                self.inventory.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level)
         self.logger.info(f"{self.env.now}:{self.ID}: Product inventory levels:{self.inventory.inventory.level}")
         # update statistics
         self.total_products_manufactured += self.product.units_per_cycle
@@ -923,7 +1434,8 @@ class Manufacturer(Node):
         Place an order for raw materials from the suppliers.
 
         Parameters:
-            order_quantity (int): quantity of raw material to order
+            raw_material (str): The ID of the raw material to order.
+            reorder_quantity (int): The quantity of the raw material to reorder.
 
         Returns:
             None
@@ -935,7 +1447,7 @@ class Manufacturer(Node):
                     yield supplier.source.inventory.inventory.get(reorder_quantity)
                     self.logger.info(f"{self.env.now}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")                
                     # update the transportation cost at the supplier
-                    supplier.source.transportation_cost += supplier.cost
+                    supplier.source.transportation_cost.append((self.env.now,supplier.cost))
                     # update the product sold at the raw material supplier
                     supplier.source.total_raw_materials_sold += reorder_quantity
                     supplier.source.total_products_sold += reorder_quantity
@@ -1001,246 +1513,6 @@ class Manufacturer(Node):
                     self.env.process(self.place_order(raw_material["raw_material"].ID, reorder_quantity_raw)) # place the order
             self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.raw_inventory_counts}")
 
-class InventoryNode(Node):
-    """
-    InventoryNode class represents an inventory node in the supply network.
-
-    Parameters:
-        env (simpy.Environment): simulation environment
-        ID (str): ID of the inventory node (alphanumeric)
-        name (str): name of the inventory node
-        node_type (str): type of the inventory node (retailer or distributor)
-        capacity (int): maximum capacity of the inventory
-        initial_level (int): initial inventory level
-        inventory_holding_cost (float): inventory holding cost
-        suppliers (list): list of supplier links from which the inventory node can replenish inventory
-        replenishment_policy (str): replenishment policy for the inventory
-        policy_param (list): parameters for the replenishment policy
-        product (Product): product that the inventory node sells
-
-    Functions:
-        __init__: initializes the inventory node object
-        __str__: returns the name of the inventory node
-        __repr__: returns the name of the inventory node
-        get_info: returns a dictionary containing details of the inventory node
-        calculate_statistics: calculate statistics for the inventory node
-        get_statistics: get statistics for the inventory node
-        place_order: place an order for the product from the suppliers
-        ss_replenishment: monitored inventory replenishment policy (s,S)
-        periodic_replenishment: monitored inventory replenishment policy (periodic)
-    """
-
-    def __init__(self,
-                 node_type: str, 
-                 capacity: int, 
-                 initial_level: int, 
-                 inventory_holding_cost:float, 
-                 replenishment_policy: str = "sS", 
-                 product_sell_price: float = 0.0, 
-                 policy_param: list = [2], 
-                 product:Product = None,
-                 **kwargs) -> None:
-        """
-        Initialize the inventory node object.
-
-        Parameters:
-            env (simpy.Environment): simulation environment
-            ID (str): ID of the inventory node (alphanumeric)
-            name (str): name of the inventory node
-            inventory (Inventory): inventory object
-            node_type (str): type of the inventory node (retailer or distributor)
-            capacity (int): maximum capacity of the inventory
-            initial_level (int): initial inventory level
-            suppliers (list): list of supplier links from which the inventory node can replenish inventory
-            replenishment_policy (str): replenishment policy for the inventory
-            policy_param (list): parameters for the replenishment policy
-
-        Returns:
-            None
-
-        Behavior:
-            The inventory node sells the product to the customers. It replenishes the inventory from the suppliers according to the replenishment policy. 
-            The inventory node can have multiple suppliers. It chooses a supplier based on the availability of the product at the suppliers.
-            The product buy price is set to the sell price of the supplier. The inventory node sells the product at a higher price than the buy price.
-            By default, the sell price is set to 5% more than the buy price. The product sell price can be set by the user, if required.
-        """
-        if(capacity <= 0):
-            global_logger.logger.error("Inventory capacity cannot be zero or negative.")
-            raise ValueError("Capacity cannot be negative.")
-        if(initial_level < 0):
-            global_logger.logger.error("Initial level cannot be negative.")
-            raise ValueError("Initial level cannot be negative.")
-        if(inventory_holding_cost <= 0):
-            global_logger.logger.error("Inventory holding cost cannot be zero or negative.")
-            raise ValueError("Inventory holding cost cannot be negative.")
-        if(capacity < initial_level):
-            global_logger.logger.error("Initial level cannot be greater than capacity.")
-            raise ValueError("Initial level cannot be greater than capacity.")        
-
-        super().__init__(node_type=node_type,**kwargs)
-        self.node_type = node_type
-        self.capacity = capacity
-        self.initial_level = initial_level
-        self.inventory_holding_cost = inventory_holding_cost
-        self.suppliers = []
-        self.replenishment_policy = replenishment_policy
-        self.policy_param = policy_param
-        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, replenishment_policy=replenishment_policy)
-        self.product = copy.deepcopy(product) # product that the inventory node sells
-        if(self.product):
-            self.product.sell_price = product_sell_price
-            self.product.buy_price = 0 # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
-        self.order_placed = False # flag to check if the order is placed
-    
-        if(self.replenishment_policy == "sS"):
-            self.env.process(self.ss_replenishment(s=self.policy_param[0]))
-        elif(self.replenishment_policy == "periodic"):
-            self.env.process(self.periodic_replenishment(interval=self.policy_param[0], reorder_quantity=self.policy_param[1]))
-
-        # statistics
-        self.total_product_cost = 0 # total cost of buying products (units) at this node
-        self.total_revenue = 0 # total revenue from the products sold
-        self.total_profit = 0 # total profit from the products sold
-        self.env.process(self.calculate_statistics()) # calculate statistics
-    
-    def __str__(self):
-        return self.name
-    
-    def __repr__(self):
-        return self.name
-    
-    def get_info(self):
-        """
-        Get the details of the inventory node.
-
-        Parameters:
-            None
-
-        Returns:
-            dict: dictionary containing details of the inventory node
-        """
-        if(self.product):
-            info = {"ID": self.ID, "name": self.name, "node_type": self.node_type, "product": self.product.get_info(), "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
-        else:
-            info = {"ID": self.ID, "name": self.name, "node_type": self.node_type, "inventory": self.inventory.get_info(), "inventory_replenishment_policy": self.replenishment_policy, "policy_param": self.policy_param}
-        return info
-    def calculate_statistics(self):
-        """
-        Calculate statistics for the inventory node.
-
-        Parameters:
-            None
-
-        Returns:
-            None
-        """
-        while True:
-            # reset the products sold in the current cycle
-            self.products_sold = 0
-            yield self.env.timeout(1)
-            if(self.product):
-                if(self.product.sell_price == 0):
-                    self.product.sell_price = self.product.buy_price + 0.05 * self.product.buy_price
-                self.total_product_cost += self.products_sold * self.product.buy_price
-                self.total_revenue = self.total_products_sold * self.product.sell_price
-            self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
-            self.total_profit = self.total_revenue - self.total_product_cost
-            self.node_cost = self.inventory_cost + self.transportation_cost
-            self.net_profit = self.total_profit - self.node_cost
-
-    def get_statistics(self):
-        """
-        Get statistics for the inventory node.
-
-        Parameters:
-            None
-
-        Returns:
-            dict: dictionary containing statistics for the inventory node
-        """
-        return {"total_products_sold": self.total_products_sold, "products_sold": self.products_sold, "total_product_cost": self.total_product_cost, "total_revenue": self.total_revenue, "total_profit": self.total_profit, "inventory_cost": self.inventory_cost, "transportation_cost": self.transportation_cost, "node_cost": self.node_cost, "net_profit": self.net_profit}
-
-    def place_order(self, supplier, reorder_quantity):
-        """
-        Place an order for the product from the suppliers.
-
-        Parameters:
-            s (int): reorder point
-
-        Returns:
-            None
-        """
-        if(supplier.source.node_status == "active"):
-            self.logger.info(f"{self.env.now}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
-            yield supplier.source.inventory.inventory.get(reorder_quantity) # get the product from the supplier inventory
-            if(self.product):
-                # update the product costs
-                self.product.buy_price = supplier.source.product.sell_price
-            # update the transportation cost at the supplier
-            supplier.source.transportation_cost += supplier.cost
-            # update the product sold at the supplier
-            supplier.source.products_sold = reorder_quantity
-            supplier.source.total_products_sold += reorder_quantity
-            # log the shipment
-            self.logger.info(f"{self.env.now}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
-            yield self.env.timeout(supplier.lead_time()) # lead time for the order
-            self.inventory.inventory.put(reorder_quantity)
-            self.logger.info(f"{self.env.now}:{self.ID}:Inventory replenished. Inventory levels:{self.inventory.inventory.level}")
-        else:
-            self.logger.info(f"{self.env.now}:{self.ID}:Supplier:{supplier.source.name} is disrupted. Order not placed.")
-        self.order_placed = False
-        
-    
-    def ss_replenishment(self, s):
-        """
-        Monitored inventory replenishment policy (s,S): s represents the reorder point and S represents the inventory capacity. 
-        Behavior: Replenish the inventory from the suppliers whenever the inventory level is below the reorder point (s). 
-
-        Parameters:
-            s (int): reorder point
-
-        Returns:
-            None
-        """
-        while True:
-            yield self.env.timeout(1)
-            if(self.inventory.inventory.level < s):
-                # reorder quantity is calculated based on the remaining capacity of the inventory
-                reorder_quantity = self.inventory.inventory.capacity - self.inventory.inventory.level
-                # choose a supplier to replenish the inventory based on the availablity of the product
-                # check availablity of the product at suppliers
-                for supplier in self.suppliers:
-                    if(supplier.source.inventory.inventory.level >= reorder_quantity and self.order_placed == False):
-                        self.order_placed = True
-                        self.env.process(self.place_order(supplier, reorder_quantity))
-                if(self.order_placed == False):
-                    # required quantity not available at any suppliers
-                    # backlog order logic can be added here. 
-                    # Get whatever is available, and place the order for the remaining quantity from another supplier and so on.
-                    # If the required quantity is still not satisfied, then backlog the order.clear
-                    self.logger.info(f"{self.env.now}:{self.ID}:Product not available at suppliers. Required quantity:{reorder_quantity}.")
-            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.inventory.inventory.level}")
-    
-    def periodic_replenishment(self, interval, reorder_quantity):
-        """
-        Monitored inventory replenishment policy (periodic): Replenish the inventory from the suppliers at regular intervals. 
-
-        Parameters:
-            interval (int): time interval for replenishment
-
-        Returns:
-            None
-        """
-        while True:
-            yield self.env.timeout(interval)
-            if(self.inventory.inventory.level < self.inventory.inventory.capacity):
-                # choose a supplier to replenish the inventory based on the availablity of the product
-                # check availablity of the product at suppliers
-                for supplier in self.suppliers:
-                    if(supplier.source.inventory.inventory.level > reorder_quantity and self.order_placed == False):
-                        self.order_placed = True
-                        self.env.process(self.place_order(supplier, reorder_quantity))
-
 class Demand(Node):
     """
     Demand class represents a demand node in the supply network.
@@ -1252,6 +1524,16 @@ class Demand(Node):
         order_arrival_model (function): function that models order arrivals
         order_quantity_model (function): function that models order quantity
         demand_node (Node): node at which the demand is generated
+        tolerance (float): customer tolerance for waiting for the order
+
+    Attributes:
+        order_arrival_model (function): function that models order arrivals
+        order_quantity_model (function): function that models order quantity
+        demand_node (Node): node at which the demand is generated
+        customer_tolerance (float): customer tolerance for waiting for the order
+        total_products_sold (int): total products sold
+        unsatisfied_demand (int): unsatisfied demand
+        shortage (int): shortage
 
     Functions:
         __init__: initializes the demand node object
@@ -1261,7 +1543,7 @@ class Demand(Node):
         behavior: generates demand by calling the order arrival and order quantity models
     """
 
-    def __init__(self, 
+    def __init__(self,
                  order_arrival_model: callable, 
                  order_quantity_model: callable, 
                  demand_node: Node,
@@ -1302,9 +1584,9 @@ class Demand(Node):
         self.customer_tolerance = tolerance
         self.env.process(self.behavior())
 
-        self.total_products_sold = 0
-        self.unsatisfied_demand = 0
-        self.shortage = 0
+        self.product_sold = [] # list to store the product sold everyday
+        self.unsatisfied_demand = [] # list to store the unsatisfied demand
+        self.shortage = []
 
     def __str__(self):
         """
@@ -1356,39 +1638,55 @@ class Demand(Node):
 
     def wait_for_order(self,order_quantity):
         """
+        Wait for the order to arrive based on customer tolerance.
 
+        If the customer tolerance is infinite, the method waits until the order is fulfilled.
+        Otherwise, it waits for the specified tolerance time and updates the unsatisfied demand if the order is not fulfilled.
+
+        Parameters:
+            order_quantity (int): The quantity of the product ordered.
+
+        Returns:
+            None
         """
         if(self.customer_tolerance==float('inf')): # wait for the order to arrive
-            yield self.demand_node.inventory.inventory.get(order_quantity)
+            if(self.demand_node.inventory.type=="perishable"):
+                get_event, man_date_ls = self.demand_node.inventory.inventory.get(order_quantity)
+                yield get_event
+            else:
+                self.logger.info(f"{self.env.now}:{self.ID}:{order_quantity} units are not available at the moment, waiting!")
+                yield self.demand_node.inventory.inventory.get(order_quantity)
             self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
             # update statistics
-            self.total_products_sold += order_quantity
+            self.product_sold.append((self.env.now, order_quantity))
             self.demand_node.products_sold = order_quantity
-            self.demand_node.total_products_sold += order_quantity
             return
         
         wait_time = 0
         while(wait_time<self.customer_tolerance):
-            wait_time += 1
-            yield self.env.timeout(1)
+            if(self.customer_tolerance<1):
+                wait_time += self.customer_tolerance
+                yield self.env.timeout(self.customer_tolerance)
+            else:
+                wait_time += 1
+                yield self.env.timeout(1)
             if(order_quantity <= self.demand_node.inventory.inventory.level):
-                self.demand_node.inventory.inventory.get(order_quantity)
-                self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
+                yield self.demand_node.inventory.inventory.get(order_quantity)
+                self.logger.info(f"{self.env.now}:{self.ID}:Remaining demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
                 # update statistics
-                self.total_products_sold += order_quantity
+                self.product_sold.append((self.env.now, order_quantity))
                 self.demand_node.products_sold = order_quantity
-                self.demand_node.total_products_sold += order_quantity
                 return
                 
-        self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}.")
-        self.unsatisfied_demand += order_quantity
+        self.logger.info(f"{self.env.now}:{self.ID}:Remaining demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}.")
+        self.unsatisfied_demand.append((self.env.now, order_quantity))
 
     def behavior(self):
         """
         Generate demand by calling the order arrival and order quantity models.
 
-        Parameters:
-            env (simpy.Environment): simulation environment
+        This method simulates the demand generation process, including order placement
+        and handling shortages or unsatisfied demand.
 
         Returns:
             None
@@ -1397,18 +1695,35 @@ class Demand(Node):
             order_time = self.order_arrival_model()
             order_quantity = self.order_quantity_model()
             if(order_quantity <= self.demand_node.inventory.inventory.level):
-                self.demand_node.inventory.inventory.get(order_quantity)
+                if(self.demand_node.inventory.type=="perishable"):
+                    get_eve, man_date_ls = self.demand_node.inventory.inventory.get(order_quantity)
+                    yield get_eve
+                else:
+                    yield self.demand_node.inventory.inventory.get(order_quantity)
                 self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
                 # update statistics
-                self.total_products_sold += order_quantity
+                self.product_sold.append((self.env.now, order_quantity))
                 self.demand_node.products_sold = order_quantity
                 self.demand_node.total_products_sold += order_quantity
             elif(self.customer_tolerance>0):
-                self.shortage += order_quantity
-                self.env.process(self.wait_for_order(order_quantity))
+                self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}. Consume available, shortage:{order_quantity-self.demand_node.inventory.inventory.level}.")  
+                order_quantity = order_quantity - self.demand_node.inventory.inventory.level # calculate the remaining quantity to order
+                # set stats for the demand node
+                self.demand_node.products_sold = self.demand_node.inventory.inventory.level
+                self.demand_node.total_products_sold += self.demand_node.inventory.inventory.level
+                # consume available quantity
+                if(self.demand_node.inventory.inventory.level>0):
+                    if(self.demand_node.inventory.type=="perishable"):
+                        get_eve, man_date_ls = self.demand_node.inventory.inventory.get(self.demand_node.inventory.inventory.level)
+                        yield get_eve
+                    else:
+                        yield self.demand_node.inventory.inventory.get(self.demand_node.inventory.inventory.level) # consume available quantity
+                self.shortage.append((self.env.now, order_quantity)) # record the shortage
+                self.env.process(self.wait_for_order(order_quantity)) # wait for the order to arrive
             else:
-                self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}.")
-                self.unsatisfied_demand += order_quantity            
+                self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}. No tolerance, shortage:{order_quantity-self.demand_node.inventory.inventory.level}.")
+                self.shortage.append((self.env.now, order_quantity-self.demand_node.inventory.inventory.level)) # record the shortage
+                self.unsatisfied_demand.append((self.env.now, order_quantity))
             yield self.env.timeout(order_time)
 
 if __name__ == "__main__": 
@@ -1431,13 +1746,13 @@ if __name__ == "__main__":
     
     # create a manufacturer
     manufacturer1 = Manufacturer(env=env, ID="M1", name="Manufacturer 1", product=default_product,
-                                 capacity=500, initial_level=300, inventory_holding_cost=3, 
-                                 replenishment_policy="sS", policy_param=[200], product_sell_price=300)
+                                 capacity=500, initial_level=300, inventory_holding_cost=3, inventory_type="perishable",
+                                 shelf_life=10, replenishment_policy="sS", policy_param=[200], product_sell_price=300)
     
     # create a distributor
     distributor1 = InventoryNode(env=env,ID="D1", name="Distributor 1", node_type="distributor", 
-                                 capacity=300, initial_level=50, inventory_holding_cost=3, product=default_product,
-                                 replenishment_policy="sS", policy_param=[30], product_sell_price=350)
+                                 capacity=300, initial_level=50, inventory_holding_cost=3, product=default_product, inventory_type="perishable",
+                                 shelf_life=10, replenishment_policy="sS", policy_param=[30], product_sell_price=350)
 
     # create a demand node
     demand_dis = Demand(env=env,ID="demand_D1", name="Demand 1", order_arrival_model=lambda: 1, order_quantity_model=lambda: 10, demand_node=distributor1)
@@ -1467,14 +1782,14 @@ if __name__ == "__main__":
     # get statistics
     for node in nodes:
         sc_net_inventory_cost += node.inventory_cost
-        sc_net_transport_cost += node.transportation_cost
+        sc_net_transport_cost += sum([x[1] for x in node.transportation_cost])
         sc_net_node_cost += node.node_cost
         sc_net_profit += node.net_profit
         global_logger.logger.info(f"{node.name}: statistics:\n{node.get_statistics()}")
 
     for demand in demands:
         sc_total_unit_sold += demand.total_products_sold
-        sc_total_unsatisfied_demand += demand.unsatisfied_demand
+        sc_total_unsatisfied_demand += sum([x[1] for x in demand.unsatisfied_demand])
 
     global_logger.logger.info(f"Deafult product details: {default_product.get_info()}")
     global_logger.logger.info(f"Deafult raw material details: {default_raw_material.get_info()}")
