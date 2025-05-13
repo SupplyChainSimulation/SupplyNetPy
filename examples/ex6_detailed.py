@@ -1,12 +1,12 @@
 # A detailed example of a supply chain network including raw products, products 
 
 # local import for testing
-# import sys, os
-# sys.path.insert(1, 'src/SupplyNetPy/Components')
-# import core as scm
-# import utilities as scm
+import sys, os
+sys.path.insert(1, 'src/SupplyNetPy/Components')
+import core as scm
+import utilities as scm
 
-import SupplyNetPy.Components as scm
+# import SupplyNetPy.Components as scm
 import simpy
 
 env = simpy.Environment()

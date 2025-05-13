@@ -1,59 +1,73 @@
 # # local import for testing
-# import sys, os
-# sys.path.insert(1, 'src/SupplyNetPy/Components')
-# import core as scm
-# import utilities as scm
+import sys, os
+sys.path.insert(1, 'src/SupplyNetPy/Components')
+import core as scm
+import utilities as scm
+import numpy as np
+
+# import SupplyNetPy.Components as scm
 
 # import the library
 import matplotlib.pyplot as plt
-import SupplyNetPy.Components as scm
+
+class Distributions:
+    def __init__(self, mean, std, lam, low, high):
+        self.mean = mean
+        self.std = std
+        self.lam = lam
+        self.low = low
+        self.high = high
+
+    def normal(self):
+        sample = np.random.normal(self.mean, self.std, 1)
+        if(sample<0):
+            sample = self.mean
+        return sample
+    
+    def poisson(self):
+        sample = np.random.poisson(self.lam, 1)
+        return sample
+    
+    def uniform(self):
+        sample = np.random.uniform(self.low, self.high, 1)
+        return sample
+
+distri = Distributions(mean=20, std=5, lam=1, low=1, high=5)
 
 # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
 nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
-            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 800, 'initial_level': 500, 'inventory_holding_cost': 0.1, 'replenishment_policy': 'sS', 'policy_param': [300],'product_sell_price': 350},
-            {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 400, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': 'sS', 'policy_param': [100],'product_sell_price': 360}
+            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 800, 'initial_level': 500, 'inventory_holding_cost': 0.1, 'replenishment_policy': 'sS', 'policy_param': [300],'product_sell_price': 345},
+            {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 500, 'initial_level': 200, 'inventory_holding_cost': 1, 'replenishment_policy': 'sS', 'policy_param': [100],'product_sell_price': 348}
 ]
 
 # ID, from_node, to_node, transportation_cost, lead_time
-links = [{'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 80, 'lead_time': lambda: 1},
-            {'ID': 'L2', 'source': 'M1', 'sink': 'D1', 'cost': 100, 'lead_time': lambda: 2}
+links = [{'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 50, 'lead_time': distri.uniform},
+            {'ID': 'L2', 'source': 'M1', 'sink': 'D1', 'cost': 60, 'lead_time': distri.uniform}
 ]
 
 # ID, name, node_type, order_arrival_model, order_quantity_model, demand_node
-demands = [{'ID': 'demand_D1', 'name': 'Demand 1', 'node_type': 'demand', 'order_arrival_model': lambda: 0.09, 'order_quantity_model': lambda: 1, 'demand_node': 'D1'}]
-
-# an empty list to hold net_profit of different simulation results
-net_profit = []
-unsat_demand = []
-product_sold = []
-sc_total_cost = []
-inv_costs = []
-transport_costs = []
-node_profit = []
-node_inv_cost = []
-node_costs = []
-node_products_sold = []
-man_inv_cost = []
-man_trans_cost = []
-man_cost = []
-man_profit = []
-man_product_sold = []
+demands = [{'ID': 'demand_D1', 'name': 'Demand 1', 'node_type': 'demand', 'order_arrival_model': lambda: 1, 'order_quantity_model': distri.normal, 'demand_node': 'D1'}]
 
 # let us disable the logging, since we are doing multiple simulations
-#scm.global_logger.disable_logging()
-scm.global_logger.enable_logging(log_to_screen=False)
+scm.global_logger.disable_logging()
 
 scm.default_product.manufacturing_time = 4
 scm.default_product.manufacturing_cost = 340
-print(scm.default_product.get_info())
-print(scm.default_raw_material.get_info())
+print("Default product info:",scm.default_product.get_info())
+print("Default raw material info:",scm.default_raw_material.get_info())
 
 # inventory replenishment parameter for D1 (Note: Ss replenishment: check inventory levels every day, if it goes below threshold 's' then order to replenish it back to capacity 'S')
 start = 10
-end = 400
+end = 500
 step = 10
 simulation_period = 120
 s = start
+
+inv_costs = []
+node_costs = []
+net_profits = []
+d1_inv_costs = []
+d1_net_profits = []
 while(s<end):
     # change 's' for 'D1'
     nodes[2]['policy_param'] = [s]
@@ -62,76 +76,51 @@ while(s<end):
     supplychainnet = scm.create_sc_net(nodes, links, demands)
     supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=simulation_period)
     # record the perfomance of the model (in our case, the sc_profit)
-    net_profit.append(supplychainnet['performance']['sc_profit'])
-    unsat_demand.append(supplychainnet['performance']['total_unsatisfied_demand'])
-    product_sold.append(supplychainnet['performance']['total_product_sold'])
-    inv_costs.append(supplychainnet['performance']['sc_inv_cost'])
-    sc_total_cost.append(supplychainnet['performance']['sc_total_cost'])
-    transport_costs.append(supplychainnet['performance']['sc_tranport_cost'])
-    node_inv_cost.append(supplychainnet['nodes'][2].inventory_cost)
-    node_costs.append(supplychainnet['nodes'][2].node_cost)
-    node_profit.append(supplychainnet['nodes'][2].net_profit)
-    node_products_sold.append(supplychainnet['nodes'][2].total_products_sold)
-    man_inv_cost.append(supplychainnet['nodes'][1].inventory_cost)
-    man_trans_cost.append(supplychainnet['nodes'][1].transportation_cost)
-    man_cost.append(supplychainnet['nodes'][1].node_cost)
-    man_profit.append(supplychainnet['nodes'][1].net_profit)
-    man_product_sold.append(supplychainnet['nodes'][1].total_products_sold)
+    inv_costs.append(supplychainnet["nodes"][1].inventory_cost)
+    node_costs.append(supplychainnet["nodes"][1].node_cost)
+    net_profits.append(supplychainnet["nodes"][1].net_profit)
+
+    d1 = supplychainnet["nodes"][2]
+    d1_inv_cost = sum([x[1] for x in d1.inventory.instantaneous_levels])
+    d1_inv_costs.append(d1_inv_cost)
+
+    d1_profit = sum([x[1] for x in d1.products_sold_daily])*d1.sell_price
+    d1_net_profits.append(d1_inv_cost-d1_profit)
+    
     # next value for 's', the inventory parameter
     s += step
     del supplychainnet
 
-plt.subplot(3, 3, 1)
-plt.plot(range(start,end,step),man_inv_cost,label='M1 Inv cost',marker='.', linestyle='-', color='b')
-plt.xlabel('Inventory Replenishment Parameter (D1)')
-plt.ylabel('M1 Inv cost')
+plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+plt.subplot(2, 2, 1)
+plt.plot(range(start, end, step), inv_costs, label='M1 Inventory Cost')
+plt.ylabel('Inventory cost')
+
 plt.legend()
 
-plt.subplot(3, 3, 2)
-plt.plot(range(start,end,step),man_cost,label='M1 node cost',marker='.', linestyle='-', color='b')
-plt.xlabel('Inventory Replenishment Parameter (D1)')
-plt.ylabel('M1 node cost')
+plt.subplot(2, 2, 2)
+plt.plot(range(start, end, step), node_costs, label='M1 Node Cost')    
+plt.ylabel('Node cost')
+
 plt.legend()
 
-plt.subplot(3, 3, 3)
-plt.plot(range(start,end,step),man_profit,label='M1 net profit',marker='.', linestyle='-', color='b')
-plt.xlabel('Inventory Replenishment Parameter (D1)')
-plt.ylabel('M1 net profit')
+plt.subplot(2, 2, 3)
+plt.plot(range(start, end, step), net_profits, label='M1 Net Profit')
+plt.xlabel('Replenishment Parameter (s)')
+plt.ylabel('Net Profit')
 plt.legend()
 
-plt.subplot(3, 3, 4)
-plt.plot(range(start,end,step),node_inv_cost,label='D1 Inv cost',marker='.', linestyle='-', color='b')
-plt.xlabel('Inventory Replenishment Parameter (D1)')
-plt.ylabel('D1 Inv cost')
+plt.figure()
+plt.subplot(2, 1, 1)
+plt.plot(range(start, end, step), d1_inv_costs, label='D1 Inventory Cost')
+plt.ylabel('Inventory cost')
 plt.legend()
 
-plt.subplot(3, 3, 5)
-plt.plot(range(start,end,step),node_costs,label='D1 node cost',marker='.', linestyle='-', color='b')
-plt.xlabel('Inventory Replenishment Parameter (D1)')
-plt.ylabel('D1 node cost')
+plt.subplot(2, 1, 2)
+plt.plot(range(start, end, step), d1_net_profits, label='D1 Net Profit')    
+plt.xlabel('Replenishment Parameter (s)')
+plt.ylabel('Net Profit')
 plt.legend()
+plt.suptitle('Inventory Cost and Net Profit for M1 and D1 with different s values')
 
-plt.subplot(3, 3, 6)
-plt.plot(range(start,end,step),node_profit,label='D1 net profit',marker='.', linestyle='-', color='b')
-plt.xlabel('Inventory Replenishment Parameter (D1)')
-plt.ylabel('D1 net profit')
-plt.legend()
-
-plt.subplot(3, 3, 7)
-plt.plot(range(start,end,step),inv_costs,label='sc inv cost',marker='.', linestyle='-', color='b')
-plt.xlabel('Inventory Replenishment Parameter (D1)')
-plt.ylabel('sc inv cost')
-plt.legend()
-
-plt.subplot(3, 3, 8)
-plt.plot(range(start,end,step),sc_total_cost,label='SC total cost',marker='.', linestyle='-', color='b')
-plt.xlabel('Inventory Replenishment Parameter (D1)')
-plt.ylabel('SC total cost')
-plt.legend()
-
-plt.subplot(3, 3, 9)
-plt.plot(range(start,end,step),net_profit,label='sc net_profit',marker='.', linestyle='-', color='b')
-plt.xlabel('Inventory Replenishment Parameter (D1)')
-plt.ylabel('sc tnet_profit')
-plt.legend()
 plt.show()

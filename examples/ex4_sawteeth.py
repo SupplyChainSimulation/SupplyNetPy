@@ -2,16 +2,16 @@
 # and measures the time taken to run a single simulation
 
 # local import for testing
-# import sys, os
-# sys.path.insert(1, 'src/SupplyNetPy/Components')
-# import core as scm
-# import utilities as scm
+import sys, os
+sys.path.insert(1, 'src/SupplyNetPy/Components')
+import core as scm
+import utilities as scm
 
 import simpy
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-import SupplyNetPy.Components as scm
+# import SupplyNetPy.Components as scm
 
 class Demand_dist:
     def __init__(self,mean=10,var=5):
@@ -121,7 +121,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
         for j in range(0, num_suppliers):
             Id = "Ls" + str(j+1) + "m" + str(i)
             cost = random.randint(1, 3)
-            lead_time = Lead_time_dist().gauss
+            lead_time = Lead_time_dist(mean=2,var=0.1).gauss
             links.append(scm.Link(env=env,ID=Id, source=nodes[j], sink=nodes[-1], cost=cost, lead_time=lead_time))
         
     for i in range(1, num_distributors+1):
@@ -138,8 +138,8 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
         
         for j in range(num_suppliers, num_suppliers+num_manufacturers):
             Id = "Lm" + str(j+1) + "d" + str(i)
-            cost = random.randint(1, 3)
-            lead_time = Lead_time_dist().gauss
+            cost = random.randint(3, 6)
+            lead_time = Lead_time_dist(mean=4,var=0.5).gauss
             links.append(scm.Link(env=env,ID=Id, source=nodes[j], sink=nodes[-1], cost=cost, lead_time=lead_time))
         
     for i in range(1, num_retailers+1):
@@ -177,7 +177,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
 # Following code is to plot inventory levels for all nodes in the supply chain network
 # this is to observe if the model is working as expected
 # sawtooth pattern should be observed for all nodes
-N = 10
+N = 4
 scm.global_logger.disable_logging()
 supplynet = generate_supply_chain(N,simtime = 1000)
 
@@ -193,10 +193,12 @@ colors = ['red','green','blue','yellow','black','orange','purple','brown','pink'
 for node in supplynet["nodes"]:
     if(node.node_type != "infinite_supplier"):
         inv_levels = np.array((node.inventory.instantaneous_levels))
-        axs[i].plot(inv_levels[:,0], inv_levels[:,1], label=node.ID, marker='.', color=colors[i%len(colors)])
+        axs[i].plot(inv_levels[:,0], inv_levels[:,1], label=node.ID, color=colors[i%len(colors)])
         axs[i].axhline(y=node.policy_param[0], color='r', linestyle='--',label=f's = {node.policy_param[0]}')  
         i += 1
 fig.legend()
+plt.xlabel('Time')
+plt.ylabel('Inventory Level')
 plt.show()
 
 scm.visualize_sc_net(supplynet)

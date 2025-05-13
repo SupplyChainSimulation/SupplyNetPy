@@ -61,14 +61,17 @@ Assumptions:
 """
 
 # Create the model
-# import sys, os
-# sys.path.insert(1, 'src/SupplyNetPy/Components')
-# import core as scm
-# import utilities as scm
+import sys, os
+sys.path.insert(1, 'src/SupplyNetPy/Components')
+import core as scm
+import utilities as scm
 
 import simpy
 import numpy as np
-import SupplyNetPy.Components as scm
+# import SupplyNetPy.Components as scm
+import matplotlib.pyplot as plt
+
+# global variables
 
 class Distributions:
     def __init__(self,mu,lam):
@@ -81,51 +84,122 @@ class Distributions:
     def expo_arrival(self):
         return np.random.exponential(self.mu)
 
-class PerishableInventory(scm.Inventory):
-    def __init__(self, env: simpy.Environment, shelf_life:int, capacity: int, initial_level: int, replenishment_policy: str) -> None:
-        super().__init__(env, capacity, initial_level, replenishment_policy)
-        self.waste = []
-        self.shelf_life = shelf_life
-        self.inventory_position = self.inventory.level
-        self.inventory_counts = [] # create a bucket to keep count of drugs according to their shelf life
-        self.env.process(self.remove_expired_drugs())
+def manufacturer_date_cal(time_now):
+    return (time_now//30)*30
 
-    def remove_expired_drugs(self):
-        while True:
-            yield self.env.timeout(30)
-            # add drugs to the shelf life bucket
-            # all drugs came in this month have the same expiration date
-            self.inventory_counts.append(self.inventory.level)
-            # remove expired drugs
-            if(len(self.inventory_counts)==3):
-                self.waste.append(self.inventory_counts[0])
-                self.inventory_counts.pop(0)
-                self.inventory.get(self.waste[-1])
+def single_sim_run(S,s,ini_level):
 
+    st = Distributions(mu=1,lam=25)
+    # create the environment
+    env = simpy.Environment()
 
-st = Distributions(mu=0.5,lam=10)
-env = simpy.Environment()
+    # create an infinite supplier
+    supplier1 = scm.Supplier(env=env, ID="S1", name="Supplier 1", node_type="infinite_supplier", failure_p=0.01)
 
-# create an infinite supplier
-supplier1 = scm.Supplier(env=env, ID="S1", name="Supplier 1", node_type="infinite_supplier")
+    #create the distributor
+    distributor1 = scm.InventoryNode(env=env, ID="D1", name="Distributor 1", node_type="distributor",
+                                    capacity=S, initial_level=ini_level, inventory_holding_cost=0.001, inventory_type="perishable",
+                                    manufactur_date = manufacturer_date_cal,
+                                    shelf_life=90, replenishment_policy="sS", policy_param=[s], product_sell_price=360)
 
-#create the distributor
-distributor1 = scm.InventoryNode(env=env, ID="D1", name="Distributor 1", node_type="distributor",
-                                 capacity=2000, initial_level=1000, inventory_holding_cost=0.001, 
-                                 replenishment_policy="sS", policy_param=[1500], product_sell_price=360)
-# set perishable inventory for it
-distributor1.inventory = PerishableInventory(env=env, shelf_life=3, capacity=2000, initial_level=1000, replenishment_policy="sS")
+    # set demand
+    demand1 = scm.Demand(env=env,ID="d1", name="demand 1", 
+                        order_arrival_model=st.expo_arrival, 
+                        order_quantity_model=st.poisson_demand, demand_node=distributor1,
+                        tolerance=float('inf'))
+    # link the nodes
+    link1 = scm.Link(env=env,ID="l1", source=supplier1, sink=distributor1, cost=0.5, lead_time=lambda: 6)
+    # create a sc net
+    #supplynet = {"nodes": [supplier1,distributor1], "links": [link1], "demand": [demand1]}
+    # run the simulation
+    env.run(until=360)
+    instantaneous_levels = np.array(distributor1.inventory.instantaneous_levels)
+    #plt.plot(instantaneous_levels[:,0], instantaneous_levels[:,1], marker='.', linestyle='-', color='b')
+    #plt.xlabel('Time (days)')
+    #plt.ylabel('Inventory Level')
+    #plt.title('Inventory Level over Time')
+    #plt.show()
+    transportation_cost = np.array(supplier1.transportation_cost)
+    transportation_cost = transportation_cost[transportation_cost[:,0]>30]
+    if(distributor1.inventory.inventory.waste):
+        waste_arr = np.array(distributor1.inventory.inventory.waste)
+    else:
+        waste_arr = np.array([[0,0]])
+    print("Shortage: ", demand1.shortage)
+    print("Waste: ", sum(waste_arr[30:,1]))
+    instantaneous_levels = instantaneous_levels[instantaneous_levels[:,0]>30]
+    print("Holding Cost: ", sum(instantaneous_levels[:,1])*0.001)
+    print("Transportation Cost: ", len(transportation_cost)*0.5)
+    print("Total Cost: ", (sum(demand1.shortage)*5 + sum(waste_arr[30:,1]) + sum(instantaneous_levels[:,1])*0.001 + len(transportation_cost)*0.5)/330)
 
-# set demand
-demand1 = scm.Demand(env=env,ID="d1", name="demand 1", 
-                    order_arrival_model=st.expo_arrival, 
-                    order_quantity_model=st.poisson_demand, demand_node=distributor1)
-# link the nodes
-link1 = scm.Link(env=env,ID="l1", source=supplier1, sink=distributor1, cost=0.5, lead_time=lambda: 6)
-# create a sc net
-supplynet = {"nodes": [supplier1,distributor1], "links": [link1], "demand": [demand1]}
+def run_for_s(s_low,s_high,s_step,capacity,ini_level,num_replications):
+    st = Distributions(mu=1,lam=25)
+    R = num_replications # number of replications
+    exp_cost_per_day = []
+    for reorder_point in range(s_low,s_high,s_step):
+        
+        # initialize the costs
+        shortage_cost = 0 #(5 units)
+        waste_cost = 0 #(1 units)
+        holding_cost = 0 #(0.001 units)
+        ordering_cost = 0 #(0.5 units)
+        
+        exp_cost_arr = []
 
+        for i in range(0,R):
+            env = simpy.Environment()
 
-# run the simulation
-env.run(until=360)
+            # create an infinite supplier
+            supplier1 = scm.Supplier(env=env, ID="S1", name="Supplier 1", node_type="infinite_supplier", failure_p=0.01)
 
+            #create the distributor
+            distributor1 = scm.InventoryNode(env=env, ID="D1", name="Distributor 1", node_type="distributor",
+                                            capacity=capacity, initial_level=ini_level, inventory_holding_cost=0.001, inventory_type="perishable",
+                                            manufactur_date = manufacturer_date_cal,
+                                            shelf_life=90, replenishment_policy="sS", policy_param=[reorder_point], product_sell_price=360)
+
+            # set demand
+            demand1 = scm.Demand(env=env,ID="d1", name="demand 1", 
+                                order_arrival_model=st.expo_arrival, 
+                                order_quantity_model=st.poisson_demand, demand_node=distributor1,
+                                tolerance=float('inf'))
+            # link the nodes
+            link1 = scm.Link(env=env,ID="l1", source=supplier1, sink=distributor1, cost=0.5, lead_time=lambda: 6)
+            # create a sc net
+            #supplynet = {"nodes": [supplier1,distributor1], "links": [link1], "demand": [demand1]}
+            scm.global_logger.disable_logging()
+            # run the simulation
+            env.run(until=360)
+
+            if(demand1.shortage):
+                shortage_arr = np.array(demand1.shortage)
+                shortage_arr = shortage_arr[shortage_arr[:,0]>30]
+            else:
+                shortage_arr = np.array([[0,0]])
+            if(distributor1.inventory.inventory.waste):
+                waste_arr = np.array(distributor1.inventory.inventory.waste)
+                waste_arr = waste_arr[waste_arr[:,0]>30]
+            else:
+                waste_arr = np.array([[0,0]])
+            transportation_cost_arr = np.array(supplier1.transportation_cost)
+            transportation_cost_arr = transportation_cost_arr[transportation_cost_arr[:,0]>30]
+            instantaneous_levels = np.array(distributor1.inventory.instantaneous_levels)
+
+            shortage_cost = sum(shortage_arr[:,1]) #(5 units)
+            waste_cost = sum(waste_arr[:,1]) #(1 units)
+            holding_cost = sum(instantaneous_levels[30:,1]) #(0.001 units)
+            ordering_cost = sum(transportation_cost_arr[:,1]) #(0.5 units)
+
+            exp_cost = (shortage_cost*5 + waste_cost + holding_cost*0.001 + ordering_cost*0.5)/330
+            exp_cost_arr.append(exp_cost)
+
+        exp_cost_per_day.append(sum(exp_cost_arr)/R)
+
+    plt.plot(range(s_low,s_high,s_step), exp_cost_per_day, marker='.', linestyle='-', color='b', label=f"S={capacity}, ini_level={ini_level}")
+    plt.xlabel('Reorder Point (s)')
+    plt.ylabel('Expected Cost per Day')
+    plt.legend()
+    plt.show()
+
+#single_sim_run(S=2000,s=500,ini_level=2000)
+run_for_s(s_low=500,s_high=4000,s_step=500,capacity=4000,ini_level=4000,num_replications=1000)
