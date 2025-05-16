@@ -61,7 +61,7 @@ for lot_size in range(800,1600,10):
     env.run(until=simlen)
 
     bb_invlevels = np.array(bestbuy.inventory.instantaneous_levels)
-    hp_sup_transportation_cost = np.array(hp_supplier.transportation_cost)
+    hp_sup_transportation_cost = np.array(bestbuy.transportation_cost)
 
     total_cost = sum(bb_invlevels[:,1])*holding_cost + sum(hp_sup_transportation_cost[:,1])
     total_cost_arr.append([lot_size, total_cost/simlen])

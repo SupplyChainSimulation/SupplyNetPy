@@ -97,12 +97,13 @@ under facility expenses, the initial cost of the facilities are given as below:
 total_inv_cost1 = sum(instantaneous_levels1[:,1])*distributor1.inventory_holding_cost 
 total_inv_cost2 = sum(instantaneous_levels2[:,1])*distributor2.inventory_holding_cost 
 total_inv_cost3 = sum(instantaneous_levels3[:,1])*distributor3.inventory_holding_cost 
-transportcost = np.array(supplier1.transportation_cost)
-transportcost = sum(transportcost[:,1])
+transportcost = sum([x[1] for x in distributor1.transportation_cost])
+transportcost += sum([x[1] for x in distributor2.transportation_cost])
+transportcost += sum([x[1] for x in distributor3.transportation_cost])
 
-print("Total Inventory Cost Wilkes-Barre DC: ", total_inv_cost1)
-print("Total Inventory Cost Vicksburg DC: ", total_inv_cost2)
-print("Total Inventory Cost Elko DC: ", total_inv_cost3)
+print("Total Inventory Cost Wilkes-Barre DC: ", total_inv_cost1, ", Transportation cost:", sum([x[1] for x in distributor1.transportation_cost]))
+print("Total Inventory Cost Vicksburg DC: ", total_inv_cost2, ", Transportation cost:", sum([x[1] for x in distributor2.transportation_cost]))
+print("Total Inventory Cost Elko DC: ", total_inv_cost3, ", Transportation cost:", sum([x[1] for x in distributor3.transportation_cost]))
 print("Total Transportation Cost: ", transportcost)
 print("Total Supply Chain Cost: ", total_inv_cost1 + 12600000 + total_inv_cost2 + 9450000 + total_inv_cost3 + 11950000 + transportcost)
 

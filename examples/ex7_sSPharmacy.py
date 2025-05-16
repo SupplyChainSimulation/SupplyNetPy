@@ -181,8 +181,12 @@ def run_for_s(s_low,s_high,s_step,capacity,ini_level,num_replications):
                 waste_arr = waste_arr[waste_arr[:,0]>30]
             else:
                 waste_arr = np.array([[0,0]])
-            transportation_cost_arr = np.array(supplier1.transportation_cost)
-            transportation_cost_arr = transportation_cost_arr[transportation_cost_arr[:,0]>30]
+            
+            if(supplier1.transportation_cost):
+                transportation_cost_arr = np.array(supplier1.transportation_cost)
+                transportation_cost_arr = transportation_cost_arr[transportation_cost_arr[:,0]>30]
+            else:
+                transportation_cost_arr = np.array([[0,0]])
             instantaneous_levels = np.array(distributor1.inventory.instantaneous_levels)
 
             shortage_cost = sum(shortage_arr[:,1]) #(5 units)
