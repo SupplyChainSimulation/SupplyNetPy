@@ -2,7 +2,8 @@ import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
-from SupplyNetPy.Components.core import *
+#from SupplyNetPy.Components.core import *
+from core import *
 
 def visualize_sc_net(supplychainnet):
     """
@@ -26,7 +27,7 @@ def visualize_sc_net(supplychainnet):
     for edge in edges:
         from_node = edge.source.ID
         to_node = edge.sink.ID
-        G.add_edge(from_node, to_node, weight=edge.lead_time())
+        G.add_edge(from_node, to_node, weight=round(edge.lead_time(),2))
 
     # Generate the layout of the graph
     pos = nx.spring_layout(G)
@@ -204,27 +205,44 @@ def simulate_sc_net(supplychainnet, sim_time):
         sc_net_transport_cost += sum([x[1] for x in node.transportation_cost])
         sc_net_node_cost += node.node_cost
         sc_net_profit += node.net_profit
-    
+        logger.info(f"Node {node.ID} performance measures:")
+        logger.info(f"\tInventory cost = {node.inventory_cost}")
+        logger.info(f"\tTransportation cost = {sum([x[1] for x in node.transportation_cost])}")        
+        if(node.node_type.lower() == "supplier" or node.node_type.lower() == "infinite_supplier"):
+            logger.info(f"\tMining cost = {node.total_material_cost}")
+        if(node.node_type.lower() == "manufacturer"):
+            logger.info(f"\tManufacturing cost = {node.total_manufacturing_cost}")
+        logger.info(f"\tNode cost = {node.node_cost}")
+        logger.info(f"\tTotal products sold = {node.total_products_sold}")
+        logger.info(f"\tProfit = {node.total_profit}")
+        logger.info(f"\tNet profit = {node.net_profit}")
+
     for demand in demands:
         sc_total_unit_sold += demand.total_products_sold
         sc_total_unsatisfied_demand += sum([x[1] for x in demand.unsatisfied_demand])
+        logger.info(f"Demand {demand.ID} performance measures:")
+        logger.info(f"\tTotal demand = {demand.total_demand}")
+        logger.info(f"\tTotal products sold = {demand.total_products_sold}")
+        logger.info(f"\tUnsatisfied demand = {sum([x[1] for x in demand.unsatisfied_demand])}")
+        if(demand.shortage):
+            logger.info(f"\tShortage = {sum(x[1] for x in demand.shortage)}")
     
     supplychainnet["performance"] = {
         "total_product_sold": sc_total_unit_sold,
-        "sc_profit": sc_net_profit,
-        "sc_tranport_cost": sc_net_transport_cost,
         "sc_inv_cost": sc_net_inventory_cost,
+        "sc_tranport_cost": sc_net_transport_cost,
         "sc_total_cost": sc_net_node_cost,
+        "sc_net_profit": sc_net_profit,
         "total_unsatisfied_demand": sc_total_unsatisfied_demand
     }
     
-    logger.info("\nSupply chain performance:")
-    logger.info(f"Number of products sold = {sc_total_unit_sold}") 
-    logger.info(f"SC total profit = {sc_net_profit}") 
-    logger.info(f"SC total tranportation cost = {sc_net_transport_cost}") 
-    logger.info(f"SC total cost = {sc_net_node_cost}")
-    logger.info(f"SC inventory cost = {sc_net_inventory_cost}") 
-    logger.info(f"Unsatisfied demand  = {sc_total_unsatisfied_demand}")
+    logger.info("Supply chain performance:")
+    logger.info(f"\tNumber of products sold = {sc_total_unit_sold}") 
+    logger.info(f"\tSC inventory cost = {sc_net_inventory_cost}") 
+    logger.info(f"\tSC total tranportation cost = {sc_net_transport_cost}") 
+    logger.info(f"\tSC total cost = {sc_net_node_cost}")
+    logger.info(f"\tSC total net profit = {sc_net_profit}") 
+    logger.info(f"\tUnsatisfied demand  = {sc_total_unsatisfied_demand}")
     
     return supplychainnet
 
