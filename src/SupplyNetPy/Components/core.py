@@ -13,8 +13,9 @@ class RawMaterial():
         ID (str): ID of the raw material (alphanumeric)
         name (str): name of the raw material
         extraction_quantity (float): quantity of the raw material that is extracted in extraction_time
-        extraction_time (float): time to extract the raw material
-        cost (float): sell cost of the raw material (per item) 
+        extraction_time (float): time to extract the raw material 
+        mining_cost (float): mining cost of the raw material (per item)
+        cost (float): sell cost of the raw material (per item)
 
     Functions:
         __init__: initializes the raw material object
@@ -27,6 +28,7 @@ class RawMaterial():
                  name: str, 
                  extraction_quantity: float, 
                  extraction_time: float, 
+                 mining_cost: float,
                  cost: float) -> None:
         """
         Initialize the raw material object.
@@ -36,6 +38,7 @@ class RawMaterial():
             name (str): name of the raw material
             extraction_quantity (float): quantity of the raw material that can be extracted in extraction_time
             extraction_time (float): time to extract the raw material
+            mining_cost (float): mining cost of the raw material (per item)
             cost (float): cost of the raw material (per item)
 
         Attributes:
@@ -62,6 +65,7 @@ class RawMaterial():
         self.name = name # name of the raw material
         self.extraction_quantity = extraction_quantity # quantity of the raw material that can be extracted in extraction_time
         self.extraction_time = extraction_time # time to extract the raw material
+        self.mining_cost = mining_cost
         self.cost = cost # mining cost of the raw material
 
     def __str__(self):
@@ -93,6 +97,7 @@ class RawMaterial():
                 "name": self.name, 
                 "extraction_quantity": self.extraction_quantity, 
                 "extraction_time": self.extraction_time, 
+                "mining_cost": self.mining_cost,
                 "cost": self.cost}
 
 class Product():
@@ -208,7 +213,7 @@ class Product():
                 "raw_materials": self.raw_materials, 
                 "units_per_cycle": self.units_per_cycle}
 
-default_raw_material = RawMaterial(ID="RM1", name="Raw Material 1", extraction_quantity=30, extraction_time=3, cost=1) # create a default raw material
+default_raw_material = RawMaterial(ID="RM1", name="Raw Material 1", extraction_quantity=30, extraction_time=3, mining_cost=0.3, cost=1) # create a default raw material
 default_product = Product(ID="P1", name="Product 1", manufacturing_cost=50, manufacturing_time=3, sell_price=341, raw_materials=[{"raw_material": default_raw_material, "quantity": 3}], units_per_cycle=30) # create a default product
 
 class PerishableInventory(simpy.Container):
@@ -573,7 +578,7 @@ class Link():
         source (Node): source node of the link
         sink (Node): sink node of the link
         cost (float): cost of transportation over the link
-        lead_time (int): lead time of the link
+        lead_time (callable): lead time of the link
         link_failure_p (float): link failure probability
         link_recovery_time (callable): function to model link recovery time
         
@@ -610,7 +615,7 @@ class Link():
             source (Node): source node of the link
             sink (Node): sink node of the link
             cost (float): cost of transportation over the link
-            lead_time (int): lead time of the link
+            lead_time (callable): lead time of the link
             link_failure_p (float): link failure probability
             status (str): status of the link (active/inactive)
             link_recovery_time (callable): function to model link recovery time
@@ -852,6 +857,8 @@ class Supplier(Node):
             if(self.raw_material):
                 self.total_material_cost = self.total_raw_materials_mined * self.raw_material.cost
             self.node_cost = self.total_material_cost + self.inventory_cost + sum([x[1] for x in self.transportation_cost])
+            self.profit = self.raw_material.cost - self.raw_material.mining_cost
+            self.total_profit = self.profit * self.total_products_sold
 
     def get_statistics(self):
         """

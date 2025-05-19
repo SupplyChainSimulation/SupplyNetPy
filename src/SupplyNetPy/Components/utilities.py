@@ -204,6 +204,7 @@ def simulate_sc_net(supplychainnet, sim_time):
         sc_net_inventory_cost += node.inventory_cost
         sc_net_transport_cost += sum([x[1] for x in node.transportation_cost])
         sc_net_node_cost += node.node_cost
+        node.net_profit = node.total_profit - node.node_cost
         sc_net_profit += node.net_profit
         logger.info(f"Node {node.ID} performance measures:")
         logger.info(f"\tInventory cost = {node.inventory_cost}")
