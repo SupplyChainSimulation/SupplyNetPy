@@ -1064,7 +1064,7 @@ class InventoryNode(Node):
             self.products_sold_daily.append((self.env.now, self.products_sold)) # append the product sold in the current cycle
             self.inventory_cost += self.inventory.inventory.level * self.inventory_holding_cost # update the inventory cost
             self.node_cost = self.inventory_cost + sum([x[1] for x in self.transportation_cost])
-            self.net_profit = self.total_products_sold*self.profit - self.node_cost # update the net profit
+            self.net_profit = self.total_profit - self.node_cost # update the net profit
 
     def get_statistics(self):
         """

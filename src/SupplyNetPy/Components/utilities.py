@@ -2,8 +2,8 @@ import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
-#from SupplyNetPy.Components.core import *
-from core import *
+from SupplyNetPy.Components.core import *
+#from core import *
 
 def visualize_sc_net(supplychainnet):
     """
@@ -215,7 +215,7 @@ def simulate_sc_net(supplychainnet, sim_time):
         logger.info(f"\tNode cost = {node.node_cost}")
         logger.info(f"\tTotal products sold = {node.total_products_sold}")
         logger.info(f"\tProfit = {node.total_profit}")
-        logger.info(f"\tNet profit = {node.net_profit}")
+        logger.info(f"\tNet profit = {node.total_profit - node.node_cost}")
 
     for demand in demands:
         sc_total_unit_sold += demand.total_products_sold
