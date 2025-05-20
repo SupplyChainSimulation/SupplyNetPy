@@ -1,6 +1,6 @@
 # SupplyNetPy Documentation
 
-SupplyNetPy: Python library for modelling, simulation, design exploration and optimization of supply chains and inventory problems.
+SupplyNetPy is a Python library specifically designed and developed to model and simulate different supply chain problems with ease. It provides configurable components such as suppliers, manufacturers, distributors, and demand points for creating arbitrary supply chain networks, along with configurable policies for inventory management and replenishment. With SupplyNetPy, you can quickly assemble a supply chain, specify demand and supply behaviors, and run simulations to evaluate performance metrics like throughput and profit.
 
 ## Table of Contents
 

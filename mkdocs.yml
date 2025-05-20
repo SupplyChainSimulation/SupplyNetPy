@@ -5,9 +5,21 @@ nav:
   - About: about.md
   - Examples: 
     - Basic: example.md
+    - News Vendor Problem: example-newvendor.md
   - API reference:
     - Introduction: api-reference/api-intro.md
-    - Components.core: api-reference/api-ref-core.md
+    - Components.core:
+      - Overview: api-reference/api-ref-core.md
+      - RawMaterial: api-reference/api-ref-core/#rawmat
+      - Product: api-reference/api-ref-core/#product
+      - Link: api-reference/api-ref-core/#link
+      - Node: api-reference/api-ref-core/#node
+      - Inventory: api-reference/api-ref-core/#inventory
+      - PerishableInventory: api-reference/api-ref-core/#perishinv
+      - Supplier: api-reference/api-ref-core/#supplier
+      - Manufacturer: api-reference/api-ref-core/#manufacturer
+      - InventoryNode: api-reference/api-ref-core/#inventorynode
+      - Demand: api-reference/api-ref-core/#demand
     - Components.logger: api-reference/api-ref-logger.md
     - Components.utilities: api-reference/api-ref-utilities.md
   

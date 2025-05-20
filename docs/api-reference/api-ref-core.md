@@ -1,63 +1,111 @@
-## SupplyNetPy Components.core
+<style>
+    h3.classhead{
+        padding:15px; 
+        background-color:#cccccc;
+        border: 1px solid #bbbbbb;
+        border-radius: 5px;
+    }
+</style>
 
-Components.core Module
+## SupplyNetPy `Components.core` Module
 
-This module provides the essential components for building a supply chain simulation. 
-It includes classes that represent various entities and their interactions within a supply chain.
+The `Components.core` module provides the foundational building blocks for modeling and simulating supply chain networks in SupplyNetPy. It defines key classes representing entities and their interactions within a supply chain.
 
-__Classes:__
+### Overview
 
-| Name | Description |
-| --- | --- |
-| Node | Represents a generic node in the supply chain. |
-| Supplier | Represents a supplier node. |
-| Manufacturer | Represents a manufacturer node. |
-| InventoryNode | Represents a node that maintains an inventory. It can be a warehouse, distributor or retailer node. |
-| Demand | Represents the demand at a particular node. |
-| Link | Represents a transportation link between two nodes in the supply chain. |
-| Inventory | Represents an inventory maintained by any Node. |
+This module includes the following primary classes:
 
-__Usage:__
+| Class                 | Description                                                                                      |
+|-----------------------|--------------------------------------------------------------------------------------------------|
+| `RawMaterial`         | Represents a raw material used as input in the supply chain.                                     |
+| `Product`             | Represents a product in the supply chain.                                                        |
+| `Inventory`           | Inventory maintained by any node, tracking stock levels and related operations.                  |
+| `PerishableInventory` | Specialized inventory class for handling perishable goods with shelf-life tracking.              |
+| `Node`                | Generic node in the supply chain network. (ex. retailer, warehouse, demand)                      |
+| `Link`                | Transportation or connection link between two nodes in the supply chain.                         |
+| `Supplier`            | Node representing a supplier of raw materials or products.                                       |
+| `Manufacturer`        | Node representing a manufacturer that manufactures a product.                                    |
+| `InventoryNode`       | Node that maintains inventory, such as a warehouse, distributor, or retailer.                    |
+| `Demand`              | Represents demand at a specific node in the network.                                             |
 
-Users can create instances of these classes to model a supply chain. Each class includes methods for setting attributes and calculating performance metrics.
+### Usage
 
-Following is a list classes and methods in __core__ module.
+To model a supply chain, instantiate these classes and configure their attributes and relationships. Each class provides methods for setting properties and computing performance metrics.
 
-### Classes 
-- [Link](#link)
-- [Node](#node)
-- [Inventory](#inventory)
-- [Supplier](#supplier)
-- [Manufacturer](#manufacturer)
-- [Inventory Node](#inventorynode)
-- [Demand](#demand)
+---
 
+## API Reference
 
-------------------
-<b><span style="font-size:20px;"> Link </span></b><br>
+### Classes
+- [`RawMaterial`](#rawmat)
+- [`Product`](#product)
+- [`Link`](#link)
+- [`Node`](#node)
+- [`Inventory`](#inventory)
+- [`PerishableInventory`](#perishinv)
+- [`Supplier`](#supplier)
+- [`Manufacturer`](#manufacturer)
+- [`InventoryNode`](#inventorynode)
+- [`Demand`](#demand)
+
+---
+
+<div id="rawmat">
+<h3 class="classhead">Class RawMaterial</h3></div>
+:::SupplyNetPy.Components.core.RawMaterial
+
+---
+
+<div id="product">
+<h3 class="classhead">Class Product</h3></div>
+:::SupplyNetPy.Components.core.Product
+
+---
+
+<div id="link">
+<h3 class="classhead">Class Link</h3></div>
 :::SupplyNetPy.Components.core.Link
-------------------
 
-### Node
+---
+
+<div id="node">
+<h3 class="classhead">Class Node</h3></div>
 :::SupplyNetPy.Components.core.Node
-------------------
 
-### Inventory
+---
+
+<div id="inventory">
+<h3 class="classhead">Class Inventory</h3></div>
 :::SupplyNetPy.Components.core.Inventory
-------------------
 
-### Supplier
+---
+
+<div id="perishinv">
+<h3 class="classhead">Class PerishableInventory</h3></div>
+:::SupplyNetPy.Components.core.PerishableInventory
+
+---
+
+<div id="supplier">
+<h3 class="classhead">Class Supplier</h3></div>
 :::SupplyNetPy.Components.core.Supplier
-------------------
 
-### Manufacturer
+---
+
+<div id="manufacturer">
+<h3 class="classhead">Class Manufacturer</h3></div>
 :::SupplyNetPy.Components.core.Manufacturer
-------------------
 
-### InventoryNode
+---
+
+<div id="inventorynode">
+<h3 class="classhead">Class InventoryNode</h3></div>
 :::SupplyNetPy.Components.core.InventoryNode
-------------------
 
-### Demand
+---
+
+<div id="demand">
+<h3 class="classhead">Class Demand</h3></div>
 :::SupplyNetPy.Components.core.Demand
-------------------
+
+---

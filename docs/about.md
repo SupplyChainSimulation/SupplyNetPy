@@ -1,3 +1,3 @@
 # About SupplyNetPy
 
-SupplyNetPy is an open-source Python library for modelling and simulation of supply chains and inventory problems. It is built on Python's SimPy library, and particularly tailored to model and simulate supply chains.
+SupplyNetPy is an open-source Python library specifically developed for modeling and simulating supply chains and inventory problems. Built on Python's SimPy library, it allows users to easily build arbitrarily complex supply chain inventory networks by creating instances of built-in components and configuring them.
