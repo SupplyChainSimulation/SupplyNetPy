@@ -11,8 +11,8 @@ import simpy
 
 env = simpy.Environment()
 # Define raw materials
-raw_material1 = scm.RawMaterial(ID="rm1", name="RawMaterial1", extraction_quantity=200, extraction_time=1, cost=0.25)
-raw_material2 = scm.RawMaterial(ID="rm2",name="RawMaterial2", extraction_quantity=300, extraction_time=1, cost=0.5)
+raw_material1 = scm.RawMaterial(ID="rm1", name="RawMaterial1", extraction_quantity=200, extraction_time=1, mining_cost=0.02, cost=0.5)
+raw_material2 = scm.RawMaterial(ID="rm2",name="RawMaterial2", extraction_quantity=300, extraction_time=1, mining_cost=0.02, cost=0.5)
 
 # Define product
 product = scm.Product(ID="pr1", name="Product1", manufacturing_cost=20, manufacturing_time=2, sell_price=100, 
