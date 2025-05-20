@@ -15,7 +15,7 @@ class RawMaterial():
         extraction_quantity (float): quantity of the raw material that is extracted in extraction_time
         extraction_time (float): time to extract the raw material 
         mining_cost (float): mining cost of the raw material (per item)
-        cost (float): sell cost of the raw material (per item)
+        cost (float): selling cost of the raw material (per item)
 
     Functions:
         __init__: initializes the raw material object
@@ -39,14 +39,7 @@ class RawMaterial():
             extraction_quantity (float): quantity of the raw material that can be extracted in extraction_time
             extraction_time (float): time to extract the raw material
             mining_cost (float): mining cost of the raw material (per item)
-            cost (float): cost of the raw material (per item)
-
-        Attributes:
-            ID (str): ID of the raw material (alphanumeric)
-            name (str): name of the raw material
-            extraction_quantity (float): quantity of the raw material that can be extracted in extraction_time
-            extraction_time (float): time to extract the raw material
-            cost (float): cost of the raw material (per item)
+            cost (float): selling cost of the raw material (per item)
 
         Returns:
             None
@@ -108,10 +101,10 @@ class Product():
         ID (str): ID of the product (alphanumeric)
         name (str): name of the product
         manufacturing_cost (float): manufacturing cost of the product
-        manufacturing_time (int): time (days) to manufacture the product
+        manufacturing_time (int): time to manufacture the product
         sell_price (float): price at which the product is sold
         buy_price (float): price at which the product is bought
-        raw_materials (list): list of raw materials and quantity required to manufacture a unit of the product
+        raw_materials (list): list of raw materials and respective quantity required to manufacture one unit of the product
         units_per_cycle (int): number of units manufactured per manufacturing cycle
 
     Functions:
@@ -135,21 +128,11 @@ class Product():
             ID (str): ID of the product (alphanumeric)
             name (str): name of the product
             manufacturing_cost (float): manufacturing cost of the product
-            manufacturing_time (int): time (days) to manufacture the product
+            manufacturing_time (int): time to manufacture the product
             sell_price (float): price at which the product is sold
             buy_price (float): price at which the product is bought
-            raw_materials (list): list of raw materials and quantity required to manufacture a single product unit
+            raw_materials (list): list of raw materials and respective quantity required to manufacture one unit of the product
             units_per_cycle (int): number of units manufactured per cycle
-
-        Attributes:
-            ID (str): ID of the product (alphanumeric)
-            name (str): name of the product
-            manufacturing_cost (float): manufacturing cost of the product
-            manufacturing_time (int): time (days) to manufacture the product
-            sell_price (float): price at which the product is sold
-            buy_price (float): price at which the product is bought
-            raw_materials (list): list of raw materials and quantity required to manufacture a single product unit
-            units_per_cycle (int): number of units manufactured per manufacturing cycle
         
         Returns:
             None
@@ -288,7 +271,15 @@ class PerishableInventory(simpy.Container):
         Returns:
             None
         """
-        self.perish_queue.append((manufacturing_date, amount))
+        # insert the (manufacturing date, amount) in perish_queue in sorted order
+        inserted = False
+        for i in range(len(self.perish_queue)):
+            if self.perish_queue[i][0] > manufacturing_date:
+                self.perish_queue.insert(i, (manufacturing_date, amount))
+                inserted = True
+                break
+        if(not inserted):
+            self.perish_queue.append((manufacturing_date, amount))
         return super().put(amount)
     
     def get(self, amount):
@@ -474,10 +465,10 @@ class Node():
             **kwargs: Additional keyword arguments for the logger.
         
         Attributes:
+            env (simpy.Environment): simulation environment
             ID (str): ID of the node (alphanumeric)
             name (str): name of the node
             node_type (str): type of the node
-            env (simpy.Environment): simulation environment
             node_failure_p (float): node failure probability
             node_status (str): status of the node (active/inactive)
             node_recovery_time (callable): function to model node recovery time
@@ -485,11 +476,11 @@ class Node():
             inventory_cost (float): total inventory cost
             transportation_cost (float): total transportation cost
             node_cost (float): total node cost
-            profit (float): profit
-            net_profit (float): net profit
+            profit (float): profit per unit (sell price - buy price)
+            net_profit (float): net profit of the node (total profit - node cost)
             products_sold (int): products/raw materials sold by this node in the current cycle/period/day
             total_products_sold (int): total product units sold by this node
-            total_profit (float): total profit (revenue)
+            total_profit (float): total profit (revenue = profit * total_products_sold)
             
         Returns:
             None
@@ -608,17 +599,11 @@ class Link():
             sink (Node): sink node of the link
             cost (float): cost of transportation over the link
             lead_time (function): a function to model stochastic lead time
+            link_failure_p (float): link failure probability
+            link_recovery_time (callable): function to model link recovery time
 
         Attributes:
-            env (simpy.Environment): simulation environment
-            ID (str): ID of the link (alphanumeric)
-            source (Node): source node of the link
-            sink (Node): sink node of the link
-            cost (float): cost of transportation over the link
-            lead_time (callable): lead time of the link
-            link_failure_p (float): link failure probability
             status (str): status of the link (active/inactive)
-            link_recovery_time (callable): function to model link recovery time
         
         Returns:
             None
@@ -729,14 +714,13 @@ class Supplier(Node):
         __init__: initializes the supplier object
         __str__: returns the name of the supplier
         __repr__: returns the name of the supplier
-        get_info: returns a dictionary containing details of the supplier
-        calculate_statistics: calculate statistics for the supplier
-        get_statistics: get statistics for the supplier
         behavior: supplier behavior
+        calculate_statistics: calculate statistics for the supplier
+        get_info: returns a dictionary containing details of the supplier
+        get_statistics: get statistics for the supplier
 
     Behavior:
-        The supplier keeps extracting raw material whenever the inventory is not full (infinite supply).
-        Assume that a supplier can extract a single type of raw material. By default, it is the default raw material.
+        The supplier keeps extracting raw material whenever the inventory is not full. Assume that a supplier can extract a single type of raw material.
     """
     def __init__(self,
                  node_type: str = "supplier",
@@ -749,21 +733,13 @@ class Supplier(Node):
         Initialize the supplier object.
 
         Parameters:
+            node_type (str): type of the node (supplier/infinite_supplier)
             capacity (int): maximum capacity of the inventory
             initial_level (int): initial inventory level
             inventory_holding_cost (float): inventory holding cost
             raw_material (RawMaterial): raw material supplied by the supplier
-            node_type (str): type of the node
             **kwargs: any additional keyword arguments for the Node class and logger
 
-        Attributes:
-            raw_material (RawMaterial): raw material supplied by the supplier
-            inventory (Inventory): inventory of the supplier
-            inventory_holding_cost (float): inventory holding cost
-            total_raw_materials_mined (int): total raw materials mined/extracted
-            total_material_cost (float): total cost of the raw materials mined/extracted
-            total_raw_materials_sold (int): total raw materials sold
-        
         Attributes:
             raw_material (RawMaterial): raw material supplied by the supplier
             inventory (Inventory): inventory of the supplier
@@ -873,10 +849,13 @@ class Supplier(Node):
         return {"total_raw_materials_mined": self.total_raw_materials_mined, 
                 "total_material_cost": self.total_material_cost, 
                 "total_raw_material_sold":self.total_raw_materials_sold, 
-                "profit": self.profit, 
                 "inventory_cost": self.inventory_cost, 
                 "transportation_cost": sum([x[1] for x in self.transportation_cost]), 
-                "node_cost": self.node_cost}
+                "total units sold": self.total_products_sold,
+                "profit per unit": self.profit, 
+                "total profit": self.total_profit,
+                "node_cost": self.node_cost,
+                "net_profit": self.net_profit}
         
     def behavior(self):
         """
@@ -913,7 +892,7 @@ class InventoryNode(Node):
         inventory_holding_cost (float): inventory holding cost
         inventory_type (str): type of the inventory (non-perishable/perishable)
         shelf_life (int): shelf life of the product
-        manufactur_date (callable): function to model manufacturing date for product
+        manufacture_date (callable): function to model manufacturing date for product (this function is used in the case when behaviour of a single node is to be modeled)
         replenishment_policy (str): replenishment policy for the inventory
         product_sell_price (float): selling price of the product
         policy_param (list): parameters for the replenishment policy
@@ -924,12 +903,13 @@ class InventoryNode(Node):
         __init__: initializes the inventory node object
         __str__: returns the name of the inventory node
         __repr__: returns the name of the inventory node
-        get_info: returns a dictionary containing details of the inventory node
         calculate_statistics: calculate statistics for the inventory node
+        get_info: returns a dictionary containing details of the inventory node
         get_statistics: get statistics for the inventory node
+        periodic_replenishment: monitored inventory replenishment policy (periodic)
         place_order: place an order
         ss_replenishment: monitored inventory replenishment policy (s,S)
-        periodic_replenishment: monitored inventory replenishment policy (periodic)
+
     """
 
     def __init__(self,
@@ -939,7 +919,7 @@ class InventoryNode(Node):
                  inventory_holding_cost:float,
                  inventory_type:str = "non-perishable", 
                  shelf_life:int = 0,
-                 manufactur_date:callable = None,
+                 manufacture_date:callable = None,
                  replenishment_policy: str = "sS", 
                  product_sell_price: float = 0.0, 
                  policy_param: list = [2], 
@@ -955,7 +935,7 @@ class InventoryNode(Node):
             inventory_holding_cost (float): inventory holding cost
             inventory_type (str): type of the inventory (non-perishable/perishable)
             shelf_life (int): shelf life of the product
-            manufactur_date (callable): function to model manufacturing date
+            manufacture_date (callable): function to model manufacturing date for product (this function is used in the case when behaviour of a single node is to be modeled)
             replenishment_policy (str): replenishment policy for the inventory
             product_sell_price (float): selling price of the product
             policy_param (list): parameters for the replenishment policy
@@ -972,7 +952,7 @@ class InventoryNode(Node):
             policy_param (list): parameters for the replenishment policy
             inventory (Inventory): inventory object
             product (Product): product that the inventory node sells
-            manufactur_date (callable): function to model manufacturing date
+            manufacture_date (callable): function to model manufacturing date
             sell_price (float): selling price of the product
             buy_price (float): buying price of the product
             order_placed (bool): flag to check if the order is placed
@@ -985,8 +965,7 @@ class InventoryNode(Node):
         Behavior:
             The inventory node sells the product to the customers. It replenishes the inventory from the suppliers according to the replenishment policy. 
             The inventory node can have multiple suppliers. It chooses a supplier based on the availability of the product at the suppliers.
-            The product buy price is set to the sell price of the supplier. The inventory node sells the product at a higher price than the buy price.
-            By default, the sell price is set to 5% more than the buy price. The product sell price can be set by the user, if required.
+            The product buy price is set to the supplier's product sell price. The inventory node sells the product at a higher price than the buy price.
         """
         if(capacity <= 0):
             global_logger.logger.error("Inventory capacity cannot be zero or negative.")
@@ -1011,7 +990,7 @@ class InventoryNode(Node):
         self.policy_param = policy_param
         self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, type=inventory_type, replenishment_policy=replenishment_policy, shelf_life=shelf_life)
         self.product = copy.deepcopy(product) # product that the inventory node sells
-        self.manufactur_date = manufactur_date
+        self.manufacture_date = manufacture_date
         self.sell_price = product_sell_price # set the sell price of the product
         self.buy_price = 0 # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
         if(self.product):
@@ -1084,12 +1063,14 @@ class InventoryNode(Node):
             dict: dictionary containing statistics for the inventory node
         """
         total_units_sold = sum([x[1] for x in self.products_sold_daily])
-        daily_inv_levels = sum([x[1] for x in self.inventory.instantaneous_levels])
-        return {"total_units_sold":total_units_sold,
+        tranport_cost = sum([x[1] for x in self.transportation_cost])
+        return {"inventory_cost": self.inventory_cost,
+                "transportation_cost": tranport_cost,
+                "node_cost": self.node_cost,
+                "total_units_sold":total_units_sold,
                 "total_product_cost": total_units_sold*self.buy_price,
                 "total_revenue": total_units_sold*self.product.sell_price, 
-                "total_profit": self.total_profit,
-                "inventory_cost": self.inventory_holding_cost * daily_inv_levels}
+                "total_profit": self.total_profit}
 
     def place_order(self, supplier, reorder_quantity):
         """
@@ -1127,8 +1108,8 @@ class InventoryNode(Node):
                 for ele in man_date_ls: # ignore the manufacturing date
                     self.inventory.inventory.put(ele[1])
             elif(self.inventory.type=="perishable"): # if self inventory is perishable but supplier has non-perishable inventory
-                if(self.manufactur_date): # calculate the manufacturing date using the function if provided
-                    self.inventory.inventory.put(reorder_quantity,self.manufactur_date(self.env.now))
+                if(self.manufacture_date): # calculate the manufacturing date using the function if provided
+                    self.inventory.inventory.put(reorder_quantity,self.manufacture_date(self.env.now))
                 else: # else put the product in the inventory with current time as manufacturing date
                     self.inventory.inventory.put(reorder_quantity,self.env.now)
             else:
@@ -1216,14 +1197,15 @@ class Manufacturer(Node):
         __init__: initializes the manufacturer object
         __str__: returns the name of the manufacturer
         __repr__: returns the name of the manufacturer
-        get_info: returns a dictionary containing details of the manufacturer
+        behavior: manufacturer behavior - consume raw materials, produce the product, and put the product in the inventory
+        
         calculate_statistics: calculate statistics for the manufacturer
+        get_info: returns a dictionary containing details of the manufacturer
         get_statistics: get statistics for the manufacturer
         manufacture_product: manufacture the product
-        behavior: manufacturer behavior - consume raw materials, produce the product, and put the product in the inventory
+        periodic_replenishment: monitored inventory replenishment policy (periodic)
         place_order: place an order for raw materials
         ss_replenishment: monitored inventory replenishment policy (s,S)
-        periodic_replenishment: monitored inventory replenishment policy (periodic)
     
     Behavior:
         The manufacturer consumes raw materials and produces the product if raw materials are available.
@@ -1276,10 +1258,10 @@ class Manufacturer(Node):
             materials_available (bool): flag to check if raw materials are available
             production_cycle (bool): production cycle status
             raw_inventory_counts (dict): dictionary to store inventory counts for raw products inventory
-            order_placed (dict): dictionary to store order status
+            order_placed (dict): dictionary to store order status for raw materials
             product_order_placed (bool): order status for the product
             inventory (Inventory): inventory of the manufacturer
-            profit (float): profit from the products manufactured
+            profit (float): profit per unit sold
             total_products_manufactured (int): total products manufactured
             total_manufacturing_cost (float): total cost of the products manufactured
             revenue (float): revenue from the products sold
@@ -1388,13 +1370,12 @@ class Manufacturer(Node):
         """
         return {"total_products_manufactured": self.total_products_manufactured, 
                 "total_manufacturing_cost": self.total_manufacturing_cost, 
-                "total_profit": self.total_profit, 
-                "products_sold": self.products_sold, 
-                "total_products_sold": self.total_products_sold, 
-                "revenue": self.revenue, 
                 "inventory_cost": self.inventory_cost, 
                 "tranportation_cost": sum([x[1] for x in self.transportation_cost]), 
                 "node_cost": self.node_cost, 
+                "total_products_sold": self.total_products_sold, 
+                "total_profit": self.total_profit, 
+                "revenue": self.revenue, 
                 "net_profit": self.net_profit}    
 
     def manufacture_product(self):
@@ -1438,7 +1419,7 @@ class Manufacturer(Node):
     def behavior(self):
         """
         The manufacturer consumes raw materials and produces the product if raw materials are available.
-        It maintains inventory levels for raw materials and the product. Depending on the replenishment policy for product inventory,
+        It maintains inventory levels for both raw materials and the product. Depending on the replenishment policy for product inventory,
         manufacturer decides when to replenish the raw material inventory. The manufacturer can be connected to multiple suppliers.
         
         Parameters:
@@ -1572,7 +1553,7 @@ class Demand(Node):
         order_arrival_model (function): function that models order arrivals
         order_quantity_model (function): function that models order quantity
         demand_node (Node): node at which the demand is generated
-        tolerance (float): customer tolerance for waiting for the order
+        tolerance (float): customer tolerance for waiting for the order when required quantity is not available
 
     Functions:
         __init__: initializes the demand node object
@@ -1580,7 +1561,7 @@ class Demand(Node):
         __repr__: returns the name of the demand node
         get_info: returns a dictionary containing details of the demand node
         get_statistics: get statistics for the demand node
-        wait_for_order: wait for the order to arrive based on customer tolerance
+        wait_for_order: wait for the required number of units based on customer tolerance
         behavior: generates demand by calling the order arrival and order quantity models
     """
 
@@ -1684,12 +1665,13 @@ class Demand(Node):
         Returns:
             dict: dictionary containing statistics for the demand node
         """
-        return {"total_products_sold": self.total_products_sold, "unsatisfied_demand": self.unsatisfied_demand}
+        return {"total_products_sold": self.total_products_sold, 
+                "unsatisfied_demand": self.unsatisfied_demand,
+                "shortage": self.shortage}
 
     def wait_for_order(self,order_quantity):
         """
-        Wait for the order to arrive based on customer tolerance.
-
+        Wait for the required number of units based on customer tolerance.
         If the customer tolerance is infinite, the method waits until the order is fulfilled.
         Otherwise, it waits for the specified tolerance time and updates the unsatisfied demand if the order is not fulfilled.
 
@@ -1793,7 +1775,7 @@ if __name__ == "__main__":
     env = simpy.Environment()
     
     # create another raw material
-    raw_material2 = RawMaterial(ID="RM2", name="Raw Material 2", extraction_quantity=20, extraction_time=2, cost=1)
+    raw_material2 = RawMaterial(ID="RM2", name="Raw Material 2", extraction_quantity=20, extraction_time=2, mining_cost= 0.5, cost=1)
 
     # update the default product to require raw_material2 for manufacturing
     default_product.raw_materials = [{"raw_material": default_raw_material, "quantity": 9}, {"raw_material": raw_material2, "quantity": 5}]

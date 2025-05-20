@@ -114,7 +114,10 @@ def create_sc_net(nodes: list, links: list, demand: list):
     links_instances = []
     demand_instances = []
     used_ids = []
-
+    num_suppliers = 0
+    num_manufacturers = 0
+    num_distributors = 0
+    num_retailers = 0
     for node in nodes:
         if(node["ID"] in used_ids):
             global_logger.logger.error(f"Duplicate node ID {node['ID']}")
@@ -122,14 +125,18 @@ def create_sc_net(nodes: list, links: list, demand: list):
         used_ids.append(node["ID"])
         if node["node_type"].lower() == "supplier" or node["node_type"].lower() == "infinite_supplier":
             nodes_instances.append(Supplier(env=env, **node))
+            num_suppliers += 1
         elif node["node_type"].lower() == "manufacturer":
             # excluding key 'node_type', since it is not required for Manufacturer class
             node_ex = {key: node[key] for key in node if key != 'node_type'}
             nodes_instances.append(Manufacturer(env=env, **node_ex))
+            num_manufacturers += 1
         elif node["node_type"].lower() == "distributor" or node["node_type"].lower() == "warehouse":
             nodes_instances.append(InventoryNode(env=env, **node))
+            num_distributors += 1
         elif node["node_type"].lower() == "retailer":
             nodes_instances.append(InventoryNode(env=env, **node))
+            num_retailers += 1
         else:
             used_ids.remove(node["ID"])
             global_logger.logger.error(f"Invalid node type {node['node_type']}")
@@ -167,6 +174,10 @@ def create_sc_net(nodes: list, links: list, demand: list):
         "demand": demand_instances,
         "num_of_nodes": len(nodes),
         "num_of_edges": len(links),
+        "num_suppliers": num_suppliers,
+        "num_manufacturers": num_manufacturers,
+        "num_distributors": num_distributors,
+        "num_retailers": num_retailers
     }
     return supplychainnet
 
