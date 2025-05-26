@@ -2,8 +2,8 @@ import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
-from SupplyNetPy.Components.core import *
-#from core import *
+#from SupplyNetPy.Components.core import *
+from core import * 
 
 def visualize_sc_net(supplychainnet):
     """
@@ -76,23 +76,23 @@ def get_sc_net_info(supplychainnet):
     
     sc_info += f"Number of nodes in the network: {supplychainnet['num_of_nodes']} \n Number of edges in the network: {supplychainnet['num_of_edges']} \n Number of suppliers: {supplychainnet['num_suppliers']} \n Number of manufacturers: {supplychainnet['num_manufacturers']} \n Number of distributors: {supplychainnet['num_distributors']} \n Number of retailers: {supplychainnet['num_retailers']}"
     for node in supplychainnet["nodes"]:
-        sc_info += node.get_info()
+        sc_info += str(node.get_info())
     for link in supplychainnet["edges"]:
-        sc_info += link.get_info()
+        sc_info += str(link.get_info())
     for demand in supplychainnet["demand"]:
-        sc_info += demand.get_info()
+        sc_info += str(demand.get_info())
     sc_info += "\nSupply chain performance: \n"
     logger.info(f"Supply chain performance: \n") 
     if("performance" in supplychainnet):
-        logger.info(f"Number of products sold = {supplychainnet['total_product_sold']}") 
-        logger.info(f"SC total profit = {supplychainnet['sc_profit']}") 
-        logger.info(f"SC total tranportation cost = {supplychainnet['sc_tranport_cost']}")
-        logger.info(f"SC inventory cost = {supplychainnet['sc_inv_cost']}") 
-        logger.info(f"SC revenue (profit - cost) = {supplychainnet['sc_revenue']}") 
-        logger.info(f"Average revenue (per day) = {supplychainnet['avg_revenue']}") 
-        logger.info(f"Customers returned  = {supplychainnet['total_customer_returned']}") 
+        scnet = supplychainnet["performance"]
+        logger.info(f"Number of products sold = {scnet['total_product_sold']}") 
+        logger.info(f"SC total tranportation cost = {scnet['sc_tranport_cost']}")
+        logger.info(f"SC inventory cost = {scnet['sc_inv_cost']}") 
+        logger.info(f"SC total cost = {scnet['sc_total_cost']}")
+        logger.info(f"SC net profit = {scnet['sc_net_profit']}")
+        logger.info(f"Customers returned  = {scnet['total_unsatisfied_demand']}") 
     
-        sc_info += f"Number of products sold = {supplychainnet['total_product_sold']}  \n SC total profit = {supplychainnet['sc_profit']}  \n SC total tranportation cost = {supplychainnet['sc_tranport_cost']}  \n SC inventory cost = {supplychainnet['sc_inv_cost']}  \n SC revenue (profit - cost) = {supplychainnet['sc_revenue']}  \n Average revenue (per day) = {supplychainnet['avg_revenue']}  \n Customers returned  = {supplychainnet['total_customer_returned']}"
+        sc_info += f"Number of products sold = {scnet['total_product_sold']} \n SC total tranportation cost = {scnet['sc_tranport_cost']}  \n SC inventory cost = {scnet['sc_inv_cost']} \n SC total cost = {scnet['sc_total_cost']} \n SC total profit = {scnet['sc_net_profit']} \n Customers returned  = {scnet['total_unsatisfied_demand']}"
     return sc_info
 
 def create_sc_net(nodes: list, links: list, demand: list):
@@ -194,8 +194,11 @@ def simulate_sc_net(supplychainnet, sim_time):
         supplychainnet (dict): Updated dict with listed performance measures.
     """
     logger = global_logger.logger
-
     env = supplychainnet["env"]
+    if(sim_time<=env.now):
+        logger.warning(f"You have already ran simulation for this network! \n To create a new network use create_sc_net(), or specify the simulation time grater than {env.now} to run it further.")
+        return supplychainnet
+    
     demands = supplychainnet["demand"]
     nodes = supplychainnet["nodes"]
 

@@ -280,7 +280,7 @@ class PerishableInventory(simpy.Container):
                 break
         if(not inserted):
             self.perish_queue.append((manufacturing_date, amount))
-        return super().put(amount)
+        super().put(amount)
     
     def get(self, amount):
         """
@@ -300,12 +300,12 @@ class PerishableInventory(simpy.Container):
         while x_amount>0: # get the amount from the perish queue, old products first
             if(len(self.perish_queue)>0):
                 if(self.perish_queue[0][1] <= x_amount):
-                    man_date_ls.append((self.perish_queue[0],x_amount))
+                    man_date_ls.append((self.perish_queue[0][0],self.perish_queue[0][1]))
                     x_amount -= self.perish_queue[0][1]
                     self.perish_queue.pop(0)
                 else:
-                    man_date_ls.append((self.perish_queue[0][0], self.perish_queue[0][1] - x_amount))
-                    self.perish_queue[0] = (self.perish_queue[0][0], self.perish_queue[0][1] - x_amount)
+                    man_date_ls.append((self.perish_queue[0][0], x_amount))
+                    self.perish_queue[0] = (self.perish_queue[0][0], self.perish_queue[0][1] - x_amount) 
                     x_amount = 0
             else:
                 break
@@ -420,8 +420,10 @@ class Inventory():
         Returns:
             None
         """
+        yield self.env.timeout(0.99) # wait for the end of the day
+        self.instantaneous_levels.append([self.env.now, self.inventory.level]) # record the initial inventory level
         while True:
-            yield self.env.timeout(1)
+            yield self.env.timeout(1) # record inventory levels at the end of every day/period
             self.instantaneous_levels.append([self.env.now, self.inventory.level])
 
 class Node():
@@ -474,7 +476,7 @@ class Node():
             node_recovery_time (callable): function to model node recovery time
             logger (GlobalLogger): logger object
             inventory_cost (float): total inventory cost
-            transportation_cost (float): total transportation cost
+            transportation_cost (list): list to store transportation costs. Every record contains (time of order, cost of order)
             node_cost (float): total node cost
             profit (float): profit per unit (sell price - buy price)
             net_profit (float): net profit of the node (total profit - node cost)
@@ -767,6 +769,7 @@ class Supplier(Node):
         else:
             self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), replenishment_policy="sS")
         self.inventory_holding_cost = inventory_holding_cost # inventory holding cost
+        self.profit = self.raw_material.cost - self.raw_material.mining_cost
 
         # performance metrics (listed only for the supplier, rest common are created and initiated by __init__ of the base class)
         self.total_raw_materials_mined = 0 # total raw materials mined/extracted
@@ -826,15 +829,16 @@ class Supplier(Node):
         Returns:
             None
         """
+        yield self.env.timeout(0.99) # wait for the end of the day       
         while True:
-            yield self.env.timeout(1)
             if(self.node_type!="infinite_supplier"): # calculate inventory cost only if the node is not an infinite supplier
                 self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
             if(self.raw_material):
                 self.total_material_cost = self.total_raw_materials_mined * self.raw_material.cost
             self.node_cost = self.total_material_cost + self.inventory_cost + sum([x[1] for x in self.transportation_cost])
-            self.profit = self.raw_material.cost - self.raw_material.mining_cost
             self.total_profit = self.profit * self.total_products_sold
+            self.net_profit = self.total_profit - self.node_cost
+            yield self.env.timeout(1)
 
     def get_statistics(self):
         """
@@ -993,6 +997,7 @@ class InventoryNode(Node):
         self.manufacture_date = manufacture_date
         self.sell_price = product_sell_price # set the sell price of the product
         self.buy_price = 0 # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
+        self.profit = self.sell_price - self.buy_price # calculate profit
         if(self.product):
             self.product.sell_price = product_sell_price
             self.product.buy_price = 0 # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
@@ -1044,13 +1049,17 @@ class InventoryNode(Node):
         Returns:
             None
         """
+        self.products_sold = 0 # reset the products sold in the current cycle
+        yield self.env.timeout(0.99)
         while True:
+            self.products_sold_daily.append((self.env.now, self.products_sold)) # append the product sold in the current cycle
+            self.total_products_sold += self.products_sold
+            self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level # update the inventory cost
+            self.node_cost = self.inventory_cost + sum([x[1] for x in self.transportation_cost])
+            self.total_profit += self.profit * self.products_sold # update the total profit
+            self.net_profit = self.total_profit - self.node_cost # update the net profit
             self.products_sold = 0 # reset the products sold in the current cycle
             yield self.env.timeout(1)
-            self.products_sold_daily.append((self.env.now, self.products_sold)) # append the product sold in the current cycle
-            self.inventory_cost += self.inventory.inventory.level * self.inventory_holding_cost # update the inventory cost
-            self.node_cost = self.inventory_cost + sum([x[1] for x in self.transportation_cost])
-            self.net_profit = self.total_profit - self.node_cost # update the net profit
 
     def get_statistics(self):
         """
@@ -1098,7 +1107,6 @@ class InventoryNode(Node):
             self.transportation_cost.append((self.env.now,supplier.cost)) # calculate stats: record order cost (tranportation cost))
             supplier.source.products_sold = reorder_quantity # calculate stats: update the product sold at the supplier
             supplier.source.total_products_sold += reorder_quantity # calculate stats: update the total product sold at the supplier
-            supplier.source.total_profit += reorder_quantity * supplier.source.profit # calculate stats: update the total profit at the supplier
             self.logger.info(f"{self.env.now}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
             yield self.env.timeout(supplier.lead_time()) # lead time for the order
             if(supplier.source.inventory.type=="perishable" and self.inventory.type=="perishable"): # if supplier also has perishable inventory
@@ -1132,9 +1140,10 @@ class InventoryNode(Node):
         Returns:
             None
         """
+        yield self.env.timeout(0.9) # wait till the end of the day to check the inventory status
         while True:
-            yield self.env.timeout(1)
-            if(self.inventory.inventory.level < s):
+            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.inventory.inventory.level}")
+            if(self.inventory.inventory.level <= s):
                 # reorder quantity is calculated based on the remaining capacity of the inventory
                 reorder_quantity = self.inventory.inventory.capacity - self.inventory.inventory.level
                 if(reorder_quantity>0):
@@ -1149,8 +1158,8 @@ class InventoryNode(Node):
                         # OR wait on the same supplier for the remaining quantity.
                         # Record backlog at the respective suppliers.
                         self.logger.info(f"{self.env.now}:{self.ID}:Product not available at suppliers. Required quantity:{reorder_quantity}.")
-            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.inventory.inventory.level}")
-    
+            yield self.env.timeout(1)
+            
     def periodic_replenishment(self, interval, reorder_quantity):
         """
         Monitored inventory replenishment policy (periodic): Replenish the inventory from the suppliers at regular intervals. 
@@ -1161,8 +1170,9 @@ class InventoryNode(Node):
         Returns:
             None
         """
+        yield self.env.timeout(0.9) # wait till the end of the day to check the inventory status
         while True:
-            yield self.env.timeout(interval)
+            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.inventory.inventory.level}")
             if(self.inventory.inventory.level < self.inventory.inventory.capacity):
                 # choose a supplier to replenish the inventory based on the availablity of the product
                 # check availablity of the product at suppliers
@@ -1175,7 +1185,7 @@ class InventoryNode(Node):
                         # OR wait on the same supplier for the remaining quantity.
                         # Record backlog at the respective suppliers.
                     self.logger.info(f"{self.env.now}:{self.ID}:Product not available at suppliers. Required quantity:{reorder_quantity}.")
-            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.inventory.inventory.level}")
+            yield self.env.timeout(interval)
 
 class Manufacturer(Node):
     """
@@ -1347,16 +1357,16 @@ class Manufacturer(Node):
         Returns:
             None
         """
+        yield self.env.timeout(0.99)
         while True:
-            yield self.env.timeout(1)
-            self.inventory_cost += self.inventory.inventory.level * self.inventory_holding_cost
             if(self.product):
                 self.total_manufacturing_cost = self.total_products_manufactured * self.product.manufacturing_cost
                 self.revenue = self.total_products_sold * self.product.sell_price
-        
+            self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
             self.total_profit = self.total_products_sold * self.profit # profit = sell price - buy price (profit per product unit)
             self.node_cost = self.inventory_cost + sum([x[1] for x in self.transportation_cost]) + self.total_manufacturing_cost
             self.net_profit = self.total_profit - self.node_cost
+            yield self.env.timeout(1)
     
     def get_statistics(self):
         """
@@ -1503,9 +1513,10 @@ class Manufacturer(Node):
         Returns:
             None
         """
+        yield self.env.timeout(0.9) # wait till the end of the day to check the inventory status
         while True:
-            yield self.env.timeout(1)
-            if(self.inventory.inventory.level<s and not self.product_order_placed): # product inventory level is below the reorder point
+            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.raw_inventory_counts}")
+            if(self.inventory.inventory.level<=s and not self.product_order_placed): # product inventory level is below the reorder point
                 self.product_order_placed = True
                 product_reorder_quantity = self.inventory.inventory.capacity - self.inventory.inventory.level # how many product units to order 
                 for raw_material in self.product.raw_materials: # order all raw materials required to produce the product
@@ -1519,6 +1530,7 @@ class Manufacturer(Node):
                 self.product_order_placed = True
             if(all(self.order_placed.values()) == False):
                 self.product_order_placed = False
+            yield self.env.timeout(1)
                 
 
     def periodic_replenishment(self, interval, reorder_quantity):
@@ -1531,8 +1543,9 @@ class Manufacturer(Node):
         Returns:
             None
         """
+        yield self.env.timeout(0.9) # wait till the end of the day to check the inventory status
         while True:
-            yield self.env.timeout(interval) # time interval for replenishment
+            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.raw_inventory_counts}")
             product_reorder_quantity = reorder_quantity # how many product units to order
             for raw_material in self.product.raw_materials: # order all raw materials required to produce the product
                 reorder_quantity_raw = product_reorder_quantity * raw_material["quantity"] # calculate the reorder quantity for raw material
@@ -1540,7 +1553,7 @@ class Manufacturer(Node):
                 if(not self.order_placed[raw_material["raw_material"].ID] and reorder_quantity_raw>0): # check if the order is already placed
                     self.order_placed[raw_material["raw_material"].ID] = True # set the order status to True
                     self.env.process(self.place_order(raw_material["raw_material"].ID, reorder_quantity_raw)) # place the order
-            self.logger.info(f"{self.env.now}:{self.ID}: Inventory levels:{self.raw_inventory_counts}")
+            yield self.env.timeout(interval) # time interval for replenishment
 
 class Demand(Node):
     """
@@ -1570,6 +1583,8 @@ class Demand(Node):
                  order_quantity_model: callable, 
                  demand_node: Node,
                  tolerance: float = 0.0,
+                 delivery_cost: callable = lambda: 0,
+                 lead_time: callable = lambda: 0,
                  **kwargs) -> None:
         """
         Initialize the demand node object.
@@ -1612,6 +1627,8 @@ class Demand(Node):
         self.order_quantity_model = order_quantity_model
         self.demand_node = demand_node
         self.customer_tolerance = tolerance
+        self.delivery_cost = delivery_cost
+        self.lead_time = lead_time
         self.env.process(self.behavior())
 
         self.total_demand = 0
@@ -1669,7 +1686,7 @@ class Demand(Node):
                 "unsatisfied_demand": self.unsatisfied_demand,
                 "shortage": self.shortage}
 
-    def wait_for_order(self,order_quantity):
+    def wait_for_order(self,id,order_quantity):
         """
         Wait for the required number of units based on customer tolerance.
         If the customer tolerance is infinite, the method waits until the order is fulfilled.
@@ -1686,14 +1703,17 @@ class Demand(Node):
                 get_event, man_date_ls = self.demand_node.inventory.inventory.get(order_quantity)
                 yield get_event
             else:
-                self.logger.info(f"{self.env.now}:{self.ID}:{order_quantity} units are not available at the moment, waiting!")
                 yield self.demand_node.inventory.inventory.get(order_quantity)
-            self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
+            self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, remaining order quantity:{order_quantity} placed.")
+            yield self.env.timeout(self.lead_time()) # wait for the delivery of the order
+            self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
+
             # update statistics
             self.product_sold.append((self.env.now, order_quantity))
             self.total_products_sold += order_quantity
+            self.transportation_cost.append([self.env.now, self.delivery_cost()])
+            self.node_cost += self.transportation_cost[-1][1]
             self.demand_node.products_sold = order_quantity
-            self.demand_node.total_profit += self.demand_node.profit * order_quantity
             return
         
         wait_time = 0
@@ -1705,18 +1725,71 @@ class Demand(Node):
                 wait_time += 1
                 yield self.env.timeout(1)
             if(order_quantity <= self.demand_node.inventory.inventory.level):
-                yield self.demand_node.inventory.inventory.get(order_quantity)
-                self.logger.info(f"{self.env.now}:{self.ID}:Remaining demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
+                if(self.demand_node.inventory.type=="perishable"):
+                    event,  man_dt_ls = self.demand_node.inventory.inventory.get(order_quantity)
+                    yield event 
+                else:
+                    yield self.demand_node.inventory.inventory.get(order_quantity)
+                self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, remaining order quantity:{order_quantity}, available inventory:{self.demand_node.inventory.inventory.level}.")
+                yield self.env.timeout(self.lead_time()) # wait for the delivery of the order
+                self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
                 # update statistics
                 self.product_sold.append((self.env.now, order_quantity))
                 self.total_products_sold += order_quantity
+                self.transportation_cost.append([self.env.now, self.delivery_cost()])
+                self.node_cost += self.transportation_cost[-1][1]
                 self.demand_node.products_sold = order_quantity
-                self.demand_node.total_profit += self.demand_node.profit * order_quantity
-                return
-                
-        self.logger.info(f"{self.env.now}:{self.ID}:Remaining demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}.")
+                return                
+        self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, remaining order quantity:{order_quantity} not available! inventory:{self.demand_node.inventory.inventory.level}. No order placed.")
         self.unsatisfied_demand.append((self.env.now, order_quantity))
 
+    def customer(self,id,order_quantity):
+        """
+        Simulate the customer behavior, ordering products from demand node, consume and return.
+
+        Returns:
+            None
+        """
+        if(order_quantity <= self.demand_node.inventory.inventory.level):
+            if(self.demand_node.inventory.type=="perishable"):
+                get_eve, man_date_ls = self.demand_node.inventory.inventory.get(order_quantity)
+                yield get_eve
+            else:
+                yield self.demand_node.inventory.inventory.get(order_quantity)
+            self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity}, available.")
+            yield self.env.timeout(self.lead_time()) # wait for the delivery of the order
+            self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
+            # update statistics
+            self.product_sold.append((self.env.now, order_quantity))
+            self.total_products_sold += order_quantity
+            self.transportation_cost.append([self.env.now, self.delivery_cost()])
+            self.node_cost += self.transportation_cost[-1][1]
+            self.demand_node.products_sold = order_quantity
+        elif(self.customer_tolerance>0):
+            self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}. Place order for available amount.")  
+            order_quantity = order_quantity - self.demand_node.inventory.inventory.level # calculate the remaining quantity to order
+            if(self.demand_node.inventory.inventory.level>0): # consume if available
+                consumed_quantity = self.demand_node.inventory.inventory.level
+                if(self.demand_node.inventory.type=="perishable"):
+                    get_eve, man_date_ls = self.demand_node.inventory.inventory.get(self.demand_node.inventory.inventory.level)
+                    yield get_eve
+                else:
+                    yield self.demand_node.inventory.inventory.get(self.demand_node.inventory.inventory.level) # consume available quantity
+                yield self.env.timeout(self.lead_time()) # wait for the delivery of the order
+                self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{consumed_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
+                # set stats for the demand node
+                self.product_sold.append((self.env.now, self.demand_node.inventory.inventory.level))
+                self.total_products_sold += self.demand_node.inventory.inventory.level
+                self.transportation_cost.append([self.env.now, self.delivery_cost()])
+                self.node_cost += self.transportation_cost[-1][1]
+                self.demand_node.products_sold = self.demand_node.inventory.inventory.level
+            self.shortage.append((self.env.now, order_quantity)) # record the shortage
+            self.env.process(self.wait_for_order(id,order_quantity)) # wait for the remaining quantity to be available
+        else:
+            self.logger.info(f"{self.env.now}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}. No tolerance! No order placed. Shortage:{order_quantity-self.demand_node.inventory.inventory.level}.")
+            self.shortage.append((self.env.now, order_quantity-self.demand_node.inventory.inventory.level)) # record the shortage
+            self.unsatisfied_demand.append((self.env.now, order_quantity))
+    
     def behavior(self):
         """
         Generate demand by calling the order arrival and order quantity models.
@@ -1727,118 +1800,11 @@ class Demand(Node):
         Returns:
             None
         """
+        customer_id = 0 # customer ID
         while True:
             order_time = self.order_arrival_model()
             order_quantity = self.order_quantity_model()
             self.total_demand += order_quantity
-            if(order_quantity <= self.demand_node.inventory.inventory.level):
-                if(self.demand_node.inventory.type=="perishable"):
-                    get_eve, man_date_ls = self.demand_node.inventory.inventory.get(order_quantity)
-                    yield get_eve
-                else:
-                    yield self.demand_node.inventory.inventory.get(order_quantity)
-                self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} received, inventory level:{self.demand_node.inventory.inventory.level}.")
-                # update statistics
-                self.product_sold.append((self.env.now, order_quantity))
-                self.total_products_sold += order_quantity
-                self.demand_node.products_sold = order_quantity
-                self.demand_node.total_profit += self.demand_node.profit * order_quantity
-                self.demand_node.total_products_sold += order_quantity
-            elif(self.customer_tolerance>0):
-                self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}. Consume available, shortage:{order_quantity-self.demand_node.inventory.inventory.level}.")  
-                order_quantity = order_quantity - self.demand_node.inventory.inventory.level # calculate the remaining quantity to order
-                # set stats for the demand node
-                self.demand_node.products_sold = self.demand_node.inventory.inventory.level
-                self.demand_node.total_profit += self.demand_node.profit * order_quantity
-                self.demand_node.total_products_sold += self.demand_node.inventory.inventory.level
-                # consume available quantity
-                if(self.demand_node.inventory.inventory.level>0):
-                    if(self.demand_node.inventory.type=="perishable"):
-                        get_eve, man_date_ls = self.demand_node.inventory.inventory.get(self.demand_node.inventory.inventory.level)
-                        yield get_eve
-                    else:
-                        yield self.demand_node.inventory.inventory.get(self.demand_node.inventory.inventory.level) # consume available quantity
-                self.shortage.append((self.env.now, order_quantity)) # record the shortage
-                self.env.process(self.wait_for_order(order_quantity)) # wait for the order to arrive
-            else:
-                self.logger.info(f"{self.env.now}:{self.ID}:Demand at {self.demand_node}, Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}. No tolerance, shortage:{order_quantity-self.demand_node.inventory.inventory.level}.")
-                self.shortage.append((self.env.now, order_quantity-self.demand_node.inventory.inventory.level)) # record the shortage
-                self.unsatisfied_demand.append((self.env.now, order_quantity))
-            yield self.env.timeout(order_time)
-
-if __name__ == "__main__": 
-    """
-    This code is executed when the file is run as a script. It simply demonstrates the use of the core components of the supply network.
-    The following example demonstrates the use of the core components of the supply network. 
-    Instances of the components are created, and the simulation is run to observe the behavior of the supply network.
-    """
-    env = simpy.Environment()
-    
-    # create another raw material
-    raw_material2 = RawMaterial(ID="RM2", name="Raw Material 2", extraction_quantity=20, extraction_time=2, mining_cost= 0.5, cost=1)
-
-    # update the default product to require raw_material2 for manufacturing
-    default_product.raw_materials = [{"raw_material": default_raw_material, "quantity": 9}, {"raw_material": raw_material2, "quantity": 5}]
-
-    # create suppliers
-    supplier1 = Supplier(env=env, ID="S1", name="Supplier 1", node_type="infinite_supplier", raw_material=default_raw_material)
-    supplier2 = Supplier(env=env, ID="S2", name="Supplier 2", node_type="infinite_supplier", raw_material=raw_material2)
-    
-    # create a manufacturer
-    manufacturer1 = Manufacturer(env=env, ID="M1", name="Manufacturer 1", product=default_product,
-                                 capacity=500, initial_level=300, inventory_holding_cost=3, inventory_type="perishable",
-                                 shelf_life=10, replenishment_policy="sS", policy_param=[200], product_sell_price=300)
-    
-    # create a distributor
-    distributor1 = InventoryNode(env=env,ID="D1", name="Distributor 1", node_type="distributor", 
-                                 capacity=300, initial_level=50, inventory_holding_cost=3, product=default_product, inventory_type="perishable",
-                                 shelf_life=10, replenishment_policy="sS", policy_param=[30], product_sell_price=350)
-
-    # create a demand node
-    demand_dis = Demand(env=env,ID="demand_D1", name="Demand 1", order_arrival_model=lambda: 1, order_quantity_model=lambda: 10, demand_node=distributor1)
-    
-    # connect the nodes with links
-    link_sup1_man1 = Link(env=env,ID="L1", source=supplier1, sink=manufacturer1, cost=5, lead_time=lambda: 3)
-    link_sup2_man1 = Link(env=env,ID="L2", source=supplier2, sink=manufacturer1, cost=7, lead_time=lambda: 2)
-    link_man1_dis1 = Link(env=env,ID="L3", source=manufacturer1, sink=distributor1, cost=50, lead_time=lambda: 2)
-    
-    #  run the simulation
-    env.run(until=30)
-
-    nodes = [supplier1,supplier2,manufacturer1,distributor1]
-    #nodes = [manufacturer1,distributor1]
-    links = [link_sup1_man1,link_sup2_man1,link_man1_dis1]
-    #links = [link_man1_dis1]
-    demands = [demand_dis]
-
-    # Let's create some variables to store stats
-    sc_net_inventory_cost = 0
-    sc_net_transport_cost = 0
-    sc_net_node_cost = 0
-    sc_net_profit = 0
-    sc_total_unit_sold = 0
-    sc_total_unsatisfied_demand = 0
-    
-    # get statistics
-    for node in nodes:
-        sc_net_inventory_cost += node.inventory_cost
-        sc_net_transport_cost += sum([x[1] for x in node.transportation_cost])
-        sc_net_node_cost += node.node_cost
-        sc_net_profit += node.net_profit
-        global_logger.logger.info(f"{node.name}: statistics:\n{node.get_statistics()}")
-
-    for demand in demands:
-        sc_total_unit_sold += demand.total_products_sold
-        sc_total_unsatisfied_demand += sum([x[1] for x in demand.unsatisfied_demand])
-
-    global_logger.logger.info(f"Deafult product details: {default_product.get_info()}")
-    global_logger.logger.info(f"Deafult raw material details: {default_raw_material.get_info()}")
-    global_logger.logger.info(f"Raw material 2 details: {raw_material2.get_info()}")
-
-    global_logger.logger.info("*** Supply chain statistics ***")
-    global_logger.logger.info(f"Number of products sold = {sc_total_unit_sold}") 
-    global_logger.logger.info(f"SC total profit = {sc_net_profit}") 
-    global_logger.logger.info(f"SC total tranportation cost = {sc_net_transport_cost}") 
-    global_logger.logger.info(f"SC total cost = {sc_net_node_cost}")
-    global_logger.logger.info(f"SC inventory cost = {sc_net_inventory_cost}") 
-    global_logger.logger.info(f"Customers returned  = {sc_total_unsatisfied_demand}")
+            self.env.process(self.customer(customer_id, order_quantity)) # spawn a customer process
+            customer_id += 1 # increment customer ID
+            yield self.env.timeout(order_time) # wait for the next order arrival
