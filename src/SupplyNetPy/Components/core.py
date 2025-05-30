@@ -902,6 +902,7 @@ class InventoryNode(Node):
         manufacture_date (callable): function to model manufacturing date for product (this function is used in the case when behaviour of a single node is to be modeled)
         replenishment_policy (str): replenishment policy for the inventory
         product_sell_price (float): selling price of the product
+        product_buy_price (float): buying price of the product
         policy_param (list): parameters for the replenishment policy
         product (Product): product that the inventory node sells
         **kwargs: any additional keyword arguments for the Node class and logger
@@ -928,6 +929,7 @@ class InventoryNode(Node):
                  manufacture_date:callable = None,
                  replenishment_policy: str = "sS", 
                  product_sell_price: float = 0.0, 
+                 product_buy_price: float = 0.0,
                  policy_param: list = [2], 
                  product:Product = None,
                  **kwargs) -> None:
@@ -944,6 +946,7 @@ class InventoryNode(Node):
             manufacture_date (callable): function to model manufacturing date for product (this function is used in the case when behaviour of a single node is to be modeled)
             replenishment_policy (str): replenishment policy for the inventory
             product_sell_price (float): selling price of the product
+            product_buy_price (float): buying price of the product
             policy_param (list): parameters for the replenishment policy
             product (Product): product that the inventory node sells
             **kwargs: any additional keyword arguments for the Node class and logger
@@ -999,6 +1002,8 @@ class InventoryNode(Node):
         self.manufacture_date = manufacture_date
         self.sell_price = product_sell_price # set the sell price of the product
         self.buy_price = 0 # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
+        if(product_buy_price>0):
+            self.buy_price = product_buy_price # set the buy price of the product
         self.profit = self.sell_price - self.buy_price # calculate profit
         if(self.product and product_sell_price!=0):
             self.product.sell_price = product_sell_price
