@@ -102,6 +102,7 @@ supplychainnet = scm.simulate_sc_net(scm.create_sc_net(nodes, links, demands), s
 ---
 
 **Key Takeaways:**
-- The simulation demonstrates how inventory depletes over time and how unmet demand accumulates when supply is insufficient.
-- You can modify node parameters, replenishment policies, or demand models to explore different supply chain behaviors.
 
+- The simulation demonstrates how inventory depletes over time and how unmet demand accumulates when supply is insufficient.
+
+- You can modify node parameters, replenishment policies, or demand models to explore different supply chain behaviors.
