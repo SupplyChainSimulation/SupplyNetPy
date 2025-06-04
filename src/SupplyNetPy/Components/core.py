@@ -2,8 +2,24 @@ from SupplyNetPy.Components.logger import GlobalLogger
 import simpy
 import copy
 import random
+import numbers
 # global variables
 global_logger = GlobalLogger() # create a global logger
+
+def check_if_num(name: str, value) -> None:
+    """
+    Check if the value is a number and raise ValueError if not.
+
+    Parameters:
+        name (str): name of the variable
+        value: value to check
+
+    Raises:
+        ValueError: if value is not a number
+    """
+    if not isinstance(value, numbers.Number):
+        global_logger.logger.error(f"function {name}() must return a number (an int or a float).")
+        raise ValueError(f"function {name}() must return a number (an int or a float).")
 
 class RawMaterial():
     """
@@ -271,6 +287,8 @@ class PerishableInventory(simpy.Container):
         Returns:
             None
         """
+        if(amount+self.level>self.capacity): # check if amount can be put in inventory, otherwise adjust it
+            amount = self.capacity - self.level
         # insert the (manufacturing date, amount) in perish_queue in sorted order
         inserted = False
         for i in range(len(self.perish_queue)):
@@ -330,7 +348,7 @@ class PerishableInventory(simpy.Container):
                 self.perish_queue.pop(0) # remove from perish queue
                 if(self.waste[-1][1]>0):
                     super().get(self.waste[-1][1]) # remove from the inventory
-                self.logger.info(f"Current inventory levels:{self.level}")
+                self.logger.info(f"Current inventory levels:{self.perish_queue}")
                 
 
 class Inventory():
@@ -438,6 +456,7 @@ class Node():
         name (str): name of the node
         node_type (str): type of the node
         failure_p (float): node failure probability
+        node_disrupt_time (callable): function to model node disruption time
         node_recovery_time (callable): function to model node recovery time
         isolated_logger (bool): flag to enable/disable isolated logger
         **kwargs: additional keyword arguments for logger (GlobalLogger)
@@ -454,6 +473,7 @@ class Node():
                  name: str, 
                  node_type: str, 
                  failure_p:float = 0.0, 
+                 node_disrupt_time:callable = None,
                  node_recovery_time:callable = lambda: 1,
                  isolated_logger: bool = False, 
                  **kwargs) -> None:
@@ -475,6 +495,7 @@ class Node():
             node_type (str): type of the node
             node_failure_p (float): node failure probability
             node_status (str): status of the node (active/inactive)
+            node_disrupt_time (callable): function to model node disruption time
             node_recovery_time (callable): function to model node recovery time
             logger (GlobalLogger): logger object
             inventory_cost (float): total inventory cost
@@ -499,6 +520,7 @@ class Node():
         self.env = env  # simulation environment
         self.node_failure_p = failure_p  # node failure probability
         self.node_status = "active"  # node status (active/inactive)
+        self.node_disrupt_time = node_disrupt_time  # callable function to model node disruption time
         self.node_recovery_time = node_recovery_time  # callable function to model node recovery time
         self.logger = global_logger.logger  # global logger
         if isolated_logger:  # if individual logger is required
@@ -514,7 +536,7 @@ class Node():
         self.total_products_sold = 0 # total product units sold by this node
         self.total_profit = 0 # total profit (profit per item * total_products_sold)
 
-        if(self.node_failure_p>0): # start self disruption if failure probability > 0
+        if(self.node_failure_p>0 or self.node_disrupt_time): # start self disruption if failure probability > 0
             self.env.process(self.disruption()) 
 
     def __str__(self):
@@ -553,15 +575,23 @@ class Node():
             None
         """
         while True:
-            yield self.env.timeout(1)
-            # disrupt the node with a probability node_failure_p
-            if(random.random() < self.node_failure_p):
-                self.node_status = "inactive"
-                # self.logger.warning(f"{self.env.now}:{self.ID}: Node disrupted.")
-                # recover the node after node_recovery_time
-                yield self.env.timeout(self.node_recovery_time())
+            if(self.node_status=="active"):
+                if(self.node_disrupt_time): # if node_disrupt_time is provided, wait for the disruption time
+                    disrupt_time = self.node_disrupt_time() # get the disruption time
+                    check_if_num(name="node_disrupt_time", value=disrupt_time) # check if disrupt_time is a number
+                    yield self.env.timeout(disrupt_time)
+                    self.node_status = "inactive" # change the node status to inactive
+                    self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
+                elif(random.random() < self.node_failure_p):
+                    self.node_status = "inactive"
+                    self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
+                    yield self.env.timeout(1)
+            else:
+                recovery_time = self.node_recovery_time() # get the recovery time
+                check_if_num(name="node_recovery_time", value=recovery_time) # check if disrupt_time is a number
+                yield self.env.timeout(recovery_time)
                 self.node_status = "active"
-                # self.logger.warning(f"{self.env.now}:{self.ID}: Node recovered from disruption.")
+                self.logger.info(f"{self.env.now}:{self.ID}: Node recovered from disruption.")
             
 class Link():
     """
@@ -697,9 +727,11 @@ class Link():
             # disrupt the link with a probability link_failure_p
             if(random.random() < self.link_failure_p):
                 self.status = "inactive"
-                #self.logger.warning(f"{self.env.now}:{self.ID}: Link disrupted.")
+                #self.logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
                 # recover the link after link_recovery_time
-                yield self.env.timeout(self.link_recovery_time())
+                recovery_time = self.link_recovery_time()
+                check_if_num(name="link_recovery_time", value=recovery_time) # check if recovery_time is a number
+                yield self.env.timeout(recovery_time)
                 self.status = "active"
 
 class Supplier(Node):
@@ -965,7 +997,7 @@ class InventoryNode(Node):
             sell_price (float): selling price of the product
             buy_price (float): buying price of the product
             order_placed (bool): flag to check if the order is placed
-            product_sold_daily (list): list to store the product sold in the current cycle
+            products_sold_daily (list): list to store the product sold in the current cycle
             products_sold (int): total product sold in the current cycle
         
         Returns:
@@ -1115,7 +1147,9 @@ class InventoryNode(Node):
             supplier.source.products_sold = reorder_quantity # calculate stats: update the product sold at the supplier
             supplier.source.total_products_sold += reorder_quantity # calculate stats: update the total product sold at the supplier
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
-            yield self.env.timeout(supplier.lead_time()) # lead time for the order
+            lead_time = supplier.lead_time() # get the lead time from the supplier
+            check_if_num(name="lead_time", value=lead_time) # check if lead_time is a number
+            yield self.env.timeout(lead_time) # lead time for the order
             if(supplier.source.inventory.type=="perishable" and self.inventory.type=="perishable"): # if supplier also has perishable inventory
                 for ele in man_date_ls: # get manufacturing date from the supplier
                     self.inventory.inventory.put(ele[1],ele[0])
@@ -1490,7 +1524,9 @@ class Manufacturer(Node):
                     # update the product sold at the raw material supplier
                     supplier.source.total_raw_materials_sold += reorder_quantity
                     supplier.source.total_products_sold += reorder_quantity
-                    yield self.env.timeout(supplier.lead_time()) # lead time for the order
+                    lead_time = supplier.lead_time() # get the lead time from the supplier
+                    check_if_num(name="lead_time", value=lead_time) # check if lead_time is a number
+                    yield self.env.timeout(lead_time) # lead time for the order
                     self.order_placed[raw_material] = False
                     self.raw_inventory_counts[raw_material] += reorder_quantity
                     self.logger.info(f"{self.env.now:.4f}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
@@ -1709,13 +1745,17 @@ class Demand(Node):
             else:
                 yield self.demand_node.inventory.inventory.get(order_quantity)
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, remaining order quantity:{order_quantity} placed.")
-            yield self.env.timeout(self.lead_time()) # wait for the delivery of the order
+            lead_time = self.lead_time() # get the lead time from the demand node
+            check_if_num(name="lead_time", value=lead_time) # check if lead_time is a number
+            yield self.env.timeout(lead_time) # wait for the delivery of the order
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
 
             # update statistics
             self.product_sold.append((self.env.now, order_quantity))
             self.total_products_sold += order_quantity
-            self.transportation_cost.append([self.env.now, self.delivery_cost()])
+            del_cost = self.delivery_cost() # calculate the delivery cost
+            check_if_num(name="delivery_cost", value=del_cost) # check if delivery_cost is a number
+            self.transportation_cost.append([self.env.now, del_cost])
             self.node_cost += self.transportation_cost[-1][1]
             self.demand_node.products_sold = order_quantity
             return
@@ -1735,12 +1775,16 @@ class Demand(Node):
                 else:
                     yield self.demand_node.inventory.inventory.get(order_quantity)
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, remaining order quantity:{order_quantity}, available inventory:{self.demand_node.inventory.inventory.level}.")
-                yield self.env.timeout(self.lead_time()) # wait for the delivery of the order
+                lead_time = self.lead_time() # get the lead time from the demand node
+                check_if_num(name="lead_time", value=lead_time) # check if lead_time is a number
+                yield self.env.timeout(lead_time) # wait for the delivery of the order
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
                 # update statistics
                 self.product_sold.append((self.env.now, order_quantity))
                 self.total_products_sold += order_quantity
-                self.transportation_cost.append([self.env.now, self.delivery_cost()])
+                del_cost = self.delivery_cost()
+                check_if_num(name="delivery_cost", value=del_cost)
+                self.transportation_cost.append([self.env.now, del_cost])
                 self.node_cost += self.transportation_cost[-1][1]
                 self.demand_node.products_sold = order_quantity
                 return                
@@ -1761,12 +1805,16 @@ class Demand(Node):
             else:
                 yield self.demand_node.inventory.inventory.get(order_quantity)
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity}, available.")
-            yield self.env.timeout(self.lead_time()) # wait for the delivery of the order
+            lead_time = self.lead_time() # get the lead time from the demand node
+            check_if_num(name="lead_time", value=lead_time) # check if lead_time is a number
+            yield self.env.timeout(lead_time) # wait for the delivery of the order
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
             # update statistics
             self.product_sold.append((self.env.now, order_quantity))
             self.total_products_sold += order_quantity
-            self.transportation_cost.append([self.env.now, self.delivery_cost()])
+            del_cost = self.delivery_cost()
+            check_if_num(name="delivery_cost", value=del_cost) # check if delivery_cost is a number
+            self.transportation_cost.append([self.env.now, del_cost])
             self.node_cost += self.transportation_cost[-1][1]
             self.demand_node.products_sold = order_quantity
         elif(self.customer_tolerance>0):
@@ -1779,14 +1827,18 @@ class Demand(Node):
                     yield get_eve
                 else:
                     yield self.demand_node.inventory.inventory.get(self.demand_node.inventory.inventory.level) # consume available quantity
-                yield self.env.timeout(self.lead_time()) # wait for the delivery of the order
+                lead_time = self.lead_time() # get the lead time from the demand node
+                check_if_num(name="lead_time", value=lead_time) # check if lead_time is a number
+                yield self.env.timeout(lead_time) # wait for the delivery of the order
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{consumed_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
                 # set stats for the demand node
-                self.product_sold.append((self.env.now, self.demand_node.inventory.inventory.level))
-                self.total_products_sold += self.demand_node.inventory.inventory.level
-                self.transportation_cost.append([self.env.now, self.delivery_cost()])
+                self.demand_node.products_sold = consumed_quantity
+                self.product_sold.append((self.env.now, consumed_quantity))
+                self.total_products_sold += consumed_quantity
+                del_cost = self.delivery_cost()
+                check_if_num(name="delivery_cost", value=del_cost)
+                self.transportation_cost.append([self.env.now, del_cost])
                 self.node_cost += self.transportation_cost[-1][1]
-                self.demand_node.products_sold = self.demand_node.inventory.inventory.level
             self.shortage.append((self.env.now, order_quantity)) # record the shortage
             self.env.process(self.wait_for_order(id,order_quantity)) # wait for the remaining quantity to be available
         else:
@@ -1807,7 +1859,9 @@ class Demand(Node):
         customer_id = 0 # customer ID
         while True:
             order_time = self.order_arrival_model()
+            check_if_num(name="order_time", value=order_time)
             order_quantity = self.order_quantity_model()
+            check_if_num(name="order_quantity", value=order_quantity)
             self.total_demand += order_quantity
             self.env.process(self.customer(customer_id, order_quantity)) # spawn a customer process
             customer_id += 1 # increment customer ID
