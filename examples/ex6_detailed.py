@@ -71,3 +71,4 @@ scnet = {
 
 # Run the simulation
 scnet = scm.simulate_sc_net(scnet, sim_time=120)
+scm.visualize_sc_net(scnet)

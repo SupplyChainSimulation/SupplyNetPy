@@ -19,18 +19,18 @@ class Distributions:
         self.high = high
 
     def normal(self):
-        sample = np.random.normal(self.mean, self.std, 1)
-        if(sample<0):
-            sample = self.mean
-        return sample
+        sample = -1
+        while(sample<0):
+            sample = np.random.normal(self.mean, self.std, 1)
+        return sample[0]
     
     def poisson(self):
         sample = np.random.poisson(self.lam, 1)
-        return sample
+        return sample[0]
     
     def uniform(self):
         sample = np.random.uniform(self.low, self.high, 1)
-        return sample
+        return sample[0]
 
 distri = Distributions(mean=20, std=5, lam=1, low=1, high=5)
 
@@ -74,6 +74,7 @@ while(s<end):
     scm.global_logger.logger.info(f'\n *** \n Running simulation for D1 with s = {s}')
     # run the simulations
     supplychainnet = scm.create_sc_net(nodes, links, demands)
+    scm.global_logger.enable_logging()
     supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=simulation_period)
     # record the perfomance of the model (in our case, the sc_profit)
     inv_costs.append(supplychainnet["nodes"][1].inventory_cost)

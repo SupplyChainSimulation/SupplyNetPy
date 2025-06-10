@@ -13,7 +13,7 @@ def normal_quantity():
         sample = 1
     return sample
 
-simlen = 365 # simulation length in days
+simlen = 3650 # simulation length in days
 env = simpy.Environment()
 
 # create an infinite supplier
