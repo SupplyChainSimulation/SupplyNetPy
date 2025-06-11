@@ -17,20 +17,20 @@ def visualize_sc_net(supplychainnet):
     """
     G = nx.Graph()
     nodes = supplychainnet["nodes"]
-    edges = supplychainnet["edges"]
+    edges = supplychainnet["links"]
 
     # Add nodes to the graph
-    for node in nodes:
-        G.add_node(node.ID, level=node.node_type)
+    for node_id, node in nodes.items():
+        G.add_node(node_id, level=node.node_type)
 
     # Add edges to the graph
-    for edge in edges:
+    for edge_id, edge in edges.items():
         from_node = edge.source.ID
         to_node = edge.sink.ID
         G.add_edge(from_node, to_node, weight=round(edge.lead_time(),2))
 
     # Generate the layout of the graph
-    pos = nx.spring_layout(G)
+    pos = nx.spectral_layout(G)
 
     # Draw the graph
     nx.draw(G, pos, node_color='#CCCCCC', with_labels=True)
@@ -47,55 +47,74 @@ def get_sc_net_info(supplychainnet):
     """
     Get supply chain network information. 
 
-    This function displays the following information about the supply chain network:
-    - Number of nodes
-    - Number of edges
-    - Number of suppliers
-    - Number of manufacturers
-    - Number of distributors
-    - Number of retailers
-    - Node parameters
-    - Edge parameters
-    - Demand
-    - Products
-
     Parameters: 
         supplychainnet (dict): A dictionary representing the supply chain network.
 
     Returns:
         str: A string containing the supply chain network information.
     """
-    sc_info = "Supply chain configuration: \n"
     logger = global_logger.logger
-    logger.info(f"Number of nodes in the network: {supplychainnet['num_of_nodes']}") 
-    logger.info(f"Number of edges in the network: {supplychainnet['num_of_edges']}") 
-    logger.info(f"\t Number of suppliers: {supplychainnet['num_suppliers']}") 
-    logger.info(f"\t Number of manufacturers: {supplychainnet['num_manufacturers']}") 
-    logger.info(f"\t Number of distributors: {supplychainnet['num_distributors']}") 
-    logger.info(f"\t Number of retailers: {supplychainnet['num_retailers']}") 
-    
-    sc_info += f"Number of nodes in the network: {supplychainnet['num_of_nodes']} \n Number of edges in the network: {supplychainnet['num_of_edges']} \n Number of suppliers: {supplychainnet['num_suppliers']} \n Number of manufacturers: {supplychainnet['num_manufacturers']} \n Number of distributors: {supplychainnet['num_distributors']} \n Number of retailers: {supplychainnet['num_retailers']}"
-    for node in supplychainnet["nodes"]:
-        sc_info += str(node.get_info())
-    for link in supplychainnet["edges"]:
-        sc_info += str(link.get_info())
-    for demand in supplychainnet["demand"]:
-        sc_info += str(demand.get_info())
-    sc_info += "\nSupply chain performance: \n"
-    logger.info(f"Supply chain performance: \n") 
-    if("performance" in supplychainnet):
-        scnet = supplychainnet["performance"]
-        logger.info(f"Number of products sold = {scnet['total_product_sold']}") 
-        logger.info(f"SC total tranportation cost = {scnet['sc_tranport_cost']}")
-        logger.info(f"SC inventory cost = {scnet['sc_inv_cost']}") 
-        logger.info(f"SC total cost = {scnet['sc_total_cost']}")
-        logger.info(f"SC net profit = {scnet['sc_net_profit']}")
-        logger.info(f"Customers returned  = {scnet['total_unsatisfied_demand']}") 
-    
-        sc_info += f"Number of products sold = {scnet['total_product_sold']} \n SC total tranportation cost = {scnet['sc_tranport_cost']}  \n SC inventory cost = {scnet['sc_inv_cost']} \n SC total cost = {scnet['sc_total_cost']} \n SC total profit = {scnet['sc_net_profit']} \n Customers returned  = {scnet['total_unsatisfied_demand']}"
+    global_logger.enable_logging(log_to_screen=True)
+    sc_info = "Supply chain configuration: \n"
+    info_keys = ['num_of_nodes', 'num_of_links', 'num_suppliers','num_manufacturers', 'num_distributors', 'num_retailers']
+    for key in info_keys:
+        if key in supplychainnet.keys():
+            sc_info += f"{key}: {supplychainnet[key]}\n"
+            logger.info(f"{key}: {supplychainnet[key]}")
+    logger.info(f"Nodes in the network: {list(supplychainnet['nodes'].keys())}")
+    sc_info += "Nodes in the network:\n"
+    for node_id, node in supplychainnet["nodes"].items():
+        node_info_dict = node.get_info()
+        for key, value in node_info_dict.items():
+            if type(value)==list:
+                list_vals = 0
+                if(len(value)>0):
+                    list_vals = f"{value[0]} ... "
+                    value = np.array(value)
+                sc_info += f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]\n"
+                logger.info(f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]")
+            else:    
+                sc_info += f"{key}: {value}\n"
+                logger.info(f"{key}: {value}")
+    logger.info(f"Edges in the network: {list(supplychainnet['links'].keys())}")
+    sc_info += "Edges in the network:\n"
+    for edge_id, edge in supplychainnet["links"].items():
+        edge_info_dict = edge.get_info()
+        for key, value in edge_info_dict.items():
+            if type(value)==list:
+                list_vals = 0
+                if(len(value)>0):
+                    list_vals = f"{value[0]} ... "
+                    value = np.array(value)
+                sc_info += f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]\n"
+                logger.info(f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]")
+            else:    
+                sc_info += f"{key}: {value}\n"
+                logger.info(f"{key}: {value}")
+    logger.info(f"Demands in the network: {list(supplychainnet['demands'].keys())}")                
+    sc_info += "Demands in the network:\n"
+    for demand_id, demand in supplychainnet["demands"].items():
+        demand_info_dict = demand.get_info()
+        for key, value in demand_info_dict.items():
+            if type(value)==list:
+                list_vals = 0
+                if(len(value)>0):
+                    list_vals = f"{value[0]} ... "
+                    value = np.array(value)
+                sc_info += f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]\n"
+                logger.info(f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]")
+            else:    
+                sc_info += f"{key}: {value}\n"
+                logger.info(f"{key}: {value}")    
+    keys = supplychainnet.keys() - {'nodes', 'links', 'demands', 'env', 'num_of_nodes', 'num_of_links', 'num_suppliers','num_manufacturers', 'num_distributors', 'num_retailers'}
+    sc_info += "Supply chain network performance:\n"
+    logger.info("Supply chain network performance:")
+    for key in keys:
+        sc_info += f"{key}: {supplychainnet[key]}\n"
+        logger.info(f"{key}: {supplychainnet[key]}")
     return sc_info
 
-def create_sc_net(nodes: list, links: list, demand: list):
+def create_sc_net(nodes: list, links: list, demands: list):
     """
     This functions inputs the nodes, links and demand netlists and creates supply chain nodes, links and demand objects. 
     It then creates a supply chain network by putting all the objects in a dictionary.
@@ -108,87 +127,109 @@ def create_sc_net(nodes: list, links: list, demand: list):
     Returns:
         dict: A dictionary representing the supply chain network.
     """
-    # create simpy environment
-    env = simpy.Environment()
-    nodes_instances = []
-    links_instances = []
-    demand_instances = []
+    env = simpy.Environment() # create simpy environment
+    supplychainnet = {"nodes":{},"links":{},"demands":{}} # create empty supply chain network
     used_ids = []
     num_suppliers = 0
     num_manufacturers = 0
     num_distributors = 0
     num_retailers = 0
     for node in nodes:
-        if(node["ID"] in used_ids):
-            global_logger.logger.error(f"Duplicate node ID {node['ID']}")
-            raise ValueError("Invalid node type")
-        used_ids.append(node["ID"])
-        if node["node_type"].lower() == "supplier" or node["node_type"].lower() == "infinite_supplier":
-            nodes_instances.append(Supplier(env=env, **node))
-            num_suppliers += 1
-        elif node["node_type"].lower() == "manufacturer":
-            # excluding key 'node_type', since it is not required for Manufacturer class
-            node_ex = {key: node[key] for key in node if key != 'node_type'}
-            nodes_instances.append(Manufacturer(env=env, **node_ex))
-            num_manufacturers += 1
-        elif node["node_type"].lower() == "distributor" or node["node_type"].lower() == "warehouse":
-            nodes_instances.append(InventoryNode(env=env, **node))
-            num_distributors += 1
-        elif node["node_type"].lower() == "retailer":
-            nodes_instances.append(InventoryNode(env=env, **node))
-            num_retailers += 1
-        else:
-            used_ids.remove(node["ID"])
-            global_logger.logger.error(f"Invalid node type {node['node_type']}")
-            raise ValueError("Invalid node type")
-    
+        if isinstance(node, dict):
+            if(node["ID"] in used_ids):
+                global_logger.logger.error(f"Duplicate node ID {node['ID']}")
+                raise ValueError("Duplicate node ID")
+            used_ids.append(node["ID"])
+            node_id = node['ID']
+            if node["node_type"].lower() in ["supplier", "infinite_supplier"]:
+                supplychainnet["nodes"][f"{node_id}"] = Supplier(env=env, **node)
+                num_suppliers += 1
+            elif node["node_type"].lower() in ["manufacturer", "factory"]:
+                node_ex = {key: node[key] for key in node if key != 'node_type'} # excluding key 'node_type', Manufacturer do not take it
+                supplychainnet["nodes"][f"{node_id}"] = Manufacturer(env=env, **node_ex)
+                num_manufacturers += 1
+            elif node["node_type"].lower() in ["distributor", "warehouse"]:
+                supplychainnet["nodes"][f"{node_id}"] = InventoryNode(env=env, **node)
+                num_distributors += 1
+            elif node["node_type"].lower() in ["retailer", "store", "shop"]:
+                supplychainnet["nodes"][f"{node_id}"] = InventoryNode(env=env, **node)
+                num_retailers += 1
+            else:
+                used_ids.remove(node["ID"])
+                global_logger.logger.error(f"Invalid node type {node['node_type']}")
+                raise ValueError("Invalid node type")
+        elif isinstance(node, Node):
+            if(node.ID in used_ids):
+                global_logger.logger.error(f"Duplicate node ID {node.ID}")
+                raise ValueError("Duplicate node ID")
+            used_ids.append(node.ID)
+            node_id = node.ID
+            supplychainnet["nodes"][f"{node_id}"] = node
+            if node.node_type.lower() in ["supplier", "infinite_supplier"]:
+                num_suppliers += 1
+            elif node.node_type.lower() in ["manufacturer", "factory"]:
+                num_manufacturers += 1
+            elif node.node_type.lower() in ["distributor", "warehouse"]:
+                num_distributors += 1
+            elif node.node_type.lower() in ["retailer", "store", "shop"]:
+                num_retailers += 1
+            else:
+                used_ids.remove(node.ID)
+                global_logger.logger.error(f"Invalid node type {node.node_type}")
+                raise ValueError("Invalid node type")
     for link in links:
-        source = None
-        sink = None
-        for node in nodes_instances:
-            if node.ID == link["source"]:
-                source = node
-            if node.ID == link["sink"]:
-                sink = node
-        if(source is None or sink is None):
-            global_logger.logger.error(f"Invalid source or sink node {link['source']} {link['sink']}")
-            raise ValueError("Invalid source or sink node")
-        links_instances.append(Link(env=env,ID=link['ID'],source=source,sink=sink,cost=link['cost'],lead_time=link['lead_time']))
+        if isinstance(link, dict):
+            source = None
+            sink = None
+            nodes = supplychainnet["nodes"].keys()
+            if(link["source"] in nodes):
+                source_id = link["source"]
+                source = supplychainnet["nodes"][f"{source_id}"]
+            if(link["sink"] in nodes):
+                sink_id = link["sink"]
+                sink = supplychainnet["nodes"][f"{sink_id}"]
+            if(source is None or sink is None):
+                global_logger.logger.error(f"Invalid source or sink node {link['source']} {link['sink']}")
+                raise ValueError("Invalid source or sink node")
+            exclude_keys = {'source', 'sink'}
+            params = {k: v for k, v in link.items() if k not in exclude_keys}
+            link_id = params['ID']
+            supplychainnet["links"][f"{link_id}"] = Link(env=env,source=source,sink=sink,**params)
+        elif isinstance(link, Link):
+            supplychainnet["links"][f"{link.ID}"] = link
+    for d in demands:
+        if isinstance(d, dict):
+            demand_node = None # check for which node the demand is
+            nodes = supplychainnet["nodes"].keys()
+            if d['demand_node'] in nodes:
+                demand_node_id = d['demand_node']
+                demand_node = supplychainnet["nodes"][f"{demand_node_id}"]
+            if(demand_node is None):
+                global_logger.logger.error(f"Invalid demand node {d['demand_node']}")
+                raise ValueError("Invalid demand node")
+            exclude_keys = {'demand_node','node_type'}
+            params = {k: v for k, v in d.items() if k not in exclude_keys}
+            demand_id = params['ID']
+            supplychainnet["demands"][f"{demand_id}"] = Demand(env=env,demand_node=demand_node,**params)
+        elif isinstance(d, Demand):
+            supplychainnet["demands"][f"{d.ID}"] = d
 
-    for d in demand:
-        # check for which node the demand is
-        demand_node = None
-        for node in nodes_instances:
-            if node.ID == d["demand_node"]:
-                demand_node = node
-        if(demand_node is None):
-            global_logger.logger.error(f"Invalid demand node {d['demand_node']}")
-            raise ValueError("Invalid demand node")
-        demand_instances.append(Demand(env=env,ID=d['ID'],name=d['name'],order_arrival_model=d['order_arrival_model'],
-                                       order_quantity_model=d['order_quantity_model'],demand_node=demand_node))
-
-    supplychainnet = {
-        "env":env,
-        "nodes": nodes_instances,
-        "edges": links_instances,
-        "demand": demand_instances,
-        "num_of_nodes": len(nodes),
-        "num_of_edges": len(links),
-        "num_suppliers": num_suppliers,
-        "num_manufacturers": num_manufacturers,
-        "num_distributors": num_distributors,
-        "num_retailers": num_retailers
-    }
+    supplychainnet["env"] = env
+    supplychainnet["num_of_nodes"] = num_suppliers + num_manufacturers + num_distributors + num_retailers
+    supplychainnet["num_of_links"] = len(links)
+    supplychainnet["num_suppliers"] = num_suppliers
+    supplychainnet["num_manufacturers"] = num_manufacturers
+    supplychainnet["num_distributors"] = num_distributors
+    supplychainnet["num_retailers"] = num_retailers
     return supplychainnet
 
 def simulate_sc_net(supplychainnet, sim_time):
     """
-    Simulate the supply chain network for a given time period.
+    Simulate the supply chain network for a given time period, and calculate performance measures.
 
     Parameters:
         supplychainnet (dict): A supply chain network.
         sim_time (int): Simulation time.
-        env (SimPy Environment variable): SimPy Environment variable.
 
     Returns:
         supplychainnet (dict): Updated dict with listed performance measures.
@@ -197,115 +238,69 @@ def simulate_sc_net(supplychainnet, sim_time):
     env = supplychainnet["env"]
     if(sim_time<=env.now):
         logger.warning(f"You have already ran simulation for this network! \n To create a new network use create_sc_net(), or specify the simulation time grater than {env.now} to run it further.")
-        return supplychainnet
-    
-    demands = supplychainnet["demand"]
-    nodes = supplychainnet["nodes"]
-
+        logger.info(f"Performance measures for the supply chain network are calculated and returned.")
+    else:
+        env.run(sim_time) # Run the simulation
     # Let's create some variables to store stats
-    sc_net_inventory_cost = 0
-    sc_net_transport_cost = 0
-    sc_net_node_cost = 0
-    sc_net_profit = 0
-    sc_total_unit_sold = 0
-    sc_total_unsatisfied_demand = 0
-    
-    # Run the simulation
-    env.run(sim_time)
+    total_available_inv = 0
+    total_inv_carry_cost = 0
+    total_inv_spend = 0
+    total_transport_cost = 0
+    total_revenue = 0
+    total_cost = 0
+    total_profit = 0
+    total_demand_placed_by_customers = [0, 0] # [orders, products]
+    total_fulfillment_received_by_customers = [0, 0] # [orders, products]
+    total_demand_placed_by_site = [0, 0] # [orders, products]
+    total_fulfillment_received_by_site = [0, 0] # [orders, products]
+    total_demand_placed = [0, 0] # [orders, products]
+    total_fulfillment_received = [0, 0] # [orders, products]
 
-    # Calculate stats
-    for node in nodes:
-        sc_net_inventory_cost += node.inventory_cost
-        sc_net_transport_cost += sum([x[1] for x in node.transportation_cost])
-        sc_net_node_cost += node.node_cost
-        node.net_profit = node.total_profit - node.node_cost
-        sc_net_profit += node.net_profit
-        logger.info(f"Node {node.ID} performance measures:")
-        logger.info(f"\tInventory cost = {node.inventory_cost}")
-        logger.info(f"\tTransportation cost = {sum([x[1] for x in node.transportation_cost])}")        
-        if(node.node_type.lower() == "supplier" or node.node_type.lower() == "infinite_supplier"):
-            logger.info(f"\tMining cost = {node.total_material_cost}")
-        if(node.node_type.lower() == "manufacturer"):
-            logger.info(f"\tManufacturing cost = {node.total_manufacturing_cost}")
-        logger.info(f"\tNode cost = {node.node_cost}")
-        logger.info(f"\tTotal products sold = {node.total_products_sold}")
-        logger.info(f"\tProfit = {node.total_profit}")
-        logger.info(f"\tNet profit = {node.total_profit - node.node_cost}")
-
-    for demand in demands:
-        sc_total_unit_sold += demand.total_products_sold
-        sc_total_unsatisfied_demand += sum([x[1] for x in demand.unsatisfied_demand])
-        logger.info(f"Demand {demand.ID} performance measures:")
-        logger.info(f"\tTotal demand = {demand.total_demand}")
-        logger.info(f"\tTotal products sold = {demand.total_products_sold}")
-        logger.info(f"\tUnsatisfied demand = {sum([x[1] for x in demand.unsatisfied_demand])}")
-        if(demand.shortage):
-            logger.info(f"\tShortage = {sum(x[1] for x in demand.shortage)}")
-    
-    supplychainnet["performance"] = {
-        "total_product_sold": sc_total_unit_sold,
-        "sc_inv_cost": sc_net_inventory_cost,
-        "sc_tranport_cost": sc_net_transport_cost,
-        "sc_total_cost": sc_net_node_cost,
-        "sc_net_profit": sc_net_profit,
-        "total_unsatisfied_demand": sc_total_unsatisfied_demand
-    }
-    
-    logger.info("Supply chain performance:")
-    logger.info(f"\tNumber of products sold = {sc_total_unit_sold}") 
-    logger.info(f"\tSC inventory cost = {sc_net_inventory_cost}") 
-    logger.info(f"\tSC total tranportation cost = {sc_net_transport_cost}") 
-    logger.info(f"\tSC total cost = {sc_net_node_cost}")
-    logger.info(f"\tSC total net profit = {sc_net_profit}") 
-    logger.info(f"\tUnsatisfied demand  = {sc_total_unsatisfied_demand}")
-    
+    for key, node in supplychainnet["nodes"].items():
+        if("infinite" in node.node_type.lower()): # skip infinite suppliers
+            continue
+        total_available_inv += node.inventory.inventory.level
+        total_inv_carry_cost += node.inventory_cost
+        total_inv_spend += sum([x[1] for x in node.inventory.inventory_spend])
+        total_transport_cost += sum([x[1] for x in node.transportation_cost])
+        total_revenue += node.revenue
+        total_cost += node.node_cost
+        total_demand_placed_by_site[0] += len(node.orders_placed) #+ len(node.orders_shortage) # orders
+        total_demand_placed_by_site[1] += sum([x[2] for x in node.orders_placed]) #+ sum([x[2] for x in node.orders_shortage]) # products
+        total_fulfillment_received_by_site[0] += len(node.orders_placed)
+        total_fulfillment_received_by_site[1] += sum([x[2] for x in node.orders_placed])
+    for key, node in supplychainnet["demands"].items():
+        total_transport_cost += sum([x[1] for x in node.transportation_cost])
+        total_cost += node.node_cost
+        total_demand_placed_by_customers[0] += len(node.orders_placed) + len(node.orders_shortage) # orders
+        total_demand_placed_by_customers[1] += node.total_demand # products
+        total_fulfillment_received_by_customers[0] += len(node.products_sold_daily)
+        total_fulfillment_received_by_customers[1] += sum([x[1] for x in node.products_sold_daily])
+    total_demand_placed[0] = total_demand_placed_by_customers[0] + total_demand_placed_by_site[0]
+    total_demand_placed[1] = total_demand_placed_by_customers[1] + total_demand_placed_by_site[1]
+    total_fulfillment_received[0] = total_fulfillment_received_by_customers[0] + total_fulfillment_received_by_site[0]
+    total_fulfillment_received[1] = total_fulfillment_received_by_customers[1] + total_fulfillment_received_by_site[1]
+    total_profit = total_revenue - total_cost
+    supplychainnet["total_available_inv"] = total_available_inv
+    supplychainnet["total_inv_carry_cost"] = total_inv_carry_cost   
+    supplychainnet["total_inv_spend"] = total_inv_spend
+    supplychainnet["total_transport_cost"] = total_transport_cost
+    supplychainnet["total_revenue"] = total_revenue
+    supplychainnet["total_cost"] = total_cost
+    supplychainnet["total_profit"] = total_profit
+    supplychainnet["total_demand_placed_by_customers"] = total_demand_placed_by_customers
+    supplychainnet["total_fulfillment_received_by_customers"] = total_fulfillment_received_by_customers
+    supplychainnet["total_demand_placed_by_site"] = total_demand_placed_by_site
+    supplychainnet["total_fulfillment_received_by_site"] = total_fulfillment_received_by_site
+    supplychainnet["total_demand_placed"] = total_demand_placed
+    supplychainnet["total_fulfillment_received"] = total_fulfillment_received
+    # Calculate average cost per order and per item
+    if total_demand_placed[0] > 0:
+        supplychainnet["avg_cost_per_order"] = total_cost / total_demand_placed[0]
+    else:
+        supplychainnet["avg_cost_per_order"] = 0
+    if total_demand_placed[1] > 0:
+        supplychainnet["avg_cost_per_item"] = total_cost / total_demand_placed[1]
+    else:
+        supplychainnet["avg_cost_per_item"] = 0
     return supplychainnet
-
-if __name__ == "__main__": 
-    
-    # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
-    nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier', 'raw_material': default_raw_material},
-             {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': 'sS', 'policy_param': [200],'product_sell_price': 350},
-             {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 1, 'replenishment_policy': 'sS', 'policy_param': [100],'product_sell_price': 360}
-    ]
-    
-    # ID, from_node, to_node, transportation_cost, lead_time
-    links = [{'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 5, 'lead_time': lambda: 3},
-             {'ID': 'L2', 'source': 'M1', 'sink': 'D1', 'cost': 5, 'lead_time': lambda: 2}
-    ]
-    
-    # ID, name, node_type, order_arrival_model, order_quantity_model, demand_node
-    demands = [{'ID': 'demand_D1', 'name': 'Demand 1', 'node_type': 'demand', 'order_arrival_model': lambda: 1, 'order_quantity_model': lambda: 10, 'demand_node': 'D1'}]
-
-    # enable/disable logging
-    global_logger.enable_logging()
-    
-    # create the supply chain model and visualize it
-    supplychainnet = create_sc_net(nodes, links, demands)
-    visualize_sc_net(supplychainnet)
-
-    # get the supply chain network information
-    for node in supplychainnet["nodes"]:
-        str_details = ""
-        for key, value in node.get_info().items():
-            str_details += f"{key}: {value}, "
-        global_logger.logger.info(f"{node}: {str_details}\n")
-    
-    # simulate the supply chain model
-    supplychainnet = simulate_sc_net(supplychainnet, sim_time=60)
-
-    # lets plot inventory levels for each node
-    for node in supplychainnet["nodes"]:
-        # get level data and timedata from the inventory
-        levels = np.array((node.inventory.instantaneous_levels))
-        # check if it is not a supplier and has a replenishment policy
-        if("supplier" not in node.node_type and node.policy_param != []):
-            if(node.replenishment_policy == 'sS'): # check if it is sS policy, plot threshold line s
-                s = node.policy_param[0]    
-                plt.axhline(y=s, color='r', linestyle='--',label='s (sS replenish)')    
-            plt.title(f"Inventory Level for {node.ID}")
-            plt.plot(levels[:,0], levels[:,1], label=node.ID, marker='.', linestyle='-')
-            plt.xlabel("Time")
-            plt.ylabel("Inventory Level")
-            plt.legend()
-            plt.show()
