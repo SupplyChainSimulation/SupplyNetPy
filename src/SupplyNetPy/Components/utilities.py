@@ -243,6 +243,7 @@ def simulate_sc_net(supplychainnet, sim_time):
         env.run(sim_time) # Run the simulation
     # Let's create some variables to store stats
     total_available_inv = 0
+    avg_available_inv = 0
     total_inv_carry_cost = 0
     total_inv_spend = 0
     total_transport_cost = 0
@@ -260,15 +261,17 @@ def simulate_sc_net(supplychainnet, sim_time):
         if("infinite" in node.node_type.lower()): # skip infinite suppliers
             continue
         total_available_inv += node.inventory.inventory.level
+        if len(node.inventory.instantaneous_levels)>0:
+            avg_available_inv += sum([x[1] for x in node.inventory.instantaneous_levels])/len(node.inventory.instantaneous_levels) 
         total_inv_carry_cost += node.inventory_cost
         total_inv_spend += sum([x[1] for x in node.inventory.inventory_spend])
         total_transport_cost += sum([x[1] for x in node.transportation_cost])
         total_revenue += node.revenue
         total_cost += node.node_cost
-        total_demand_placed_by_site[0] += len(node.orders_placed) #+ len(node.orders_shortage) # orders
-        total_demand_placed_by_site[1] += sum([x[2] for x in node.orders_placed]) #+ sum([x[2] for x in node.orders_shortage]) # products
-        total_fulfillment_received_by_site[0] += len(node.orders_placed)
-        total_fulfillment_received_by_site[1] += sum([x[2] for x in node.orders_placed])
+        total_demand_placed_by_site[0] += len(node.orders_placed) 
+        total_demand_placed_by_site[1] += sum([x[2] for x in node.orders_placed]) 
+        total_fulfillment_received_by_site[0] += sum([x[3] for x in node.orders_placed])
+        total_fulfillment_received_by_site[1] += sum([x[2]*x[3] for x in node.orders_placed])
     for key, node in supplychainnet["demands"].items():
         total_transport_cost += sum([x[1] for x in node.transportation_cost])
         total_cost += node.node_cost
@@ -282,6 +285,7 @@ def simulate_sc_net(supplychainnet, sim_time):
     total_fulfillment_received[1] = total_fulfillment_received_by_customers[1] + total_fulfillment_received_by_site[1]
     total_profit = total_revenue - total_cost
     supplychainnet["total_available_inv"] = total_available_inv
+    supplychainnet["avg_available_inv"] = avg_available_inv
     supplychainnet["total_inv_carry_cost"] = total_inv_carry_cost   
     supplychainnet["total_inv_spend"] = total_inv_spend
     supplychainnet["total_transport_cost"] = total_transport_cost
