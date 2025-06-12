@@ -1832,6 +1832,7 @@ class Demand(Node):
             validate_number(name="delivery_cost", value=del_cost) # check if delivery_cost is a number
             self.transportation_cost.append([self.env.now, del_cost])
             self.node_cost += self.transportation_cost[-1][1]
+            self.revenue += order_quantity * self.demand_node.sell_price # update revenue
             self.orders_placed.append((self.env.now, self.ID, order_quantity, 0)) # record the order placed
             order_index = len(self.orders_placed) - 1 # get the index of the order placed
             lead_time = self.lead_time() # get the lead time from the demand node
@@ -1867,6 +1868,7 @@ class Demand(Node):
                 validate_number(name="delivery_cost", value=del_cost)
                 self.transportation_cost.append([self.env.now, del_cost])
                 self.node_cost += self.transportation_cost[-1][1]
+                self.revenue += order_quantity * self.demand_node.sell_price # update revenue
                 self.orders_placed.append((self.env.now, self.ID, order_quantity, 0)) # record the order placed
                 order_index = len(self.orders_placed) - 1 # get the index of the order placed
 
@@ -1913,6 +1915,7 @@ class Demand(Node):
             validate_number(name="delivery_cost", value=del_cost) # check if delivery_cost is a number
             self.transportation_cost.append([self.env.now, del_cost])
             self.node_cost += self.transportation_cost[-1][1]
+            self.revenue += order_quantity * self.demand_node.sell_price # update revenue
             self.orders_placed.append((self.env.now, self.ID, order_quantity, 0)) # record the order placed
             order_index = len(self.orders_placed) - 1 # get the index of the order placed
             
@@ -1942,6 +1945,7 @@ class Demand(Node):
                 validate_number(name="delivery_cost", value=del_cost)
                 self.transportation_cost.append([self.env.now, del_cost])
                 self.node_cost += self.transportation_cost[-1][1]
+                self.revenue += order_quantity * self.demand_node.sell_price # update revenue
                 self.orders_placed.append((self.env.now, self.ID, consumed_quantity)) # record the order placed
                 
                 lead_time = self.lead_time() # get the lead time from the demand node

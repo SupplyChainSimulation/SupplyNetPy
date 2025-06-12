@@ -266,7 +266,6 @@ def simulate_sc_net(supplychainnet, sim_time):
         total_inv_carry_cost += node.inventory_cost
         total_inv_spend += sum([x[1] for x in node.inventory.inventory_spend])
         total_transport_cost += sum([x[1] for x in node.transportation_cost])
-        total_revenue += node.revenue
         total_cost += node.node_cost
         total_demand_placed_by_site[0] += len(node.orders_placed) 
         total_demand_placed_by_site[1] += sum([x[2] for x in node.orders_placed]) 
@@ -275,6 +274,7 @@ def simulate_sc_net(supplychainnet, sim_time):
     for key, node in supplychainnet["demands"].items():
         total_transport_cost += sum([x[1] for x in node.transportation_cost])
         total_cost += node.node_cost
+        total_revenue += node.revenue
         total_demand_placed_by_customers[0] += len(node.orders_placed) + len(node.orders_shortage) # orders
         total_demand_placed_by_customers[1] += node.total_demand # products
         total_fulfillment_received_by_customers[0] += len(node.products_sold_daily)
