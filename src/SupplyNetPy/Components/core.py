@@ -4,7 +4,8 @@ import copy
 import random
 import numbers
 
-EPSILON = 1e-6  # small value to wait until the end of the day
+EPSILON = 1e-4  # small value to wait until the end of the day
+EPSILON_STATS = 1e-5 # 
 global_logger = GlobalLogger() # create a global logger
 
 def validate_positive(name: str, value):
@@ -843,7 +844,7 @@ class Node(NamedEntity, InfoMixin):
             products_sold (int): products/raw materials sold by this node in the current cycle/period/day
             total_products_sold (int): total product units sold by this node
             total_profit (float): total profit (profit per item * total_products_sold)
-            orders_placed (list): list of orders placed to this node (demand). Each order is a tuple of (time of order, consumer ID, quantity ordered)
+            orders_placed (list): list of orders placed to this node (demand). Each order is a tuple of (time of order, consumer ID, quantity ordered, flag if order is fulfilled = 0/1 (yes/no))
             order_shortage (list): list of order shortage. Each record is a tuple of (time of order, consumer ID, quantity ordered, quantity available)
 
         Returns:
@@ -877,7 +878,7 @@ class Node(NamedEntity, InfoMixin):
         self.products_sold = 0 # products/raw materials sold by this node in the current cycle/period/day
         self.total_products_sold = 0 # total product units sold by this node
         self.total_profit = 0 # total profit (profit per item * total_products_sold)
-        self.orders_placed = [] # list of orders placed to this node (demand). Each order is a tuple of (time of order, consumer ID, quantity ordered)
+        self.orders_placed = [] # list of orders placed to this node (demand). Each order is a tuple of (time of order, consumer ID, quantity ordered, flag if order is fulfilled = 0/1 (yes/no))
         self.orders_shortage = [] # list of order shortage. Each record is a tuple of (time of order, consumer ID, quantity ordered, quantity available)
 
         if(self.node_failure_p>0 or self.node_disrupt_time): # start self disruption if failure probability > 0
@@ -1169,14 +1170,14 @@ class Supplier(Node):
         Returns:    
             None
         """
-        yield self.env.timeout(1-EPSILON) # wait for the end of the day       
+        yield self.env.timeout(1-EPSILON_STATS) # wait for the end of the day       
         while True:
             if(self.node_type!="infinite_supplier"): # calculate inventory cost only if the node is not an infinite supplier
                 self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
             if(self.raw_material):
                 self.total_material_cost = self.total_raw_materials_mined * self.raw_material.cost
             self.node_cost = self.total_material_cost + self.inventory_cost + sum([x[1] for x in self.transportation_cost])
-            self.revenue = self.total_products_sold * self.raw_material.cost
+            self.revenue = sum([x[2] for x in self.orders_placed]) * self.raw_material.cost
             self.total_profit = self.profit * self.total_products_sold
             self.net_profit = self.total_profit - self.node_cost
             yield self.env.timeout(1)
@@ -1315,14 +1316,14 @@ class InventoryNode(Node):
             None
         """
         self.products_sold = 0 # reset the products sold in the current cycle
-        yield self.env.timeout(1-EPSILON) # wait for the end of the day
+        yield self.env.timeout(1-EPSILON_STATS) # wait for the end of the day
         while True:
             self.products_sold_daily.append((self.env.now, self.products_sold)) # append the product sold in the current cycle
             self.total_products_sold += self.products_sold
             self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level # update the inventory cost
             self.node_cost = self.inventory_cost + sum([x[1] for x in self.transportation_cost]) + sum([x[1] for x in self.inventory.inventory_spend])
             self.total_profit += self.profit * self.products_sold # update the total profit
-            self.revenue = self.sell_price * self.total_products_sold # update the revenue
+            self.revenue = self.sell_price * sum([x[2] for x in self.orders_placed]) # update the revenue
             self.net_profit = self.total_profit - self.node_cost # update the net profit
             self.products_sold = 0 # reset the products sold in the current cycle
             yield self.env.timeout(1)
@@ -1348,12 +1349,14 @@ class InventoryNode(Node):
                 yield event
             else:
                 yield supplier.source.inventory.inventory.get(reorder_quantity) # get the product from the supplier inventory      
-            self.orders_placed.append((self.env.now, self.ID, reorder_quantity)) # record the order placed
+            self.orders_placed.append((self.env.now, self.ID, reorder_quantity, 0)) # record the order placed
+            self.transportation_cost.append((self.env.now,supplier.cost)) # calculate stats: record order cost (tranportation cost))
+            order_index = len(self.orders_placed) - 1 # get the index of the order placed
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
             lead_time = supplier.lead_time() # get the lead time from the supplier
             validate_number(name="lead_time", value=lead_time) # check if lead_time is a number
             yield self.env.timeout(lead_time) # lead time for the order
-
+            self.orders_placed[order_index] = (self.orders_placed[order_index][0], self.ID, reorder_quantity, 1) # update the order status to fulfilled
             if(self.inventory.inventory.level + reorder_quantity > self.inventory.inventory.capacity): # check if the inventory can accommodate the reordered quantity
                 reorder_quantity = self.inventory.inventory.capacity - self.inventory.inventory.level # if not, set the reorder quantity to the remaining capacity
             
@@ -1361,7 +1364,6 @@ class InventoryNode(Node):
                 self.order_placed = False
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, Inventory full, order discarded.")
                 return
-            self.transportation_cost.append((self.env.now,supplier.cost)) # calculate stats: record order cost (tranportation cost))
             supplier.source.products_sold = reorder_quantity # calculate stats: update the product sold at the supplier
             supplier.source.total_products_sold += reorder_quantity # calculate stats: update the total product sold at the supplier
 
@@ -1546,11 +1548,11 @@ class Manufacturer(Node):
         Returns:
             None
         """
-        yield self.env.timeout(1-EPSILON) # wait for the first cycle to complete
+        yield self.env.timeout(1-EPSILON_STATS) # wait for the first cycle to complete
         while True:
             if(self.product):
                 self.total_manufacturing_cost = self.total_products_manufactured * self.product.manufacturing_cost
-                self.revenue = self.total_products_sold * self.product.sell_price
+                self.revenue = sum([x[2] for x in self.orders_placed]) * self.product.sell_price
             self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
             self.total_profit = self.total_products_sold * self.profit # profit = sell price - buy price (profit per product unit)
             self.node_cost = self.inventory_cost + sum([x[1] for x in self.transportation_cost]) + self.total_manufacturing_cost
@@ -1651,13 +1653,14 @@ class Manufacturer(Node):
 
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
             yield supplier.source.inventory.inventory.get(reorder_quantity)
-            self.orders_placed.append((self.env.now, self.ID, reorder_quantity)) # record the order placed
+            self.orders_placed.append((self.env.now, self.ID, reorder_quantity, 0)) # record the order placed
+            self.transportation_cost.append((self.env.now,supplier.cost)) # update the transportation cost at the supplier
+            order_index = len(self.orders_placed) - 1
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")                
             lead_time = supplier.lead_time() # get the lead time from the supplier
             validate_number(name="lead_time", value=lead_time) # check if lead_time is a number
             yield self.env.timeout(lead_time) # lead time for the order
-            
-            self.transportation_cost.append((self.env.now,supplier.cost)) # update the transportation cost at the supplier
+            self.orders_placed[order_index] = (self.orders_placed[order_index][0], self.ID, reorder_quantity, 1) # update the order status to fulfilled
             supplier.source.total_raw_materials_sold += reorder_quantity # update the product sold at the raw material supplier
             supplier.source.total_products_sold += reorder_quantity
             self.order_placed_raw[raw_mat_id] = False
@@ -1829,13 +1832,13 @@ class Demand(Node):
             validate_number(name="delivery_cost", value=del_cost) # check if delivery_cost is a number
             self.transportation_cost.append([self.env.now, del_cost])
             self.node_cost += self.transportation_cost[-1][1]
-            self.orders_placed.append((self.env.now, self.ID, order_quantity)) # record the order placed
-            
+            self.orders_placed.append((self.env.now, self.ID, order_quantity, 0)) # record the order placed
+            order_index = len(self.orders_placed) - 1 # get the index of the order placed
             lead_time = self.lead_time() # get the lead time from the demand node
             validate_number(name="lead_time", value=lead_time) # check if lead_time is a number
             yield self.env.timeout(lead_time) # wait for the delivery of the order
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
-
+            self.orders_placed[order_index] = (self.orders_placed[order_index][0], self.ID, order_quantity, 1) # update the order status to fulfilled
             # order received by customer, update statistics
             self.products_sold_daily.append((self.env.now, order_quantity))
             self.total_products_sold += order_quantity
@@ -1864,13 +1867,15 @@ class Demand(Node):
                 validate_number(name="delivery_cost", value=del_cost)
                 self.transportation_cost.append([self.env.now, del_cost])
                 self.node_cost += self.transportation_cost[-1][1]
-                self.orders_placed.append((self.env.now, self.ID, order_quantity)) # record the order placed
+                self.orders_placed.append((self.env.now, self.ID, order_quantity, 0)) # record the order placed
+                order_index = len(self.orders_placed) - 1 # get the index of the order placed
 
                 lead_time = self.lead_time() # get the lead time from the demand node
                 validate_number(name="lead_time", value=lead_time) # check if lead_time is a number
                 yield self.env.timeout(lead_time) # wait for the delivery of the order
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
-                
+                self.orders_placed[order_index] = (self.orders_placed[order_index][0], self.ID, order_quantity, 1) # update the order status to fulfilled
+
                 # update statistics
                 self.products_sold_daily.append((self.env.now, order_quantity))
                 self.total_products_sold += order_quantity
@@ -1908,12 +1913,14 @@ class Demand(Node):
             validate_number(name="delivery_cost", value=del_cost) # check if delivery_cost is a number
             self.transportation_cost.append([self.env.now, del_cost])
             self.node_cost += self.transportation_cost[-1][1]
-            self.orders_placed.append((self.env.now, self.ID, order_quantity)) # record the order placed
+            self.orders_placed.append((self.env.now, self.ID, order_quantity, 0)) # record the order placed
+            order_index = len(self.orders_placed) - 1 # get the index of the order placed
             
             lead_time = self.lead_time() # get the lead time from the demand node
             validate_number(name="lead_time", value=lead_time) # check if lead_time is a number
             yield self.env.timeout(lead_time) # wait for the delivery of the order
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity} received. Current inv: {self.demand_node.inventory.inventory.level}")
+            self.orders_placed[order_index] = (self.orders_placed[order_index][0], self.ID, order_quantity, 1) # update the order status to fulfilled
             # update statistics
             self.products_sold_daily.append((self.env.now, order_quantity))
             self.total_products_sold += order_quantity
