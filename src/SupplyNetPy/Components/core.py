@@ -419,7 +419,7 @@ class SSWithSafetyReplenishment(ReplenishmentPolicy):
         while True:
             self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}")
             if(self.node.inventory.inventory.level <= (s + safety_stock)):  # check if inventory level is below reorder point + safety stock
-                order_quantity = S - self.node.inventory.inventory.level  # calculate the order quantity
+                order_quantity = S + safety_stock - self.node.inventory.inventory.level  # calculate the order quantity
                 if order_quantity > 0:  # if order quantity is positive
                     for supplier in self.node.suppliers: # choose a supplier based on availability
                         if supplier.source.inventory.inventory.level >= order_quantity and self.node.order_placed == False: # if sufficient quantity is available at the supplier
