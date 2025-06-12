@@ -36,8 +36,8 @@ distri = Distributions(mean=20, std=5, lam=1, low=1, high=5)
 
 # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
 nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
-            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 800, 'initial_level': 500, 'inventory_holding_cost': 0.1, 'replenishment_policy': 'sS', 'policy_param': [300],'product_sell_price': 345},
-            {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 500, 'initial_level': 200, 'inventory_holding_cost': 1, 'replenishment_policy': 'sS', 'policy_param': [100],'product_sell_price': 348}
+            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 800, 'initial_level': 500, 'inventory_holding_cost': 0.1, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':300,'S':800},'product_buy_price': 180,'product_sell_price': 345},
+            {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 500, 'initial_level': 200, 'inventory_holding_cost': 1, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':100,'S':500},'product_buy_price': 180,'product_sell_price': 348}
 ]
 
 # ID, from_node, to_node, transportation_cost, lead_time

@@ -9,8 +9,8 @@ import utilities as scm
 
 # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
 nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
-             {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': 'sS', 'policy_param': [200],'product_sell_price': 100},
-             {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 1, 'replenishment_policy': 'sS', 'policy_param': [100],'product_sell_price': 105}
+             {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':200,'S':300},'product_sell_price': 100},
+             {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 1, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':100,'S':150},'product_buy_price': 100,'product_sell_price': 105}
     ]
 
 # ID, from_node, to_node, transportation_cost, lead_time

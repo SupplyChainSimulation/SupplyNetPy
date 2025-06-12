@@ -9,11 +9,11 @@ import utilities as scm
 
 # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
 nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
-            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': 'sS', 'policy_param': [150],'product_sell_price': 100},
-            {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 150, 'inventory_holding_cost': 1, 'replenishment_policy': 'sS', 'policy_param': [50],'product_sell_price': 120},
-            {'ID': 'R1', 'name': 'Retailer 1', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': 'sS', 'policy_param': [50],'product_sell_price': 130},
-            {'ID': 'R2', 'name': 'Retailer 2', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': 'sS', 'policy_param': [50],'product_sell_price': 128},
-            {'ID': 'R3', 'name': 'Retailer 3', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': 'sS', 'policy_param': [50],'product_sell_price': 124}
+            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':150,'S':300},'product_sell_price': 100},
+            {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 150, 'inventory_holding_cost': 1, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':50,'S':150},'product_buy_price': 100,'product_sell_price': 120},
+            {'ID': 'R1', 'name': 'Retailer 1', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':50,'S':100},'product_buy_price': 100,'product_sell_price': 130},
+            {'ID': 'R2', 'name': 'Retailer 2', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':50,'S':100},'product_buy_price': 100,'product_sell_price': 128},
+            {'ID': 'R3', 'name': 'Retailer 3', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':50,'S':100},'product_buy_price': 100,'product_sell_price': 124}
         ]
 
 # ID, from_node, to_node, transportation_cost, lead_time
