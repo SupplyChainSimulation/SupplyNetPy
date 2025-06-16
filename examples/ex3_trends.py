@@ -36,8 +36,14 @@ distri = Distributions(mean=20, std=5, lam=1, low=1, high=5)
 
 # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
 nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
-            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 800, 'initial_level': 500, 'inventory_holding_cost': 0.1, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':300,'S':800},'product_buy_price': 180,'product_sell_price': 345},
-            {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 500, 'initial_level': 200, 'inventory_holding_cost': 1, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':100,'S':500},'product_buy_price': 180,'product_sell_price': 348}
+         
+            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 800, 'initial_level': 500, 
+             'inventory_holding_cost': 0.1, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':300,'S':800},
+             'product_buy_price': 180,'product_sell_price': 345},
+
+            {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 500, 'initial_level': 200, 
+             'inventory_holding_cost': 1, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':100,'S':500},
+             'product_buy_price': 180,'product_sell_price': 348}
 ]
 
 # ID, from_node, to_node, transportation_cost, lead_time
@@ -56,6 +62,8 @@ scm.default_product.manufacturing_cost = 340
 print("Default product info:",scm.default_product.get_info())
 print("Default raw material info:",scm.default_raw_material.get_info())
 
+
+
 # inventory replenishment parameter for D1 (Note: Ss replenishment: check inventory levels every day, if it goes below threshold 's' then order to replenish it back to capacity 'S')
 start = 10
 end = 500
@@ -70,18 +78,18 @@ d1_inv_costs = []
 d1_net_profits = []
 while(s<end):
     # change 's' for 'D1'
-    nodes[2]['policy_param'] = [s]
+    nodes[2]['policy_param']['s'] = s
     scm.global_logger.logger.info(f'\n *** \n Running simulation for D1 with s = {s}')
     # run the simulations
     supplychainnet = scm.create_sc_net(nodes, links, demands)
     scm.global_logger.enable_logging()
     supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=simulation_period)
     # record the perfomance of the model (in our case, the sc_profit)
-    inv_costs.append(supplychainnet["nodes"][1].inventory_cost)
-    node_costs.append(supplychainnet["nodes"][1].node_cost)
-    net_profits.append(supplychainnet["nodes"][1].net_profit)
+    inv_costs.append(supplychainnet["nodes"]["M1"].inventory_cost)
+    node_costs.append(supplychainnet["nodes"]["M1"].node_cost)
+    net_profits.append(supplychainnet["nodes"]["M1"].net_profit)
 
-    d1 = supplychainnet["nodes"][2]
+    d1 = supplychainnet["nodes"]['D1']
     d1_inv_cost = sum([x[1] for x in d1.inventory.instantaneous_levels])
     d1_inv_costs.append(d1_inv_cost)
 

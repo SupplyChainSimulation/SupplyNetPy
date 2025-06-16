@@ -145,7 +145,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
             Id = "Lm" + str(j+1) + "d" + str(i)
             cost = random.randint(3, 6)
             lead_time = Lead_time_dist(mean=4,var=0.5).gauss
-            source_node = supplynet["nodes"][f"M{str(i)}"]
+            source_node = supplynet["nodes"][f"M{str(j+1)}"]
             supplynet["links"][Id] = scm.Link(env=env,ID=Id, source=source_node, sink=supplynet["nodes"][ID], cost=cost, lead_time=lead_time)
         
     for i in range(1, num_retailers+1):
@@ -174,7 +174,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
             Id = "Ld" + str(j+1) + "r" + str(i)
             cost = random.randint(1, 3)
             lead_time = Lead_time_dist().gauss
-            source_node = supplynet["nodes"][f"D{str(i)}"]
+            source_node = supplynet["nodes"][f"D{str(j+1)}"]
             supplynet["links"][Id] = scm.Link(env=env,ID=Id, source=source_node, sink=supplynet["nodes"][f"R{str(i)}"], cost=cost, lead_time=lead_time)
 
     #print(supplynet)
@@ -186,7 +186,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
 # this is to observe if the model is working as expected
 # sawtooth pattern should be observed for all nodes
 N = 4
-scm.global_logger.disable_logging()
+scm.global_logger.enable_logging()
 supplynet = generate_supply_chain(N,simtime = 1000)
 
 # plotting inventory levels for all nodes

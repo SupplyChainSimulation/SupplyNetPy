@@ -11,6 +11,7 @@ import simpy
 import random
 import time
 import matplotlib.pyplot as plt
+import numpy as np
 # import SupplyNetPy.Components as scm
 
 class Demand_dist:
@@ -78,7 +79,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
     # - Warehouses to Retailers: 1 to 10 retailers for every warehouse.
 
     env = simpy.Environment()
-
+    supplynet = {"nodes": {}, "links": {}, "demands": {}}
     if(n<4):
         print("cannot create with less than 4 nodes!")
         return
@@ -105,7 +106,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
     for i in range(1, num_suppliers+1):
         ID = "S" + str(i)
         name = "Supplier " + str(i)
-        nodes.append(scm.Supplier(env=env, ID=ID, name=name, node_type="infinite_supplier"))
+        supplynet["nodes"][ID] = scm.Supplier(env=env, ID=ID, name=name, node_type="infinite_supplier")
 
     for i in range(1, num_manufacturers+1):
         ID = "M" + str(i)
@@ -113,16 +114,19 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
         capacity = random.randint(500, 800)
         initial_level = random.randint(300, 400)
         inventory_holding_cost = random.randint(1, 3)
-        policy_param = [random.randint(300, 400)]
+        s = random.randint(300, 400)
+        product_buy_price = random.randint(100, 200)
         product_sell_price = random.randint(200, 300)
-        nodes.append(scm.Manufacturer(env=env, ID=ID, name=name, 
+        supplynet["nodes"][ID] = scm.Manufacturer(env=env, ID=ID, name=name, 
                                  capacity=capacity, initial_level=initial_level, inventory_holding_cost=inventory_holding_cost, 
-                                 replenishment_policy="sS", policy_param=policy_param, product_sell_price=product_sell_price))
+                                 replenishment_policy=scm.SSReplenishment, policy_param={'s':s,'S':capacity}, 
+                                 product_buy_price=product_buy_price, product_sell_price=product_sell_price)
         for j in range(0, num_suppliers):
             Id = "Ls" + str(j+1) + "m" + str(i)
             cost = random.randint(1, 3)
-            lead_time = Lead_time_dist().gauss
-            links.append(scm.Link(env=env,ID=Id, source=nodes[j], sink=nodes[-1], cost=cost, lead_time=lead_time))
+            lead_time = Lead_time_dist(mean=2,var=0.1).gauss
+            source_node = supplynet["nodes"][f"S{str(i)}"]
+            supplynet["links"][Id] = scm.Link(env=env,ID=Id, source=source_node, sink=supplynet["nodes"][ID], cost=cost, lead_time=lead_time)
         
     for i in range(1, num_distributors+1):
         ID = "D" + str(i)
@@ -130,17 +134,20 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
         capacity = random.randint(300, 500)
         initial_level = random.randint(200, 300)
         inventory_holding_cost = random.randint(2, 4)
-        policy_param = [random.randint(200, 250)]
+        s = random.randint(200, 250)
         product_sell_price = random.randint(300, 400)
-        nodes.append(scm.InventoryNode(env=env, ID=ID, name=name, node_type="distributor",
+        product_buy_price = random.randint(200, 300)
+        supplynet["nodes"][ID] = scm.InventoryNode(env=env, ID=ID, name=name, node_type="distributor",
                                  capacity=capacity, initial_level=initial_level, inventory_holding_cost=inventory_holding_cost, 
-                                 replenishment_policy="sS", policy_param=policy_param, product_sell_price=product_sell_price))
+                                 replenishment_policy=scm.SSReplenishment, policy_param={'s':s,'S':capacity}, 
+                                 product_buy_price=product_buy_price, product_sell_price=product_sell_price)
         
-        for j in range(num_suppliers, num_suppliers+num_manufacturers):
+        for j in range(0, num_manufacturers):
             Id = "Lm" + str(j+1) + "d" + str(i)
-            cost = random.randint(1, 3)
-            lead_time = Lead_time_dist().gauss
-            links.append(scm.Link(env=env,ID=Id, source=nodes[j], sink=nodes[-1], cost=cost, lead_time=lead_time))
+            cost = random.randint(3, 6)
+            lead_time = Lead_time_dist(mean=4,var=0.5).gauss
+            source_node = supplynet["nodes"][f"M{str(j+1)}"]
+            supplynet["links"][Id] = scm.Link(env=env,ID=Id, source=source_node, sink=supplynet["nodes"][ID], cost=cost, lead_time=lead_time)
         
     for i in range(1, num_retailers+1):
         ID = "R" + str(i)
@@ -148,27 +155,30 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
         capacity = random.randint(100, 300)
         initial_level = random.randint(50, 100)
         inventory_holding_cost = random.randint(3, 5)
-        policy_param = [random.randint(30, 80)]
+        s = random.randint(30, 80)
         product_sell_price = random.randint(400, 500)
-        nodes.append(scm.InventoryNode(env=env, ID=ID, name=name, node_type="retailer",
+        product_buy_price = random.randint(300, 400)
+        supplynet["nodes"][ID] = scm.InventoryNode(env=env, ID=ID, name=name, node_type="retailer",
                                  capacity=capacity, initial_level=initial_level, inventory_holding_cost=inventory_holding_cost, 
-                                 replenishment_policy="sS", policy_param=policy_param, product_sell_price=product_sell_price))
+                                 replenishment_policy=scm.SSReplenishment, policy_param={'s':s,'S':capacity},  
+                                 product_buy_price=product_buy_price, product_sell_price=product_sell_price)
         
         ID = "demand_" + ID
         name = "Demand " + str(i)
         order_arrival_model = Demand_dist().exponential
         order_quantity_model = Demand_dist().uniform
-        demand.append(scm.Demand(env=env,ID=ID, name=name, 
+        supplynet["demands"][ID] = scm.Demand(env=env,ID=ID, name=name, 
                                  order_arrival_model=order_arrival_model, 
-                                 order_quantity_model=order_quantity_model, demand_node=nodes[-1]))
+                                 order_quantity_model=order_quantity_model, demand_node=supplynet["nodes"][f"R{str(i)}"])
         
-        for j in range(num_suppliers+num_manufacturers, num_suppliers+num_manufacturers+num_distributors):
+        for j in range(0, num_distributors):
             Id = "Ld" + str(j+1) + "r" + str(i)
             cost = random.randint(1, 3)
             lead_time = Lead_time_dist().gauss
-            links.append(scm.Link(env=env,ID=Id, source=nodes[j], sink=nodes[-1], cost=cost, lead_time=lead_time))
-
-    supplynet = {"nodes": nodes, "links": links, "demand": demand}
+            source_node = supplynet["nodes"][f"D{str(j+1)}"]
+            supplynet["links"][Id] = scm.Link(env=env,ID=Id, source=source_node, sink=supplynet["nodes"][f"R{str(i)}"], cost=cost, lead_time=lead_time)
+    
+    scm.global_logger.disable_logging()
     time_now = time.time()
     env.run(until=simtime)
     exe_time = time.time() - time_now
@@ -178,19 +188,25 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
 num_of_nodes_low = 5
 inc_step = 10
 num_of_nodes_high = 100
-sim_time = 360
+sim_time = 365*20 # 20 years of simulation time 
 num_of_sim_runs = 50
 
 scm.global_logger.disable_logging()
 
-exe_time = []
+exe_time = {} # list to store execution time for each number of nodes
 for N in range(num_of_nodes_low,num_of_nodes_high,inc_step): # run for N number of nodes
-    avg_exe_time = 0
+    exe_time[f"{N}"] = []
     for i in range(0, num_of_sim_runs): # run for num_of_sim_runs times to find average execution time
-        avg_exe_time += generate_supply_chain(N,simtime = sim_time)
-    exe_time.append([N, avg_exe_time/num_of_sim_runs])
+        exe_time[f"{N}"].append(generate_supply_chain(N,simtime = sim_time))
+    print(f"N={N}, mean = {sum(exe_time[f'{N}'])/num_of_sim_runs}, std = {np.std(exe_time[f'{N}'])}, runs = {num_of_sim_runs}, std err= {np.std(exe_time[f'{N}'])/np.sqrt(num_of_sim_runs)}")
 
-plt.plot([x[0] for x in exe_time], [x[1] for x in exe_time], marker='.', linestyle='-', color='b')
-plt.xlabel('Number of Nodes')
-plt.ylabel('Execution Time (sec)')
+plt.plot(list(exe_time.keys()), [sum(exe_time[f"{N}"])/num_of_sim_runs for N in exe_time.keys()])
+plt.fill_between(list(exe_time.keys()), 
+                 [np.mean(exe_time[f"{N}"]) - 2*np.std(exe_time[f"{N}"]) for N in exe_time.keys()],
+                 [np.mean(exe_time[f"{N}"]) + 2*np.std(exe_time[f"{N}"]) for N in exe_time.keys()],
+                 alpha=0.2, color='blue', label='Execution Time')
+plt.xlabel("Number of Nodes")
+plt.ylabel("Execution Time (seconds)")
+plt.title("Execution Time vs Number of Nodes")
+plt.grid()
 plt.show()

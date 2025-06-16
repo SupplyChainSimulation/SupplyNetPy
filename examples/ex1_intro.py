@@ -19,7 +19,7 @@ links = [{'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 5, 'lead_time': lamb
 ]
 
 # ID, name, node_type, order_arrival_model, order_quantity_model, demand_node
-demands = [{'ID': 'demand_D1', 'name': 'Demand 1', 'node_type': 'demand', 'order_arrival_model': lambda: 1, 'order_quantity_model': lambda: 10, 'demand_node': 'D1'}]
+demands = [{'ID': 'demand_D1', 'name': 'Demand 1', 'node_type': 'demand', 'order_arrival_model': lambda: 0.4, 'order_quantity_model': lambda: 10, 'demand_node': 'D1'}]
 
 scm.global_logger.enable_logging()
 supplychainnet = scm.simulate_sc_net(scm.create_sc_net(nodes, links, demands), sim_time=30)

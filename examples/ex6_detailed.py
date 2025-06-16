@@ -29,21 +29,23 @@ supplier2 = scm.Supplier(env=env, ID="s2",name="Supplier2",capacity=10000, initi
 # Define manufacturer
 manufacturer = scm.Manufacturer(env=env, ID="m1", name="Manufacturer1", capacity=500, initial_level=300, 
                                 inventory_holding_cost=0.10, product=product, product_sell_price=100,
-                                replenishment_policy="sS", policy_param=[350])
+                                replenishment_policy=scm.SSReplenishment, policy_param={'s':350,'S':500},
+                                product_buy_price=20)
 
 
 # Define distributor
-distributor = scm.InventoryNode(env=env, ID="d1", name="Distributor1", node_type="distributor", capacity=400, initial_level=200,
-                                inventory_holding_cost=0.10, product=product, product_sell_price=100,
-                                replenishment_policy="sS", policy_param=[100])
+distributor = scm.InventoryNode(env=env, ID="d1", name="Distributor1", node_type="distributor", capacity=400, 
+                                initial_level=200, inventory_holding_cost=0.10, product=product, product_sell_price=100,
+                                replenishment_policy=scm.SSReplenishment, policy_param={'s':200, 'S':400},
+                                product_buy_price=95)
 
 # Define retailers
 retailer1 = scm.InventoryNode(env=env, ID="r1", name="Retailer1", node_type="retailer", capacity=200, initial_level=100,
                             inventory_holding_cost=0.10, product=product, product_sell_price=100,
-                            replenishment_policy="sS", policy_param=[50])
+                            replenishment_policy=scm.SSReplenishment, policy_param={'s':50, 'S':200}, product_buy_price=98)
 retailer2 = scm.InventoryNode(env=env, ID="r2", name="Retailer2", node_type="retailer", capacity=200, initial_level=100,
                             inventory_holding_cost=0.10, product=product, product_sell_price=100,
-                            replenishment_policy="sS", policy_param=[50])
+                            replenishment_policy=scm.SSReplenishment, policy_param={'s':50, 'S':200}, product_buy_price=97)
 
 demand_r1 = scm.Demand(env=env,ID="demand_r1", name="demand1", order_arrival_model=lambda: 1, order_quantity_model=lambda: 10, demand_node=retailer1)
 
@@ -55,20 +57,9 @@ link3 = scm.Link(env=env, ID="l3", source=manufacturer, sink=distributor, cost=1
 link4 = scm.Link(env=env, ID="l4", source=distributor, sink=retailer1, cost=50, lead_time=lambda: 1)
 link5 = scm.Link(env=env, ID="l5", source=distributor, sink=retailer2, cost=50, lead_time=lambda: 1)
 
-# Create the supply chain
-scnet = {
-    "env":env,
-    "nodes": [supplier1, supplier2, manufacturer, distributor, retailer1, retailer2],
-    "edges": [link1, link2, link3, link4, link5],
-    "demand": [demand_r1, demand_r2],
-    "num_suppliers": 2,
-    "num_manufacturers": 1,
-    "num_distributors": 1,
-    "num_retailers": 2,
-    "num_of_nodes": 6,
-    "num_of_edges": 5,
-}
-
+scnet = scm.create_sc_net(nodes = [supplier1, supplier2, manufacturer, distributor, retailer1, retailer2],
+                          links = [link1, link2, link3, link4, link5],
+                          demands = [demand_r1, demand_r2])
 # Run the simulation
 scnet = scm.simulate_sc_net(scnet, sim_time=120)
 scm.visualize_sc_net(scnet)
