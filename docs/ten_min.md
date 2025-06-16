@@ -298,3 +298,8 @@ print(supplier.get_statistics())
 ```
 
 This will display detailed performance metrics for each node in the supply chain.
+
+This is to include a Python file directly.
+```python
+{{ include("../examples/ex1_intro.py") }}
+```
