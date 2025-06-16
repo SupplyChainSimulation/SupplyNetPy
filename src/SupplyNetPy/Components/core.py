@@ -4,8 +4,6 @@ import copy
 import random
 import numbers
 
-EPSILON = 1e-4  # small value to wait until the end of the day
-EPSILON_STATS = 1e-5 # 
 global_logger = GlobalLogger() # create a global logger
 
 def validate_positive(name: str, value):
@@ -295,7 +293,9 @@ class ReplenishmentPolicy(InfoMixin):
     """
     def __init__(self, env: simpy.Environment, 
                  node: object, 
-                 params: dict) -> None:
+                 params: dict,
+                 initial_offset: float = 0,
+                 period: float = 0) -> None:
         """
         Initialize the replenishment policy object.
         
@@ -312,10 +312,13 @@ class ReplenishmentPolicy(InfoMixin):
         Returns:
             None
         """
-        self._info_keys = ["node", "params"]
+        self._info_keys = ["node", "params", "initial_offset", "period"]
         self.env = env  # simulation environment
         self.node = node  # node to which this policy applies
         self.params = params  # parameters for the replenishment policy
+        self.initial_offset = initial_offset  # initial offset for the replenishment policy
+        self.period = period  # period for the replenishment policy, if applicable
+        self.inventory_dropped = self.env.event()  # event to signal when inventory is dropped
     
     def run(self):
         """
@@ -361,7 +364,8 @@ class SSReplenishment(ReplenishmentPolicy, NamedEntity):
             None    
         """
         s, S = self.params['s'], self.params['S']  # get the reorder point and order-up-to level
-        yield self.env.timeout(1-EPSILON)  # wait for the end of the day
+        if(self.initial_offset>0):
+            yield self.env.timeout(self.initial_offset)  # wait for the end of the day
         while True:
             self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}")
             if(self.node.inventory.inventory.level <= s):
@@ -375,7 +379,11 @@ class SSReplenishment(ReplenishmentPolicy, NamedEntity):
                             self.node.orders_shortage.append((self.env.now, self.node.ID, order_quantity, supplier.source.inventory.inventory.level)) # record the shortage at the supplier
                     if(not self.node.order_placed): # if order could not be placed
                         self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}:Product not available at suppliers. Required quantity:{order_quantity}.")                    
-            yield self.env.timeout(1)
+            if self.period>0:
+                yield self.env.timeout(self.period)
+            else:
+                yield self.inventory_dropped  # wait for the inventory to be dropped
+                self.inventory_dropped = self.env.event()  # reset the event for the next iteration
 
 class SSWithSafetyReplenishment(ReplenishmentPolicy):
     """
@@ -415,7 +423,8 @@ class SSWithSafetyReplenishment(ReplenishmentPolicy):
             None
         """
         s, S, safety_stock = self.params['s'], self.params['S'], self.params['safety_stock']  # get the reorder point, order-up-to level and safety stock
-        yield self.env.timeout(1-EPSILON)  # wait for the end of the day
+        if(self.initial_offset > 0):
+            yield self.env.timeout(self.initial_offset)  # wait for the end of the day
         while True:
             self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}")
             if(self.node.inventory.inventory.level <= (s + safety_stock)):  # check if inventory level is below reorder point + safety stock
@@ -429,7 +438,11 @@ class SSWithSafetyReplenishment(ReplenishmentPolicy):
                             self.node.orders_shortage.append((self.env.now, self.node.ID, order_quantity, supplier.source.inventory.inventory.level)) # record the shortage at the supplier
                     if(not self.node.order_placed): # if order could not be placed
                         self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}:Product not available at suppliers. Required quantity:{order_quantity}.")                    
-            yield self.env.timeout(1)
+            if self.period>0:
+                yield self.env.timeout(self.period)
+            else:
+                yield self.inventory_dropped
+                self.inventory_dropped = self.env.event()  # reset the event for the next iteration
 
 class RQReplenishment(ReplenishmentPolicy):
     """
@@ -468,7 +481,8 @@ class RQReplenishment(ReplenishmentPolicy):
             None            
         """
         R, Q = self.params['R'], self.params['Q']  # get the reorder point and order quantity
-        yield self.env.timeout(1-EPSILON)  # wait for the end of the day
+        if(self.initial_offset > 0):
+            yield self.env.timeout(self.initial_offset)
         while True:
             self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}")
             if(self.node.inventory.inventory.level <= R):  # check if inventory level is below reorder point
@@ -481,7 +495,11 @@ class RQReplenishment(ReplenishmentPolicy):
                             self.node.orders_shortage.append((self.env.now, self.node.ID, Q, supplier.source.inventory.inventory.level)) # record the shortage at the supplier
                     if(not self.node.order_placed): # if order could not be placed
                         self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}:Product not available at suppliers. Required quantity:{Q}.")
-            yield self.env.timeout(1)
+            if self.period>0:
+                yield self.env.timeout(self.period)
+            else:
+                yield self.inventory_dropped
+                self.inventory_dropped = self.env.event()  # reset the event for the next iteration
 
 class PeriodicReplenishment(ReplenishmentPolicy):
     """
@@ -521,7 +539,8 @@ class PeriodicReplenishment(ReplenishmentPolicy):
             None
         """
         T, Q = self.params['T'], self.params['Q']  # get the period and quantity
-        yield self.env.timeout(1-EPSILON)  # wait for the end of the day
+        if(self.initial_offset > 0):
+            yield self.env.timeout(self.initial_offset)  # wait for the end of the day
         while True:
             self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}")
             for supplier in self.node.suppliers: # choose a supplier to replenish the inventory based on the availablity of the product
@@ -535,170 +554,42 @@ class PeriodicReplenishment(ReplenishmentPolicy):
                 self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}:Product not available at suppliers. Required quantity:{Q}.")
             yield self.env.timeout(T)
 
-class PerishableInventory(simpy.Container):
-    """
-    Represents a perishable inventory in the supply network. It inherits from simpy.Container.
-    
-    Parameters:
-        env (simpy.Environment): simulation environment
-        capacity (int): maximum capacity of the inventory
-        initial_level (int): initial inventory level
-        shelf_life (int): shelf life of the product
-        replenishment_policy (str): replenishment policy for the inventory
-    
-    Attributes:
-        env (simpy.Environment): simulation environment
-        shelf_life (int): shelf life of the product
-        replenishment_policy (str): replenishment policy for the inventory
-        waste (list): list to store wasted products
-        perish_queue (list): list to store perishable products in the format of (manufacturing date, amount)
-        logger (GlobalLogger): logger object
-    
-    Functions:
-        __init__: initializes the perishable inventory object
-        put: overrides the put method of simpy.Container
-        get: overrides the get method of simpy.Container
-        remove_expired: removes expired products from the perishable inventory
-    """
-    def __init__(self, env: simpy.Environment, 
-                 capacity: int, 
-                 initial_level: int, 
-                 shelf_life: int, 
-                 replenishment_policy: str) -> None:
-        """
-        Initialize the perishable inventory object.
-        
-        Parameters:
-            env (simpy.Environment): simulation environment
-            capacity (int): maximum capacity of the inventory
-            initial_level (int): initial inventory level
-            shelf_life (int): shelf life of the product
-            replenishment_policy (str): replenishment policy for the inventory
-        
-        Attributes:
-            env (simpy.Environment): simulation environment
-            shelf_life (int): shelf life of the product
-            replenishment_policy (str): replenishment policy for the inventory
-            waste (list): list to store wasted products
-            perish_queue (list): list to store perishable products in the format of (manufacturing date, amount)
-            logger (GlobalLogger): global logger    
-        
-        Returns:
-            None
-        """
-        super().__init__(env, capacity, initial_level)
-        self.env = env # simulation environment
-        self.shelf_life = shelf_life # shelf life of the product
-        self.replenishment_policy = replenishment_policy # replenishment policy for the inventory
-        self.waste = [] # list to store wasted products
-        self.perish_queue = [(0,initial_level)] # list to store perishable products
-        self.logger = global_logger.logger # global logger
-        self.env.process(self.remove_expired()) # start the process to remove expired products
-
-    def put(self,amount:int,manufacturing_date:int):
-        """
-        Overriding the put method of simpy.Container.
-        Records the amount and manufacturing date in the perish_queue.
-        
-        Parameters:
-            amount (int): The amount to put in the inventory.
-            manufacturing_date (int): The manufacturing date of the product.
-
-        Attributes:
-            None
-        
-        Returns:
-            None
-        """
-        if(amount+self.level>self.capacity): # check if amount can be put in inventory, otherwise adjust it
-            amount = self.capacity - self.level
-        # insert the (manufacturing date, amount) in perish_queue in sorted order
-        inserted = False
-        for i in range(len(self.perish_queue)):
-            if self.perish_queue[i][0] > manufacturing_date:
-                self.perish_queue.insert(i, (manufacturing_date, amount))
-                inserted = True
-                break
-        if(not inserted):
-            self.perish_queue.append((manufacturing_date, amount))
-        super().put(amount)
-    
-    def get(self, amount):
-        """
-        Overriding the get method of simpy.Container.
-        Removes the specified amount from the perish_queue.
-        
-        Parameters:
-            amount (int): The amount to get from the inventory.
-
-        Attributes:
-            None
-       
-        Returns:
-            tuple: A tuple containing the 'get' event and the manufacturing date list.
-        """
-        if(amount==0):
-            return
-        man_date_ls = [] # manufacturing date list (similar to perish_queue)
-        x_amount = amount
-        while x_amount>0: # get the amount from the perish queue, old products first
-            if(len(self.perish_queue)>0):
-                if(self.perish_queue[0][1] <= x_amount):
-                    man_date_ls.append((self.perish_queue[0][0],self.perish_queue[0][1]))
-                    x_amount -= self.perish_queue[0][1]
-                    self.perish_queue.pop(0)
-                else:
-                    man_date_ls.append((self.perish_queue[0][0], x_amount))
-                    self.perish_queue[0] = (self.perish_queue[0][0], self.perish_queue[0][1] - x_amount) 
-                    x_amount = 0
-            else:
-                break
-        return super().get(amount), man_date_ls
-    
-    def remove_expired(self):
-        """
-        Remove expired products from the perishable inventory.
-
-        Parameters:
-            None
-
-        Attributes:
-            None
-
-        Return: 
-            None
-        """
-        
-        while True:
-            yield self.env.timeout(1)
-            while len(self.perish_queue)>0 and self.env.now - self.perish_queue[0][0] >= self.shelf_life:
-                self.logger.info(f"{self.env.now:.4f}:{self.perish_queue[0][1]} units expired.")
-                self.waste.append((self.env.now, self.perish_queue[0][1])) # add to wasted products
-                self.perish_queue.pop(0) # remove from perish queue
-                if(self.waste[-1][1]>0):
-                    super().get(self.waste[-1][1]) # remove from the inventory
-                self.logger.info(f"Current inventory levels:{self.perish_queue}")
-                
 class Inventory(NamedEntity, InfoMixin):
     """
-    Inventory class represents an inventory in the supply network.
-    
+    Inventory class represents an inventory in the supply network. It can handle both perishable and non-perishable items.
+
     Parameters:
         env (simpy.Environment): simulation environment
         capacity (int): maximum capacity of the inventory
         initial_level (int): initial inventory level
-        shelf_life (int): shelf life of the product
-        replenishment_policy (str): replenishment policy for the inventory
-        inv_type (str): type of the inventory (non-perishable/perishable)
-    
+        replenishment_policy (ReplenishmentPolicy): replenishment policy for the inventory
+        shelf_life (int): shelf life of the product (only used for perishable items)
+        inv_type (str): type of the inventory ("non-perishable" or "perishable")
+
     Attributes:
         _info_keys (list): list of keys to include in the info dictionary
         _stats_keys (list): list of keys to include in the statistics dictionary
-    
+        env (simpy.Environment): simulation environment
+        capacity (int): maximum capacity of the inventory
+        init_level (int): initial inventory level
+        level (int): current inventory level
+        inv_type (str): type of the inventory ("non-perishable" or "perishable")
+        replenishment_policy (ReplenishmentPolicy): replenishment policy for the inventory
+        logger (GlobalLogger): logger object
+        inventory (simpy.Container): SimPy container to manage inventory levels
+        perish_queue (list): queue to manage perishable items, storing tuples of (manufacturing_date, quantity)
+        waste (list): list to store expired items
+        shelf_life (int): shelf life of the product (only used for perishable items)
+        instantaneous_levels (list): list to store instantaneous inventory levels
+        inventory_spend (list): list to store inventory spend at each time step
+        manufacturing_date (int): manufacturing date of the perishable item (only used for perishable items)
+
     Functions:
         __init__: initializes the inventory object
-        get_info: returns a dictionary containing details of the inventory
-        record_inventory_levels: records inventory levels every day
+        put: adds items to the inventory
+        get: removes items from the inventory
+        remove_expired: removes expired items from the perishable inventory
+        record_inventory_levels: records inventory levels at regular intervals
     """
     def __init__(self, env: simpy.Environment, 
                  capacity: int, 
@@ -706,82 +597,135 @@ class Inventory(NamedEntity, InfoMixin):
                  replenishment_policy: ReplenishmentPolicy,
                  shelf_life: int = 0,
                  inv_type: str = "non-perishable") -> None:
-        """
-        Initialize the inventory object.
         
-        Parameters:
-            env (simpy.Environment): simulation environment
-            capacity (int): maximum capacity of the inventory
-            initial_level (int): initial inventory level
-            replenishment_policy (ReplenishmentPolicy): replenishment policy for the inventory
-            inv_type (str): type of the inventory (non-perishable/perishable)
-            shelf_life (int): shelf life of the product
-        
-        Attributes:
-            env (simpy.Environment): simulation environment
-            capacity (int): maximum capacity of the inventory
-            init_level (int): initial inventory level
-            level (int): current inventory level
-            inventory (simpy.Container): inventory container
-            inv_type (str): type of the inventory (non-perishable/perishable)
-            replenishment_policy (ReplenishmentPolicy): replenishment policy for the inventory
-            instantaneous_levels (list): list to store inventory levels at regular intervals
-            inventory_spend (list): list to store inventory replenishment costs. Every record contains (time of order, cost of order)
-        
-        Returns:
-            None
-        """
         self._info_keys = ["capacity", "initial_level", "replenishment_policy", "shelf_life", "inv_type"]
         self._stats_keys = ["level", "inventory_spend", "instantaneous_levels"]
-        if(initial_level > capacity):
+
+        if initial_level > capacity:
             global_logger.logger.error("Initial level cannot be greater than capacity.")
             raise ValueError("Initial level cannot be greater than capacity.")
         
         if replenishment_policy is not None:
-            if not isinstance(replenishment_policy, type):
-                global_logger.logger.error(f"Replenishment policy must be a class, got {type(replenishment_policy)}")
-                raise TypeError(f"replenishment policy must be a class, got {type(replenishment_policy)}")
-            if not issubclass(replenishment_policy, ReplenishmentPolicy):
+            if not issubclass(replenishment_policy.__class__, ReplenishmentPolicy):
                 global_logger.logger.error(f"{replenishment_policy.__name__} must inherit from ReplenishmentPolicy")
                 raise TypeError(f"{replenishment_policy.__name__} must inherit from ReplenishmentPolicy")
 
-        if(inv_type not in ["non-perishable", "perishable"]):
-            global_logger.logger.error(f"Invalid inventory type. {type} is not yet available.")
-            raise ValueError(f"Invalid inventory type. {type} is not yet available.")
+        if inv_type not in ["non-perishable", "perishable"]:
+            global_logger.logger.error(f"Invalid inventory type. {inv_type} is not yet available.")
+            raise ValueError(f"Invalid inventory type. {inv_type} is not yet available.")
         
         validate_positive("Capacity", capacity)
         validate_non_negative("Initial level", initial_level)
 
-        self.env = env # simulation environment
-        self.capacity = capacity # maximum capacity of the inventory
-        self.init_level = initial_level # initial inventory level
-        self.level = initial_level # initial inventory level
-        self.inventory = simpy.Container(env=self.env,capacity=self.capacity, init=self.init_level) # create an inventory
+        self.env = env
+        self.capacity = capacity
+        self.init_level = initial_level
+        self.level = initial_level
         self.inv_type = inv_type
-        if(self.inv_type=="perishable"):
-            self.inventory = PerishableInventory(env=self.env, capacity=self.capacity, initial_level=self.init_level, shelf_life=shelf_life, replenishment_policy=replenishment_policy)
+        self.replenishment_policy = replenishment_policy
+        self.logger = global_logger.logger
+        self.inventory = simpy.Container(env=self.env, capacity=self.capacity, init=self.init_level) # Inventory container setup
+        
+        if self.inv_type == "perishable":
+            self.shelf_life = shelf_life
+            self.perish_queue = [(0, initial_level)]
+            self.waste = []
+            self.env.process(self.remove_expired())
+
         self.instantaneous_levels = []
-        self.inventory_spend = [] # inventory replenishment costs. Calculated as (order size) * (product buy cost). Every record contains (time of order, cost of order)
-        self.env.process(self.record_inventory_levels()) # start recording the inventory levels
-    
-    def record_inventory_levels(self):
+        self.inventory_spend = []
+        self.env.process(self.record_inventory_levels())
+
+    def put(self, amount: int, manufacturing_date: int = None):
         """
-        This method records the inventory levels at regular intervals.
+        Add items to inventory. For perishable items, tracks manufacturing date.
 
         Parameters:
-            None
+            amount (int): amount to add
+            manufacturing_date (int): only required for perishable inventories
+        """
+        if amount + self.inventory.level > self.capacity:
+            amount = self.capacity - self.inventory.level 
+        
+        if amount <= 0:
+            return
 
-        Attributes:
-            None
+        if self.inv_type == "perishable":
+            if manufacturing_date is None:
+                raise ValueError("Manufacturing date must be provided for perishable inventory.")
+            
+            inserted = False
+            for i in range(len(self.perish_queue)):
+                if self.perish_queue[i][0] > manufacturing_date:
+                    self.perish_queue.insert(i, (manufacturing_date, amount))
+                    inserted = True
+                    break
+            if not inserted:
+                self.perish_queue.append((manufacturing_date, amount))
+
+        self.inventory.put(amount)
+
+    def get(self, amount: int):
+        """
+        Remove items from inventory. For perishable items, oldest products are removed first.
+
+        Parameters:
+            amount (int): amount to remove
 
         Returns:
-            None
+            tuple: (SimPy get event, List of (manufacture_date, quantity)) for perishable items
         """
-        yield self.env.timeout(1-EPSILON) # wait for the end of the day
-        self.instantaneous_levels.append([self.env.now, self.inventory.level]) # record the initial inventory level
+        if amount == 0:
+            return None, []
+
+        if self.inv_type == "perishable":
+            man_date_ls = []
+            x_amount = amount
+            while x_amount > 0 and self.perish_queue:
+                mfg_date, qty = self.perish_queue[0]
+                if qty <= x_amount:
+                    man_date_ls.append((mfg_date, qty))
+                    x_amount -= qty
+                    self.perish_queue.pop(0)
+                else:
+                    man_date_ls.append((mfg_date, x_amount))
+                    self.perish_queue[0] = (mfg_date, qty - x_amount)
+                    x_amount = 0
+            get_event = self.inventory.get(amount)
+            if(self.replenishment_policy):
+                if(not self.replenishment_policy.inventory_dropped.triggered):
+                    self.replenishment_policy.inventory_dropped.succeed()  # signal that inventory has been dropped
+            return get_event, man_date_ls
+        else:
+            get_event = self.inventory.get(amount)
+            if(self.replenishment_policy):
+                if(not self.replenishment_policy.inventory_dropped.triggered):
+                    self.replenishment_policy.inventory_dropped.succeed()  # signal that inventory has been dropped
+            return get_event, []
+
+    def remove_expired(self):
+        """
+        Remove expired items from perishable inventory.
+        """
         while True:
-            yield self.env.timeout(1) # record inventory levels at the end of every day/period
+            yield self.env.timeout(1)
+            while self.perish_queue and self.env.now - self.perish_queue[0][0] >= self.shelf_life:
+                mfg_date, qty = self.perish_queue.pop(0)
+                self.logger.info(f"{self.env.now:.4f}: {qty} units expired.")
+                self.waste.append((self.env.now, qty))
+                if qty > 0:
+                    self.inventory.get(qty)
+                self.logger.info(f"Current inventory levels: {self.perish_queue}")
+
+    def record_inventory_levels(self):
+        """
+        Record inventory levels at regular intervals.
+        """
+        #self.instantaneous_levels.append([self.env.now, self.inventory.level])
+        #yield self.env.timeout(0.999)  # wait for the first second to start recording
+        while True:
             self.instantaneous_levels.append([self.env.now, self.inventory.level])
+            yield self.env.timeout(1)
 
 class Node(NamedEntity, InfoMixin):
     """
@@ -1111,14 +1055,14 @@ class Supplier(Node):
         self._stats_keys.extend(["total_raw_materials_mined", "total_material_cost", "total_raw_materials_sold"])
         self.raw_material = raw_material # raw material supplied by the supplier, by default, it is default_raw_material.
         if(self.node_type!="infinite_supplier"):
-            self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, replenishment_policy=ReplenishmentPolicy)
+            self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, replenishment_policy=None)
             if(self.raw_material):
                 self.env.process(self.behavior()) # start the behavior process
             else:
                 self.logger.error(f"{self.ID}:Raw material not provided for this supplier. Recreate it with a raw material.")
                 raise ValueError("Raw material not provided.")
         else:
-            self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), replenishment_policy=ReplenishmentPolicy)
+            self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), replenishment_policy=None)
         self.inventory_holding_cost = inventory_holding_cost # inventory holding cost
         self.profit = self.raw_material.cost - self.raw_material.mining_cost
 
@@ -1147,11 +1091,11 @@ class Supplier(Node):
             if(self.inventory.inventory.level < self.inventory.inventory.capacity): # check if the inventory is not full
                 yield self.env.timeout(self.raw_material.extraction_time)
                 if(self.inventory.inventory.level + self.raw_material.extraction_quantity <= self.inventory.inventory.capacity): # check if the inventory can accommodate the extracted quantity
-                    self.inventory.inventory.put(self.raw_material.extraction_quantity)
+                    self.inventory.put(self.raw_material.extraction_quantity)
                     self.total_raw_materials_mined += self.raw_material.extraction_quantity # update statistics
                 else: # else put the remaining capacity in the inventory
                     self.total_raw_materials_mined += self.inventory.inventory.capacity - self.inventory.inventory.level # update statistics
-                    self.inventory.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level)
+                    self.inventory.put(self.inventory.inventory.capacity - self.inventory.inventory.level)
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:Raw material mined/extracted. Inventory level:{self.inventory.inventory.level}")
             else:
                 yield self.env.timeout(1)
@@ -1169,8 +1113,7 @@ class Supplier(Node):
 
         Returns:    
             None
-        """
-        yield self.env.timeout(1-EPSILON_STATS) # wait for the end of the day       
+        """     
         while True:
             if(self.node_type!="infinite_supplier"): # calculate inventory cost only if the node is not an infinite supplier
                 self.inventory_cost += self.inventory_holding_cost * self.inventory.inventory.level
@@ -1280,12 +1223,15 @@ class InventoryNode(Node):
         validate_non_negative("Inventory holding cost", inventory_holding_cost)
         super().__init__(node_type=node_type,**kwargs)
         self._info_keys.extend(["capacity", "initial_level", "inventory_holding_cost", "replenishment_policy", "product_sell_price", "product_buy_price"])
+        if(replenishment_policy):
+            self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
+            self.env.process(self.replenishment_policy.run())
         self.capacity = capacity
         self.initial_level = initial_level
         self.inventory_holding_cost = inventory_holding_cost
-        self.suppliers = []
-        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, inv_type=inventory_type, replenishment_policy=replenishment_policy, shelf_life=shelf_life)
+        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, inv_type=inventory_type, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life)
         self.product = copy.deepcopy(product) # product that the inventory node sells
+        self.suppliers = []
         self.manufacture_date = manufacture_date
         self.sell_price = product_sell_price # set the sell price of the product
         self.buy_price = product_buy_price # set the buy price of the product initially to 0, since buy price will be updated based on the supplier
@@ -1294,9 +1240,6 @@ class InventoryNode(Node):
             self.product.buy_price = product_buy_price # set the buy price of the product to the product buy price
         self.profit = self.sell_price - self.buy_price # calculate profit
         self.order_placed = False # flag to check if the order is placed
-        if(replenishment_policy):
-            self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
-            self.env.process(self.replenishment_policy.run())
         # statistics
         self.products_sold_daily = [] # list to store the product sold in the current cycle
         self.products_sold = 0
@@ -1316,7 +1259,6 @@ class InventoryNode(Node):
             None
         """
         self.products_sold = 0 # reset the products sold in the current cycle
-        yield self.env.timeout(1-EPSILON_STATS) # wait for the end of the day
         while True:
             self.products_sold_daily.append((self.env.now, self.products_sold)) # append the product sold in the current cycle
             self.total_products_sold += self.products_sold
@@ -1344,11 +1286,8 @@ class InventoryNode(Node):
         """
         if(supplier.source.node_status == "active"):
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
-            if(supplier.source.inventory.inv_type=="perishable"):
-                event, man_date_ls = supplier.source.inventory.inventory.get(reorder_quantity)
-                yield event
-            else:
-                yield supplier.source.inventory.inventory.get(reorder_quantity) # get the product from the supplier inventory      
+            event, man_date_ls = supplier.source.inventory.get(reorder_quantity)
+            yield event
             self.orders_placed.append((self.env.now, self.ID, reorder_quantity, 0)) # record the order placed
             self.transportation_cost.append((self.env.now,supplier.cost)) # calculate stats: record order cost (tranportation cost))
             order_index = len(self.orders_placed) - 1 # get the index of the order placed
@@ -1367,19 +1306,16 @@ class InventoryNode(Node):
             supplier.source.products_sold = reorder_quantity # calculate stats: update the product sold at the supplier
             supplier.source.total_products_sold += reorder_quantity # calculate stats: update the total product sold at the supplier
 
-            if(supplier.source.inventory.inv_type=="perishable" and self.inventory.inv_type=="perishable"): # if supplier also has perishable inventory
+            if(man_date_ls):
                 for ele in man_date_ls: # get manufacturing date from the supplier
-                    self.inventory.inventory.put(ele[1],ele[0])
-            elif(supplier.source.inventory.inv_type=="perishable"): # if supplier has perishable inventory but self inventory is non-perishable
-                for ele in man_date_ls: # ignore the manufacturing date
-                    self.inventory.inventory.put(ele[1])
-            elif(self.inventory.inv_type=="perishable"): # if self inventory is perishable but supplier has non-perishable inventory
+                    self.inventory.put(ele[1],ele[0])
+            elif(self.inventory.inv_type=="perishable"): # if self inventory is perishable but manufacture date is not provided
                 if(self.manufacture_date): # calculate the manufacturing date using the function if provided
-                    self.inventory.inventory.put(reorder_quantity,self.manufacture_date(self.env.now))
+                    self.inventory.put(reorder_quantity,self.manufacture_date(self.env.now))
                 else: # else put the product in the inventory with current time as manufacturing date
-                    self.inventory.inventory.put(reorder_quantity,self.env.now)
+                    self.inventory.put(reorder_quantity,self.env.now)
             else:
-                self.inventory.inventory.put(reorder_quantity)
+                self.inventory.put(reorder_quantity)
 
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, Inventory levels:{self.inventory.inventory.level}")
             self.inventory.inventory_spend.append([self.env.now, reorder_quantity*self.buy_price]) # update stats: calculate and update inventory replenishment cost
@@ -1500,9 +1436,13 @@ class Manufacturer(Node):
         super().__init__(node_type="manufacturer",**kwargs)
         self._info_keys.extend(["capacity", "initial_level", "inventory_holding_cost", "replenishment_policy", "product_sell_price"])
         self._stats_keys.extend(["total_products_manufactured", "total_manufacturing_cost", "revenue"]) 
+        if(replenishment_policy):
+            self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
+            self.env.process(self.replenishment_policy.run())
         self.capacity = capacity
         self.initial_level = initial_level
         self.inventory_holding_cost = inventory_holding_cost
+        self.inventory = Inventory(env=self.env, capacity=self.capacity, initial_level=self.initial_level, inv_type=inventory_type, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life)
         self.product = product # product manufactured by the manufacturer
         self.suppliers = []
         self.product.sell_price = product_sell_price
@@ -1511,12 +1451,7 @@ class Manufacturer(Node):
         self.production_cycle = False # production cycle status
         self.raw_inventory_counts = {} # dictionary to store inventory counts for raw products inventory
         self.order_placed_raw = {} # dictionary to store order status
-        self.order_placed = False # order status for the product
-        self.inventory = Inventory(env=self.env, capacity=self.capacity, initial_level=self.initial_level, inv_type=inventory_type, replenishment_policy=replenishment_policy, shelf_life=shelf_life)
-        
-        if(replenishment_policy):
-            self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
-            self.env.process(self.replenishment_policy.run())
+        self.order_placed = False # order status for the product        
 
         if(self.product.buy_price <= 0): # if the product buy price is not given, calculate it
             self.product.buy_price = self.product.manufacturing_cost 
@@ -1548,7 +1483,6 @@ class Manufacturer(Node):
         Returns:
             None
         """
-        yield self.env.timeout(1-EPSILON_STATS) # wait for the first cycle to complete
         while True:
             if(self.product):
                 self.total_manufacturing_cost = self.total_products_manufactured * self.product.manufacturing_cost
@@ -1588,10 +1522,7 @@ class Manufacturer(Node):
                 required_amount = raw_material["quantity"]
                 self.raw_inventory_counts[raw_mat_id] -= raw_material["quantity"]*max_producible_units
             yield self.env.timeout(self.product.manufacturing_time) # take manufacturing time to produce the product            
-            if(self.inventory.inv_type == "perishable"):
-                self.inventory.inventory.put(max_producible_units, manufacturing_date=self.env.now)
-            else:
-                self.inventory.inventory.put(max_producible_units)
+            self.inventory.put(max_producible_units, manufacturing_date=self.env.now)
             self.logger.info(f"{self.env.now:.4f}:{self.ID}: {max_producible_units} units manufactured.")
             self.logger.info(f"{self.env.now:.4f}:{self.ID}: Product inventory levels:{self.inventory.inventory.level}")
             self.total_products_manufactured += max_producible_units # update statistics
@@ -1652,7 +1583,8 @@ class Manufacturer(Node):
                 return
 
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
-            yield supplier.source.inventory.inventory.get(reorder_quantity)
+            event, man_date_ls = supplier.source.inventory.get(reorder_quantity)
+            yield event
             self.orders_placed.append((self.env.now, self.ID, reorder_quantity, 0)) # record the order placed
             self.transportation_cost.append((self.env.now,supplier.cost)) # update the transportation cost at the supplier
             order_index = len(self.orders_placed) - 1
@@ -1671,7 +1603,7 @@ class Manufacturer(Node):
         elif(supplier.source.node_status != "active"):
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted.")    
         else:
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Insufficient inventory at supplier:{supplier.source.name}, order not placed.")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Insufficient inventory at {supplier.source.name}, order not placed.")
         self.order_placed_raw[raw_mat_id] = False
     
     def place_order(self, supplier, reorder_quantity):
@@ -1820,11 +1752,8 @@ class Demand(Node):
             None
         """
         if(self.customer_tolerance==float('inf')): # wait for the order to arrive
-            if(self.demand_node.inventory.inv_type=="perishable"):
-                get_event, man_date_ls = self.demand_node.inventory.inventory.get(order_quantity)
-                yield get_event
-            else:
-                yield self.demand_node.inventory.inventory.get(order_quantity)
+            get_event, man_date_ls = self.demand_node.inventory.get(order_quantity)
+            yield get_event
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, remaining order quantity:{order_quantity} placed.")
             
             # order shipped, calculate the delivery cost
@@ -1856,11 +1785,8 @@ class Demand(Node):
                 wait_time += 1
                 yield self.env.timeout(1)
             if(order_quantity <= self.demand_node.inventory.inventory.level):
-                if(self.demand_node.inventory.inv_type=="perishable"):
-                    event,  man_dt_ls = self.demand_node.inventory.inventory.get(order_quantity)
-                    yield event 
-                else:
-                    yield self.demand_node.inventory.inventory.get(order_quantity)
+                event,  man_dt_ls = self.demand_node.inventory.get(order_quantity)
+                yield event 
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, remaining order quantity:{order_quantity}, available inventory:{self.demand_node.inventory.inventory.level}.")
                 
                 # order shipped, calculate the delivery cost
@@ -1903,11 +1829,8 @@ class Demand(Node):
             None
         """
         if(order_quantity <= self.demand_node.inventory.inventory.level):
-            if(self.demand_node.inventory.inv_type=="perishable"):
-                get_eve, man_date_ls = self.demand_node.inventory.inventory.get(order_quantity)
-                yield get_eve
-            else:
-                yield self.demand_node.inventory.inventory.get(order_quantity)
+            get_eve, man_date_ls = self.demand_node.inventory.get(order_quantity)
+            yield get_eve
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{id}:Demand at {self.demand_node}, Order quantity:{order_quantity}, available.")
             
             # order shipped, calculate the delivery cost
@@ -1934,11 +1857,8 @@ class Demand(Node):
             order_quantity = order_quantity - self.demand_node.inventory.inventory.level # calculate the remaining quantity to order
             if(self.demand_node.inventory.inventory.level>0): # consume if available
                 consumed_quantity = self.demand_node.inventory.inventory.level
-                if(self.demand_node.inventory.inv_type=="perishable"):
-                    get_eve, man_date_ls = self.demand_node.inventory.inventory.get(self.demand_node.inventory.inventory.level)
-                    yield get_eve
-                else:
-                    yield self.demand_node.inventory.inventory.get(self.demand_node.inventory.inventory.level) # consume available quantity
+                get_eve, man_date_ls = self.demand_node.inventory.get(self.demand_node.inventory.inventory.level)
+                yield get_eve
                 
                 # order shipped, calculate the delivery cost
                 del_cost = self.delivery_cost()
@@ -1981,7 +1901,7 @@ class Demand(Node):
         Returns:
             None
         """
-        customer_id = 0 # customer ID
+        customer_id = 1 # customer ID
         while True:
             order_time = self.order_arrival_model()
             validate_number(name="order_time", value=order_time)
