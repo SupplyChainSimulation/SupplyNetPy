@@ -114,7 +114,7 @@ def get_sc_net_info(supplychainnet):
         logger.info(f"{key}: {supplychainnet[key]}")
     return sc_info
 
-def create_sc_net(nodes: list, links: list, demands: list):
+def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment = None):
     """
     This functions inputs the nodes, links and demand netlists and creates supply chain nodes, links and demand objects. 
     It then creates a supply chain network by putting all the objects in a dictionary.
@@ -127,7 +127,8 @@ def create_sc_net(nodes: list, links: list, demands: list):
     Returns:
         dict: A dictionary representing the supply chain network.
     """
-    env = simpy.Environment() # create simpy environment
+    if(env is None):
+        env = simpy.Environment()
     supplychainnet = {"nodes":{},"links":{},"demands":{}} # create empty supply chain network
     used_ids = []
     num_suppliers = 0
@@ -179,6 +180,10 @@ def create_sc_net(nodes: list, links: list, demands: list):
                 raise ValueError("Invalid node type")
     for link in links:
         if isinstance(link, dict):
+            if(link["ID"] in used_ids):
+                global_logger.logger.error(f"Duplicate link ID {link['ID']}")
+                raise ValueError("Duplicate node ID")
+            used_ids.append(link["ID"])
             source = None
             sink = None
             nodes = supplychainnet["nodes"].keys()
@@ -196,9 +201,17 @@ def create_sc_net(nodes: list, links: list, demands: list):
             link_id = params['ID']
             supplychainnet["links"][f"{link_id}"] = Link(env=env,source=source,sink=sink,**params)
         elif isinstance(link, Link):
+            if(link.ID in used_ids):
+                global_logger.logger.error(f"Duplicate link ID {link.ID}")
+                raise ValueError("Duplicate node ID")
+            used_ids.append(link.ID)
             supplychainnet["links"][f"{link.ID}"] = link
     for d in demands:
         if isinstance(d, dict):
+            if(d["ID"] in used_ids):
+                global_logger.logger.error(f"Duplicate demand ID {d['ID']}")
+                raise ValueError("Duplicate demand ID")
+            used_ids.append(d["ID"])
             demand_node = None # check for which node the demand is
             nodes = supplychainnet["nodes"].keys()
             if d['demand_node'] in nodes:
@@ -212,6 +225,10 @@ def create_sc_net(nodes: list, links: list, demands: list):
             demand_id = params['ID']
             supplychainnet["demands"][f"{demand_id}"] = Demand(env=env,demand_node=demand_node,**params)
         elif isinstance(d, Demand):
+            if(d.ID in used_ids):
+                global_logger.logger.error(f"Duplicate demand ID {d.ID}")
+                raise ValueError("Duplicate demand ID")
+            used_ids.append(d.ID)
             supplychainnet["demands"][f"{d.ID}"] = d
 
     supplychainnet["env"] = env
@@ -265,17 +282,17 @@ def simulate_sc_net(supplychainnet, sim_time):
             avg_available_inv += sum([x[1] for x in node.inventory.instantaneous_levels])/len(node.inventory.instantaneous_levels) 
         total_inv_carry_cost += node.inventory_cost
         total_inv_spend += sum([x[1] for x in node.inventory.inventory_spend])
-        total_transport_cost += sum([x[1] for x in node.transportation_cost])
+        total_transport_cost += node.transportation_cost
         total_cost += node.node_cost
-        total_demand_placed_by_site[0] += len(node.orders_placed) 
-        total_demand_placed_by_site[1] += sum([x[2] for x in node.orders_placed]) 
-        total_fulfillment_received_by_site[0] += sum([x[3] for x in node.orders_placed])
-        total_fulfillment_received_by_site[1] += sum([x[2]*x[3] for x in node.orders_placed])
+        total_demand_placed_by_site[0] += sum([s[0] for s in node.demand_placed.values()]) 
+        total_demand_placed_by_site[1] += sum([s[1] for s in node.demand_placed.values()]) 
+        #total_fulfillment_received_by_site[0] += sum([x[3] for x in node.demand_placed])
+        total_fulfillment_received_by_site[1] += node.total_products_sold # sum of all products sold by this node
     for key, node in supplychainnet["demands"].items():
-        total_transport_cost += sum([x[1] for x in node.transportation_cost])
+        total_transport_cost += node.transportation_cost
         total_cost += node.node_cost
         total_revenue += node.revenue
-        total_demand_placed_by_customers[0] += len(node.orders_placed) + len(node.orders_shortage) # orders
+        total_demand_placed_by_customers[0] += sum([x[0] for x in node.demand_placed.values()])
         total_demand_placed_by_customers[1] += node.total_demand # products
         total_fulfillment_received_by_customers[0] += len(node.products_sold_daily)
         total_fulfillment_received_by_customers[1] += sum([x[1] for x in node.products_sold_daily])
@@ -307,4 +324,8 @@ def simulate_sc_net(supplychainnet, sim_time):
         supplychainnet["avg_cost_per_item"] = total_cost / total_demand_placed[1]
     else:
         supplychainnet["avg_cost_per_item"] = 0
+    
+    logger.info(f"Supply chain performance measures:")
+    for key, value in supplychainnet["nodes"].items():    
+        logger.info(f"{key}: {value}")
     return supplychainnet
