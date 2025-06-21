@@ -267,12 +267,13 @@ def simulate_sc_net(supplychainnet, sim_time):
     total_revenue = 0
     total_cost = 0
     total_profit = 0
-    total_demand_placed_by_customers = [0, 0] # [orders, products]
+    total_demand_by_customers = [0, 0] # [orders, products]
     total_fulfillment_received_by_customers = [0, 0] # [orders, products]
-    total_demand_placed_by_site = [0, 0] # [orders, products]
+    total_demand_by_site = [0, 0] # [orders, products]
     total_fulfillment_received_by_site = [0, 0] # [orders, products]
     total_demand_placed = [0, 0] # [orders, products]
     total_fulfillment_received = [0, 0] # [orders, products]
+    total_shortage = [0, 0] # [orders, products]
 
     for key, node in supplychainnet["nodes"].items():
         if("infinite" in node.node_type.lower()): # skip infinite suppliers
@@ -280,24 +281,28 @@ def simulate_sc_net(supplychainnet, sim_time):
         total_available_inv += node.inventory.inventory.level
         if len(node.inventory.instantaneous_levels)>0:
             avg_available_inv += sum([x[1] for x in node.inventory.instantaneous_levels])/len(node.inventory.instantaneous_levels) 
-        total_inv_carry_cost += node.inventory_cost
-        total_inv_spend += sum([x[1] for x in node.inventory.inventory_spend])
+        total_inv_carry_cost += node.inventory.carry_cost
+        total_inv_spend += sum([x for x in node.inventory.inventory_spend.values()])
         total_transport_cost += node.transportation_cost
         total_cost += node.node_cost
-        total_demand_placed_by_site[0] += sum([s[0] for s in node.demand_placed.values()]) 
-        total_demand_placed_by_site[1] += sum([s[1] for s in node.demand_placed.values()]) 
-        #total_fulfillment_received_by_site[0] += sum([x[3] for x in node.demand_placed])
-        total_fulfillment_received_by_site[1] += node.total_products_sold # sum of all products sold by this node
+        total_demand_by_site[0] += sum([s[0] for s in node.demand_placed.values()]) 
+        total_demand_by_site[1] += sum([s[1] for s in node.demand_placed.values()]) 
+        total_fulfillment_received_by_site[0] += sum([s[0] for s in node.demand_fulfilled.values()]) 
+        total_fulfillment_received_by_site[1] += sum([s[1] for s in node.demand_fulfilled.values()]) 
+        total_shortage[0] += sum([s[0] for s in node.orders_shortage.values()])
+        total_shortage[1] += sum([s[1] for s in node.orders_shortage.values()])
     for key, node in supplychainnet["demands"].items():
         total_transport_cost += node.transportation_cost
         total_cost += node.node_cost
         total_revenue += node.revenue
-        total_demand_placed_by_customers[0] += sum([x[0] for x in node.demand_placed.values()])
-        total_demand_placed_by_customers[1] += node.total_demand # products
-        total_fulfillment_received_by_customers[0] += len(node.products_sold_daily)
-        total_fulfillment_received_by_customers[1] += sum([x[1] for x in node.products_sold_daily])
-    total_demand_placed[0] = total_demand_placed_by_customers[0] + total_demand_placed_by_site[0]
-    total_demand_placed[1] = total_demand_placed_by_customers[1] + total_demand_placed_by_site[1]
+        total_demand_by_customers[0] += node.total_demand[0] # orders
+        total_demand_by_customers[1] += node.total_demand[1] # products
+        total_fulfillment_received_by_customers[0] += sum([x[0] for x in node.demand_fulfilled.values()])
+        total_fulfillment_received_by_customers[1] += sum([x[1] for x in node.demand_fulfilled.values()])
+        total_shortage[0] += sum([s[0] for s in node.orders_shortage.values()])
+        total_shortage[1] += sum([s[1] for s in node.orders_shortage.values()])
+    total_demand_placed[0] = total_demand_by_customers[0] + total_demand_by_site[0]
+    total_demand_placed[1] = total_demand_by_customers[1] + total_demand_by_site[1]
     total_fulfillment_received[0] = total_fulfillment_received_by_customers[0] + total_fulfillment_received_by_site[0]
     total_fulfillment_received[1] = total_fulfillment_received_by_customers[1] + total_fulfillment_received_by_site[1]
     total_profit = total_revenue - total_cost
@@ -309,12 +314,13 @@ def simulate_sc_net(supplychainnet, sim_time):
     supplychainnet["total_revenue"] = total_revenue
     supplychainnet["total_cost"] = total_cost
     supplychainnet["total_profit"] = total_profit
-    supplychainnet["total_demand_placed_by_customers"] = total_demand_placed_by_customers
+    supplychainnet["total_demand_by_customers"] = total_demand_by_customers
     supplychainnet["total_fulfillment_received_by_customers"] = total_fulfillment_received_by_customers
-    supplychainnet["total_demand_placed_by_site"] = total_demand_placed_by_site
+    supplychainnet["total_demand_by_site"] = total_demand_by_site
     supplychainnet["total_fulfillment_received_by_site"] = total_fulfillment_received_by_site
-    supplychainnet["total_demand_placed"] = total_demand_placed
+    supplychainnet["total_demand"] = total_demand_placed
     supplychainnet["total_fulfillment_received"] = total_fulfillment_received
+    supplychainnet["total_shortage"] = total_shortage
     # Calculate average cost per order and per item
     if total_demand_placed[0] > 0:
         supplychainnet["avg_cost_per_order"] = total_cost / total_demand_placed[0]
@@ -326,6 +332,6 @@ def simulate_sc_net(supplychainnet, sim_time):
         supplychainnet["avg_cost_per_item"] = 0
     
     logger.info(f"Supply chain performance measures:")
-    for key, value in supplychainnet["nodes"].items():    
+    for key, value in supplychainnet.items():
         logger.info(f"{key}: {value}")
     return supplychainnet
