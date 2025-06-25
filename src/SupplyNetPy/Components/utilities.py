@@ -127,6 +127,9 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
     Returns:
         dict: A dictionary representing the supply chain network.
     """
+    if (isinstance(nodes[0],Node) or isinstance(links[0],Link) or isinstance(demands[0],Demand)) and env is None:
+        global_logger.logger.error("Please provide SimPy Environment object env")
+        raise ValueError("A SimPy Environment object is required!")
     if(env is None):
         env = simpy.Environment()
     supplychainnet = {"nodes":{},"links":{},"demands":{}} # create empty supply chain network
