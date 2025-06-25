@@ -91,6 +91,7 @@ class GlobalLogger:
         """
         Enables logging by configuring the logger with the appropriate handlers.
         """
+        logging.disable(logging.NOTSET)
         self.log_to_file = log_to_file
         self.log_to_screen = log_to_screen
         self.configure_logger()
@@ -99,4 +100,5 @@ class GlobalLogger:
         """
         Disables logging by clearing all handlers from the logger.
         """
+        logging.disable(logging.CRITICAL)
         self.logger.handlers = []
