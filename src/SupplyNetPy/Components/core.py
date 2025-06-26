@@ -403,7 +403,6 @@ class InventoryReplenishment(InfoMixin):
         env (simpy.Environment): simulation environment
         node (object): node to which this policy applies
         params (dict): parameters for the replenishment policy
-        inventory_drop (simpy.Event): event to signal when inventory is dropped
     
     functions:
         __init__: initializes the replenishment policy object
@@ -426,7 +425,6 @@ class InventoryReplenishment(InfoMixin):
             env (simpy.Environment): simulation environment
             node (object): node to which this policy applies
             params (dict): parameters for the replenishment policy
-            inventory_drop (simpy.Event): event to signal when inventory is dropped
             
         Returns:
             None
@@ -435,7 +433,6 @@ class InventoryReplenishment(InfoMixin):
         self.env = env  # simulation environment
         self.node = node  # node to which this policy applies
         self.params = params  # parameters for the replenishment policy
-        self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
 
     def run(self):
         """
@@ -533,8 +530,8 @@ class SSReplenishment(InventoryReplenishment, NamedEntity):
                 self.env.process(self.node.process_order(supplier, order_quantity))                    
             
             if self.period==0: # if periodic check is OFF
-                yield self.inventory_drop  # wait for the inventory to be dropped
-                self.inventory_drop = self.env.event()  # reset the event for the next iteration
+                yield self.node.inventory_drop  # wait for the inventory to be dropped
+                self.node.inventory_drop = self.env.event()  # reset the event for the next iteration
             elif(self.period): # if periodic check is ON
                 yield self.env.timeout(self.period)
 
@@ -614,8 +611,8 @@ class RQReplenishment(InventoryReplenishment):
                 self.env.process(self.node.process_order(supplier, Q))
 
             if self.period==0: # if periodic check is OFF
-                yield self.inventory_drop  # wait for the inventory to be dropped
-                self.inventory_drop = self.env.event()  # reset the event for the next iteration
+                yield self.node.inventory_drop  # wait for the inventory to be dropped
+                self.node.inventory_drop = self.env.event()  # reset the event for the next iteration
             elif(self.period): # if periodic check is ON
                 yield self.env.timeout(self.period)
 
@@ -1205,6 +1202,8 @@ class Inventory(NamedEntity, InfoMixin):
         self.update_carry_cost()  # Update carrying cost based on the amount added
         self.inventory.put(amount)
         self.level = self.inventory.level  # Update the current inventory level
+        if(not self.node.inventory_raised.triggered):
+            self.node.inventory_raised.succeed()  # signal that inventory has been raised
 
     def get(self, amount: int):
         """
@@ -1238,8 +1237,8 @@ class Inventory(NamedEntity, InfoMixin):
         self.level = self.inventory.level  # Update the current inventory level
         self.on_hand -= amount  # Update the on-hand inventory level
         if(self.replenishment_policy):
-            if(not self.replenishment_policy.inventory_drop.triggered):
-                self.replenishment_policy.inventory_drop.succeed()  # signal that inventory has been dropped
+            if(not self.node.inventory_drop.triggered):
+                self.node.inventory_drop.succeed()  # signal that inventory has been dropped
         return get_event, man_date_ls
 
     def remove_expired(self):
@@ -1329,6 +1328,8 @@ class Supplier(Node):
         self.sell_price = 0
         if(self.node_type!="infinite_supplier"):
             self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, holding_cost=inventory_holding_cost, replenishment_policy=None)
+            self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
+            self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
             if(self.raw_material):
                 self.sell_price = self.raw_material.cost # selling price of the raw material
                 self.env.process(self.behavior()) # start the behavior process
@@ -1337,6 +1338,7 @@ class Supplier(Node):
                 raise ValueError("Raw material not provided.")
         else:
             self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), node=self, holding_cost=inventory_holding_cost, replenishment_policy=None)
+        
         self.stats = Statistics(self)
         setattr(self.stats,"total_raw_materials_mined",0)
         setattr(self.stats,"total_material_cost",0)
@@ -1477,6 +1479,8 @@ class InventoryNode(Node):
         self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, 
                                    inv_type=inventory_type, holding_cost=inventory_holding_cost, 
                                    replenishment_policy=self.replenishment_policy, shelf_life=shelf_life)
+        self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
+        self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
         self.manufacture_date = manufacture_date
         self.sell_price = product_sell_price # set the sell price of the product
         self.buy_price = product_buy_price # set the buy price of the product
@@ -1664,6 +1668,8 @@ class Manufacturer(Node):
         self.initial_level = initial_level
         
         self.inventory = Inventory(env=self.env, capacity=self.capacity, initial_level=self.initial_level, node=self, inv_type=inventory_type, holding_cost=inventory_holding_cost, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life)
+        self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
+        self.inventory_raised = self.env.event() # signal to indicate that inventory has bee
         self.product = product # product manufactured by the manufacturer
         self.suppliers = []
         self.product.sell_price = product_sell_price
@@ -1802,8 +1808,6 @@ class Manufacturer(Node):
         else:
             self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted.")
             yield self.env.timeout(1) # wait for 1 time unit before checking again
-            if(not self.replenishment_policy.inventory_drop.triggered):
-                self.replenishment_policy.inventory_drop.succeed()  # signal that inventory has been dropped
 
         self.ongoing_order_raw[raw_mat_id] = False
     
@@ -1976,35 +1980,22 @@ class Demand(Node):
         partial = order_quantity
         if self.min_split < 1:
             partial = int(order_quantity * self.min_split)
-        self.stats.update_stats(demand_placed=[0,partial-order_quantity]) # update the demand placed statistics
-        self.demand_node.stats.update_stats(demand_received=[0,partial-order_quantity])
-        firstorder = True # flag to check if this is the first order
         waited = 0
         available = 0
-        while order_quantity>0 and waited<self.customer_tolerance:
+        while order_quantity>0 and waited<=self.customer_tolerance:
+            waiting_time = self.env.now
             available = self.demand_node.inventory.inventory.level
-            if order_quantity <= available:
-                if not firstorder: # if this is the first order, log the order quantity
-                    self.stats.update_stats(demand_placed=[1,order_quantity]) # update the demand placed statistics
-                    self.demand_node.stats.update_stats(demand_received=[1,order_quantity])
-                firstorder = False
+            if order_quantity <= available: # check if remaining order quantity is available 
                 self.env.process(self._process_delivery(order_quantity, customer_id))
                 order_quantity = 0
-            elif partial <= available:
-                if not firstorder: # if this is the first order, log the order quantity
-                    self.stats.update_stats(demand_placed=[1,partial]) # update the demand placed statistics
-                    self.demand_node.stats.update_stats(demand_received=[1,partial])
-                firstorder = False
-                self.env.process(self._process_delivery(partial, customer_id))
-                order_quantity -= partial # update order quantity
-                if(partial>order_quantity):
-                    partial = order_quantity # update partial to remaining order quantity
+            elif available >= partial: # or else at least min required 'partial' is available
+                self.env.process(self._process_delivery(available, customer_id))
+                order_quantity -= available # update order quantity
             else: 
                 self.demand_node.stats.update_stats(orders_shortage=[1,order_quantity-available])
-            step = min(1, self.customer_tolerance - waited)
-            waited += step
-            yield self.env.timeout(step) # wait for the next step
-
+            yield self.demand_node.inventory_raised # wait until inventory is replenished
+            self.demand_node.inventory_raised = self.env.event()  # reset the event for the next iteration
+            waited += self.env.now - waiting_time # update the waited time
         
         if order_quantity > 0: # if the order quantity is still greater than 0, it means the order was not fulfilled
             self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available!")
