@@ -80,12 +80,6 @@ To model a supply chain, instantiate these classes and configure their attribute
 
 ---
 
-<div id="perishinv">
-<h3 class="classhead">Class PerishableInventory</h3></div>
-:::SupplyNetPy.Components.core.PerishableInventory
-
----
-
 <div id="supplier">
 <h3 class="classhead">Class Supplier</h3></div>
 :::SupplyNetPy.Components.core.Supplier

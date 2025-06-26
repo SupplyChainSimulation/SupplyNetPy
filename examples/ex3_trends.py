@@ -85,7 +85,7 @@ while(s<end):
     scm.global_logger.enable_logging()
     supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=simulation_period)
     # record the perfomance of the model (in our case, the sc_profit)
-    inv_costs.append(supplychainnet["nodes"]["M1"].inventory_cost)
+    inv_costs.append(supplychainnet["nodes"]["M1"].inventory.carry_cost)
     node_costs.append(supplychainnet["nodes"]["M1"].node_cost)
     net_profits.append(supplychainnet["nodes"]["M1"].net_profit)
 
@@ -93,7 +93,7 @@ while(s<end):
     d1_inv_cost = sum([x[1] for x in d1.inventory.instantaneous_levels])
     d1_inv_costs.append(d1_inv_cost)
 
-    d1_profit = sum([x[1] for x in d1.products_sold_daily])*d1.sell_price
+    d1_profit = d1.total_profit
     d1_net_profits.append(d1_inv_cost-d1_profit)
     
     # next value for 's', the inventory parameter

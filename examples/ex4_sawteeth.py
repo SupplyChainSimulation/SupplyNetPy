@@ -185,7 +185,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
 # Following code is to plot inventory levels for all nodes in the supply chain network
 # this is to observe if the model is working as expected
 # sawtooth pattern should be observed for all nodes
-N = 4
+N = 10
 scm.global_logger.enable_logging()
 supplynet = generate_supply_chain(N,simtime = 1000)
 

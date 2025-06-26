@@ -18,7 +18,7 @@ raw_material2 = scm.RawMaterial(ID="rm2",name="RawMaterial2", extraction_quantit
 product = scm.Product(ID="pr1", name="Product1", manufacturing_cost=20, manufacturing_time=2, sell_price=100, 
                       raw_materials=[{"raw_material": raw_material1, "quantity": 12},
                       {"raw_material": raw_material2, "quantity": 15}],
-                      units_per_cycle=30)
+                      batch_size=30)
 
 # Define suppliers
 supplier1 = scm.Supplier(env=env, ID="s1",name="Supplier1",capacity=10000, initial_level=3000, 
@@ -57,7 +57,7 @@ link3 = scm.Link(env=env, ID="l3", source=manufacturer, sink=distributor, cost=1
 link4 = scm.Link(env=env, ID="l4", source=distributor, sink=retailer1, cost=50, lead_time=lambda: 1)
 link5 = scm.Link(env=env, ID="l5", source=distributor, sink=retailer2, cost=50, lead_time=lambda: 1)
 
-scnet = scm.create_sc_net(nodes = [supplier1, supplier2, manufacturer, distributor, retailer1, retailer2],
+scnet = scm.create_sc_net(env=env, nodes = [supplier1, supplier2, manufacturer, distributor, retailer1, retailer2],
                           links = [link1, link2, link3, link4, link5],
                           demands = [demand_r1, demand_r2])
 # Run the simulation
