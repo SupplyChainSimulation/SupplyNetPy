@@ -216,10 +216,10 @@ class Statistics(InfoMixin):
             if "cost" in key: # consider all cost attributes
                 total_cost += value
         self.node_cost = total_cost
-        self.revenue = self.demand_fulfilled[1] * self.node.sell_price if hasattr(self.node, 'sell_price') else 0
+        self.revenue = self.demand_received[1] * self.node.sell_price if hasattr(self.node, 'sell_price') else 0
         self.profit = self.revenue - self.node_cost
 
-    def update_stats_periodically(self, period=1):
+    def update_stats_periodically(self, period):
         """
         Update the statistics periodically.
         
@@ -2026,11 +2026,11 @@ class Demand(Node):
         """
         available = self.demand_node.inventory.inventory.level
         self.stats.update_stats(demand_placed=[1,order_quantity]) # update the demand placed statistics
-        self.demand_node.stats.update_stats(demand_received=[1,order_quantity])
         if order_quantity <= available:
+            self.demand_node.stats.update_stats(demand_received=[1,order_quantity])
             yield from self._process_delivery(order_quantity, customer_id)
         elif self.customer_tolerance > 0: # wait for tolerance time if order quantity is not available (backorder policy = allowed total)
-            self.demand_node.stats.update_stats(orders_shortage=[1,order_quantity-available]) # update the orders shortage statistics
+            self.demand_node.stats.update_stats(demand_received=[1,order_quantity],orders_shortage=[1,order_quantity-available]) # update the orders shortage statistics
             self.env.process(self.wait_for_order(customer_id, order_quantity))
         else: # No tolerance, leave without placing an order (backorder policy = not allowed)
             self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}. No tolerance! Shortage:{order_quantity-available}.")
