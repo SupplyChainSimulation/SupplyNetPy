@@ -10,19 +10,30 @@ nav:
     - Introduction: api-reference/api-intro.md
     - Components.core:
       - Overview: api-reference/api-ref-core.md
+      - NamedEntity: api-reference/api-ref-core/#namedentity
+      - InfoMixin: api-reference/api-ref-core/#infomixin
+      - Statistics: api-reference/api-ref-core/#statistics
       - RawMaterial: api-reference/api-ref-core/#rawmat
       - Product: api-reference/api-ref-core/#product
-      - Link: api-reference/api-ref-core/#link
+      - InventoryReplenishment: api-reference/api-ref-core/#inventoryreplenishment
+      - SSReplenishment: api-reference/api-ref-core/#ssreplenish
+      - RQReplenishment: api-reference/api-ref-core/#rqreplenish
+      - PeriodicReplenishment: api-reference/api-ref-core/#periodicreplenish
+      - SupplierSelectionPolicy: api-reference/api-ref-core/#supplierselectionpol
+      - SelectFirst: api-reference/api-ref-core/#selectFirst
+      - SelectAvailable: api-reference/api-ref-core/#selectavailable
+      - SelectCheapest: api-reference/api-ref-core/#selectcheapest
+      - SelectFastest: api-reference/api-ref-core/#selectfastest
       - Node: api-reference/api-ref-core/#node
+      - Link: api-reference/api-ref-core/#link
       - Inventory: api-reference/api-ref-core/#inventory
-      - PerishableInventory: api-reference/api-ref-core/#perishinv
       - Supplier: api-reference/api-ref-core/#supplier
-      - Manufacturer: api-reference/api-ref-core/#manufacturer
       - InventoryNode: api-reference/api-ref-core/#inventorynode
+      - Manufacturer: api-reference/api-ref-core/#manufacturer
       - Demand: api-reference/api-ref-core/#demand
     - Components.logger: api-reference/api-ref-logger.md
     - Components.utilities: api-reference/api-ref-utilities.md
-  
+
 theme:
   name: readthedocs
   highlightjs: true
@@ -31,13 +42,12 @@ theme:
     - rust
 
 plugins:
-- search
-- autorefs
-- include
-
-- mkdocstrings:
-    handlers:
-      python:
-        paths: [src]
-        options:
-          show_source: false
+  - search
+  - autorefs
+  - include
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false

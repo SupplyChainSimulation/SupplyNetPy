@@ -5,6 +5,28 @@ import numpy as np
 #from SupplyNetPy.Components.core import *
 from core import * 
 
+def check_duplicate_id(used_ids, new_id, entity_type="ID"):
+    if new_id in used_ids:
+        global_logger.logger.error(f"Duplicate {entity_type} {new_id}")
+        raise ValueError(f"Duplicate {entity_type}")
+    used_ids.append(new_id)
+
+def process_info_dict(info_dict, logger):
+    info_string = ""
+    for key, value in info_dict.items():
+        if isinstance(value, list):
+            list_vals = 0
+            if len(value) > 0:
+                list_vals = f"{value[0]} ... "
+                value = np.array(value)
+            info_string += f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]\n"
+            logger.info(f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]")
+        else:
+            info_string += f"{key}: {value}\n"
+            logger.info(f"{key}: {value}")
+    return info_string
+
+
 def visualize_sc_net(supplychainnet):
     """
     Visualize the supply chain network as a graph.
@@ -65,47 +87,17 @@ def get_sc_net_info(supplychainnet):
     sc_info += "Nodes in the network:\n"
     for node_id, node in supplychainnet["nodes"].items():
         node_info_dict = node.get_info()
-        for key, value in node_info_dict.items():
-            if type(value)==list:
-                list_vals = 0
-                if(len(value)>0):
-                    list_vals = f"{value[0]} ... "
-                    value = np.array(value)
-                sc_info += f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]\n"
-                logger.info(f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]")
-            else:    
-                sc_info += f"{key}: {value}\n"
-                logger.info(f"{key}: {value}")
+        sc_info += process_info_dict(node.get_info(), logger)
     logger.info(f"Edges in the network: {list(supplychainnet['links'].keys())}")
     sc_info += "Edges in the network:\n"
     for edge_id, edge in supplychainnet["links"].items():
         edge_info_dict = edge.get_info()
-        for key, value in edge_info_dict.items():
-            if type(value)==list:
-                list_vals = 0
-                if(len(value)>0):
-                    list_vals = f"{value[0]} ... "
-                    value = np.array(value)
-                sc_info += f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]\n"
-                logger.info(f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]")
-            else:    
-                sc_info += f"{key}: {value}\n"
-                logger.info(f"{key}: {value}")
+        sc_info += process_info_dict(edge.get_info(), logger)
     logger.info(f"Demands in the network: {list(supplychainnet['demands'].keys())}")                
     sc_info += "Demands in the network:\n"
     for demand_id, demand in supplychainnet["demands"].items():
         demand_info_dict = demand.get_info()
-        for key, value in demand_info_dict.items():
-            if type(value)==list:
-                list_vals = 0
-                if(len(value)>0):
-                    list_vals = f"{value[0]} ... "
-                    value = np.array(value)
-                sc_info += f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]\n"
-                logger.info(f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]")
-            else:    
-                sc_info += f"{key}: {value}\n"
-                logger.info(f"{key}: {value}")    
+        sc_info += process_info_dict(demand.get_info(), logger)    
     keys = supplychainnet.keys() - {'nodes', 'links', 'demands', 'env', 'num_of_nodes', 'num_of_links', 'num_suppliers','num_manufacturers', 'num_distributors', 'num_retailers'}
     sc_info += "Supply chain network performance:\n"
     logger.info("Supply chain network performance:")
@@ -140,10 +132,7 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
     num_retailers = 0
     for node in nodes:
         if isinstance(node, dict):
-            if(node["ID"] in used_ids):
-                global_logger.logger.error(f"Duplicate node ID {node['ID']}")
-                raise ValueError("Duplicate node ID")
-            used_ids.append(node["ID"])
+            check_duplicate_id(used_ids, node["ID"], "node ID")
             node_id = node['ID']
             if node["node_type"].lower() in ["supplier", "infinite_supplier"]:
                 supplychainnet["nodes"][f"{node_id}"] = Supplier(env=env, **node)
@@ -183,10 +172,7 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
                 raise ValueError("Invalid node type")
     for link in links:
         if isinstance(link, dict):
-            if(link["ID"] in used_ids):
-                global_logger.logger.error(f"Duplicate link ID {link['ID']}")
-                raise ValueError("Duplicate node ID")
-            used_ids.append(link["ID"])
+            check_duplicate_id(used_ids, link["ID"], "link ID")
             source = None
             sink = None
             nodes = supplychainnet["nodes"].keys()
@@ -211,10 +197,7 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
             supplychainnet["links"][f"{link.ID}"] = link
     for d in demands:
         if isinstance(d, dict):
-            if(d["ID"] in used_ids):
-                global_logger.logger.error(f"Duplicate demand ID {d['ID']}")
-                raise ValueError("Duplicate demand ID")
-            used_ids.append(d["ID"])
+            check_duplicate_id(used_ids, d["ID"], "demand ID")
             demand_node = None # check for which node the demand is
             nodes = supplychainnet["nodes"].keys()
             if d['demand_node'] in nodes:
