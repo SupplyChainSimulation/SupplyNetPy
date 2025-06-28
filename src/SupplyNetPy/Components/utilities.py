@@ -277,6 +277,7 @@ def simulate_sc_net(supplychainnet, sim_time):
     total_demand_placed = [0, 0] # [orders, products]
     total_fulfillment_received = [0, 0] # [orders, products]
     total_shortage = [0, 0] # [orders, products]
+    total_backorders = [0, 0] # [orders, products]
 
     for key, node in supplychainnet["nodes"].items():
         if("infinite" in node.node_type.lower()): # skip infinite suppliers
@@ -296,6 +297,8 @@ def simulate_sc_net(supplychainnet, sim_time):
         total_fulfillment_received_by_site[1] += node.stats.fulfillment_received[1]
         total_shortage[0] += node.stats.orders_shortage[0]
         total_shortage[1] += node.stats.orders_shortage[1]
+        total_backorders[0] += node.stats.backorder[0]
+        total_backorders[1] += node.stats.backorder[1]
     for key, node in supplychainnet["demands"].items():
         node.stats.update_stats() # update stats for the node
         total_transport_cost += node.stats.transportation_cost
@@ -307,6 +310,8 @@ def simulate_sc_net(supplychainnet, sim_time):
         total_fulfillment_received_by_customers[1] += node.stats.fulfillment_received[1]
         total_shortage[0] += node.stats.orders_shortage[0]
         total_shortage[1] += node.stats.orders_shortage[1]
+        total_backorders[0] += node.stats.backorder[0]
+        total_backorders[1] += node.stats.backorder[1]
     total_demand_placed[0] = total_demand_by_customers[0] + total_demand_by_site[0]
     total_demand_placed[1] = total_demand_by_customers[1] + total_demand_by_site[1]
     total_fulfillment_received[0] = total_fulfillment_received_by_customers[0] + total_fulfillment_received_by_site[0]
@@ -327,6 +332,7 @@ def simulate_sc_net(supplychainnet, sim_time):
     supplychainnet["total_demand"] = total_demand_placed
     supplychainnet["total_fulfillment_received"] = total_fulfillment_received
     supplychainnet["total_shortage"] = total_shortage
+    supplychainnet["total_backorders"] = total_backorders
     # Calculate average cost per order and per item
     if total_demand_placed[0] > 0:
         supplychainnet["avg_cost_per_order"] = total_cost / total_demand_placed[0]
