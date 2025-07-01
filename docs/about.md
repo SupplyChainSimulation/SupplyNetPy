@@ -1,7 +1,6 @@
 # About SupplyNetPy
 
-**SupplyNetPy** is an open-source Python library designed for modeling, simulating, and analyzing multi-echelon supply chain networks and inventory systems.
-Built on top of Python’s SimPy discrete-event simulation framework, SupplyNetPy provides a flexible and extensible toolkit for researchers, engineers, and practitioners working in operations, logistics, and supply chain management.
+**SupplyNetPy** is an open-source Python library designed specifically for modeling, simulating, and analyzing supply chain networks and inventory systems. The library features supply chain-specific components to model arbitrary supply chain networks easily. It is built on Python’s SimPy discrete-event simulation framework and provides a flexible and extensible toolkit for researchers, engineers, and practitioners in operations, logistics, and supply chain management.
 
 ---
 
@@ -48,6 +47,7 @@ SupplyNetPy provides core components for supply chain modeling:
     - **PeriodicReplenishment**: Replenish at regular time intervals.
 
 - **SupplierSelectionPolicy**: Abstract base for implementing supplier selection strategies:
+    - **SelectFirst**: Selects the first supplier.
     - **SelectAvailable**: Selects the first available supplier.
     - **SelectCheapest**: Selects the supplier with the lowest transportation cost.
     - **SelectFastest**: Selects the supplier with the shortest lead time.

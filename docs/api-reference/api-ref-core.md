@@ -15,32 +15,32 @@ The `Components.core` module provides the foundational building blocks for model
 
 This module includes the following primary classes:
 
-| Class                      | Description                                                                                   |
-|----------------------------|-----------------------------------------------------------------------------------------------|
-| `NamedEntity`               | Base class providing a standard string representation using `name` or `ID`.                  |
-| `InfoMixin`                 | Mixin that provides methods for retrieving object info and statistics as dictionaries.        |
-| `Statistics`                | Class for tracking and summarizing performance metrics and statistics.                       |
-| `RawMaterial`               | Represents a raw material used as input in the supply chain.                                  |
-| `Product`                   | Represents a product in the supply chain.                                                     |
-| `InventoryReplenishment`    | Abstract base class for replenishment policies.                                               |
-| `SSReplenishment`           | Implements a (s, S) replenishment policy.                                                     |
-| `RQReplenishment`           | Implements a reorder point–quantity (RQ) replenishment policy.                                |
-| `PeriodicReplenishment`     | Implements periodic review replenishment.                                                     |
-| `SupplierSelectionPolicy`   | Abstract base class for supplier selection policies.   
-| `SelectFirst`               | Selects the first fixed supplier.
-| `SelectAvailable`           | Selects the first available supplier.                                                         |
-| `SelectCheapest`            | Selects the cheapest available supplier.                                                      |
-| `SelectFastest`             | Selects the fastest available supplier.                                                       |
-| `Node`                      | Generic node in the supply chain network (e.g., retailer, warehouse, demand).                 |
-| `Link`                      | Transportation or connection link between two nodes in the supply chain.                      |
-| `Inventory`                 | Inventory maintained by any node, tracking stock levels and related operations.               |
-| `Supplier`                  | Node representing a supplier of raw materials or products.                                   |
-| `InventoryNode`             | Node that maintains inventory, such as a warehouse, distributor, or retailer.                |
-| `Manufacturer`              | Node representing a manufacturer that manufactures a product.                                |
-| `Demand`                    | Represents demand at a specific node in the network.                                         |
+| Class                           | Description                                                                                   |
+|---------------------------------|-----------------------------------------------------------------------------------------------|
+| [`NamedEntity`](#namedentity)   | Base class providing a standard string representation using `name` or `ID`.                   |
+| [`InfoMixin`](#infomixin)       | Mixin that provides methods for retrieving object info and statistics as dictionaries.        |
+| [`Statistics`](#statistics)     | Class for tracking and summarizing performance metrics and statistics.                        |
+| [`RawMaterial`](#rawmat)        | Represents a raw material used as input in the supply chain.                                  |
+| [`Product`](#product)           | Represents a product in the supply chain.                                                     |
+| [`InventoryReplenishment`](#inventoryreplenishment)    | Abstract base class for replenishment policies.                        |
+| [`SSReplenishment`](#ssreplenish)           | Implements a (s, S) replenishment policy.                                         |
+| [`RQReplenishment`](#rqreplenish)           | Implements a reorder point–quantity (RQ) replenishment policy.                    |
+| [`PeriodicReplenishment`](#periodicreplenish)          | Implements periodic review replenishment.                              |
+| [`SupplierSelectionPolicy`](#supplierselectionpolicy)  | Abstract base class for supplier selection policies.                   |
+| [`SelectFirst`](#selectfirst)               | Selects the first fixed supplier.                                                 |
+| [`SelectAvailable`](#selectavailable)       | Selects the first available supplier.                                             |
+| [`SelectCheapest`](#selectcheapest)         | Selects the cheapest available supplier.                                          |
+| [`SelectFastest`](#selectfastest)           | Selects the fastest available supplier.                                           |
+| [`Node`](#nodeclass)                        | Generic node in the supply chain network (e.g., retailer, warehouse, demand).     |
+| [`Link`](#linkclass)                        | Transportation or connection link between two nodes in the supply chain.          |
+| [`Inventory`](#inventoryclass)              | Inventory maintained by any node, tracking stock levels and related operations.   |
+| [`Supplier`](#supplierclass)                | Node representing a supplier of raw materials or products.                        |
+| [`InventoryNode`](#inventorynodeclass)      | Node that maintains inventory, such as a warehouse, distributor, or retailer.     |
+| [`Manufacturer`](#manufacturerclass)        | Node representing a manufacturer that manufactures a product.                     |
+| [`Demand`](#demandclass)                    | Represents demand at a specific node in the network.                              |
 
 ---
-
+<!--
 ## API Reference
 
 ### Classes
@@ -65,7 +65,7 @@ This module includes the following primary classes:
 - [`InventoryNode`](#inventorynode)
 - [`Manufacturer`](#manufacturer)
 - [`Demand`](#demand)
-
+-->
 ---
 
 <div id="namedentity"> <h3 class="classhead">Class NamedEntity</h3></div>

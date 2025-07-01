@@ -4,8 +4,8 @@ nav:
   - SupplyNetPy in 10 Minutes: ten_min.md
   - About: about.md
   - Examples: 
-    - Basic: example.md
-    - News Vendor Problem: example-newvendor.md
+    - Supply Chain With Factory: example.md
+    - News Vendor Example: example-newvendor.md
   - API reference:
     - Introduction: api-reference/api-intro.md
     - Components.core:
@@ -19,18 +19,18 @@ nav:
       - SSReplenishment: api-reference/api-ref-core/#ssreplenish
       - RQReplenishment: api-reference/api-ref-core/#rqreplenish
       - PeriodicReplenishment: api-reference/api-ref-core/#periodicreplenish
-      - SupplierSelectionPolicy: api-reference/api-ref-core/#supplierselectionpol
-      - SelectFirst: api-reference/api-ref-core/#selectFirst
+      - SupplierSelectionPolicy: api-reference/api-ref-core/#supplierselectionpolicy
+      - SelectFirst: api-reference/api-ref-core/#selectfirst
       - SelectAvailable: api-reference/api-ref-core/#selectavailable
       - SelectCheapest: api-reference/api-ref-core/#selectcheapest
       - SelectFastest: api-reference/api-ref-core/#selectfastest
-      - Node: api-reference/api-ref-core/#node
-      - Link: api-reference/api-ref-core/#link
-      - Inventory: api-reference/api-ref-core/#inventory
-      - Supplier: api-reference/api-ref-core/#supplier
-      - InventoryNode: api-reference/api-ref-core/#inventorynode
-      - Manufacturer: api-reference/api-ref-core/#manufacturer
-      - Demand: api-reference/api-ref-core/#demand
+      - Node: api-reference/api-ref-core/#nodeclass
+      - Link: api-reference/api-ref-core/#linkclass
+      - Inventory: api-reference/api-ref-core/#inventoryclass
+      - Supplier: api-reference/api-ref-core/#supplierclass
+      - InventoryNode: api-reference/api-ref-core/#inventorynodeclass
+      - Manufacturer: api-reference/api-ref-core/#manufacturerclass
+      - Demand: api-reference/api-ref-core/#demandclass
     - Components.logger: api-reference/api-ref-logger.md
     - Components.utilities: api-reference/api-ref-utilities.md
 

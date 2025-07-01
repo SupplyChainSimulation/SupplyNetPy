@@ -12,7 +12,7 @@ pip install -i https://test.pypi.org/simple/ supplynetpy
 
 Follow these steps to create and simulate a basic supply chain with a supplier and a manufacturer:
 
-![alt text](img_two_node_sc.png)
+![A three node supply chain.](img_two_node_sc.png)
 
 ### 1. Import the Library
 
@@ -20,28 +20,23 @@ Follow these steps to create and simulate a basic supply chain with a supplier a
 import SupplyNetPy.Components as scm
 ```
 
-The `Components` module in SupplyNetPy offers essential building blocks for constructing supply chain networks. It enables you to define supply chain nodes, products, inventory, demand, and the links that connect them. Using these constructs, you can easily assemble and customize supply chain models to suit your requirements.
+The `Components` module in SupplyNetPy offers essential building blocks for constructing supply chain networks. It enables you to define supply chain nodes, products, inventory, demand, and the links that connect them. You can easily assemble and customize supply chain models using these constructs to suit your requirements.
 
-### 2. Define the Nodes
+### 2. Create Nodes
 
-Let's define a supplier node in the supply chain that provides raw materials to the manufacturer for product assembly. The supplier node requires arguments such as `ID`, `name`, and `node_type`. In this example, we specify the type as `infinite_supplier`, meaning the supplier can fulfill any quantity requested by the manufacturer without limitation. The supplier node is created using the `default_raw_material`, which is configured with a unit cost of 1 per item, mining 30 units per extraction cycle of 3 days. You can modify the configuration of `default_raw_material` or create a new one to suit your requirements.
+Let us create a supplier node in the supply chain that has infinite inventory and can supply any required quantity of product units to a consumer node. The supplier node requires several parameters, including ID, name, and node type. To set it as an infinite supplier, we must specify the node type as `infinite_supplier`.
 
 ```python
-supplier = {'ID': 'S1', 'name': 'Supplier', 'node_type': 'infinite_supplier'}
+supplier1 = {'ID': 'S1', 'name': 'Supplier1', 'node_type': 'infinite_supplier'}
 ```
 
-The supplier's behavior is to mine or extract raw materials and make them available to the manufacturer by maintaining an inventory. By default, the supplier is assumed to be associated with mining a single raw material and has infinite access to it.
-
-Next, let's define a manufacturing node and a distributor node in the supply chain network. These can be created with parameters similar to those used above. These nodes take a `Product` as a parameter, which is produced by the `Manufacturer` and stored by the `InventoryNode`. If no product object is provided, they will be initialized with a `default_product`. The `default_product` is configured with manufacturing costs, manufacturing time, sell price, buy price, and the number of units produced per cycle, all set to default values. You can check these parameter values by running the `scm.default_product.get_info()` instruction. You may also reconfigure the default product or create a new one as needed.
+A distributor or warehouse node that purchases products from a supplier is created below by specifying configurable parameters, including ID, name, inventory capacity, replenishment policy, policy parameters, product buy price, and product sell price. 
 
 ```python
-manufacturer = {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200,
-                'inventory_holding_cost': 0.5, 'replenishment_policy': scm.SSReplenishment,
-                'policy_param': {'s':200,'S':300},'product_sell_price': 100}
-
-distributor = {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 50,
-                'inventory_holding_cost': 1, 'replenishment_policy': scm.SSReplenishment,
-                'policy_param': {'s':100,'S':150},'product_buy_price': 100,'product_sell_price': 105}
+distributor1 = {'ID': 'D1', 'name': 'Distributor1', 'node_type': 'distributor', 
+                'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 0.2, 
+                'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':100,'S':150},
+                'product_buy_price': 100,'product_sell_price': 105}
 ```
 
 [qt]: ## "(Q,T): Replenish inventory every T days with Q units."
@@ -52,29 +47,28 @@ distributor = {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 
 
 When creating a manufacturer, distributor, wholesaler, or retailer, you must specify the inventory replenishment policy and its parameters.
 
-Currently, SupplyNetPy supports the following replenishment policies:
+The SupplyNetPy Components module includes an `InventoryReplenishment` class that can be customized to define specific replenishment policies. Currently, SupplyNetPy supports the following replenishment policies:
 
-- [Reorder-level (s,S)](api-reference/api-ref-core.md#ssreplenish) — continuously monitor inventory and replenish up to S when the level drops below s.
-- [Reorder-level (s,S) with Safety Stock](api-reference/api-ref-core.md#sssafetyreplenish) — reorder-level replenishment that factors in a safety stock buffer.
-- [Replenish Quantity (RQ)](api-reference/api-ref-core.md#rqreplenish) — reorder a fixed quantity Q when placing an order.
-- [Periodic (T,Q)](api-reference/api-ref-core.md#periodicreplenish) — replenish inventory every T days with Q units.
+- `SSReplenishment`: [Reorder-level (s,S)](api-reference/api-ref-core.md#ssreplenish) — continuously monitor inventory and replenish up to S when the level drops below s. Parameters: {s, S}
+- `SSReplenishment`: [Reorder-level (s,S) with Safety Stock](api-reference/api-ref-core.md#ssreplenish) — reorder-level replenishment that factors in a safety stock buffer. Parameters: {s, S, safety_stock}
+- `RQReplenishment`: [Replenish Quantity (RQ)](api-reference/api-ref-core.md#rqreplenish) — reorder a fixed quantity Q when placing an order.
+- `PeriodicReplenishment`: [Periodic (T,Q)](api-reference/api-ref-core.md#periodicreplenish) — replenish inventory every T days with Q units.
 
 ### 3. Create a Link
 
-Let's connect these nodes to form a supply chain network. In this example, we are building a simple supply chain with three nodes: the manufacturer receives raw materials from the supplier, and the distributor obtains finished products from the manufacturer. When creating these links, be sure to specify the transportation cost and lead time for each connection.
+A link is created as described below. It is configured using parameters such as transportation cost and lead time. The lead time parameter accepts a generative function that produces random lead times based on a specified distribution. Users can create this function according to their needs or define a constant lead time using a Python lambda function.
 
 ```python
-link_s1m1 = {'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 5, 'lead_time': lambda: 3}
-link_m1d1 = {'ID': 'L2', 'source': 'M1', 'sink': 'D1', 'cost': 5, 'lead_time': lambda: 2}
+link1 = {'ID': 'L1', 'source': 'S1', 'sink': 'D1', 'cost': 5, 'lead_time': lambda: 2}
 ```
 
 ### 4. Specify Demand
 
-We are now ready to run the simulation, but we still need to specify the demand for this supply chain. Since there is no retailer in the network yet, let's create demand at the distributor. This represents direct demand faced by the distributor (for example, a distributor receiving orders for custom-made products). Demand requires both the order arrival and order quantity models to be provided as callable functions. These can be constant values or random number generators to model order arrivals and quantities.
+A demand is created by specifying an ID, name, demand node, order arrival time, and order quantity. The order arrival parameter accepts a generator function that produces random arrival times, while the order quantity parameter takes a generator function that produces random quantities. Users can define a function that models these arrivals and quantities or use Python's lambda function to create a deterministic demand, as shown below. A demand can be created at either a distributor node or a retailer. In this example, we have created a steady demand for 10 daily units at distributor D1.
 
 ```python
-demand = {'ID': 'demand_D1', 'name': 'Demand at Distributor', 'node_type': 'demand',
-          'order_arrival_model': lambda: 1, 'order_quantity_model': lambda: 10, 'demand_node': 'D1'}
+demand1 = {'ID': 'd1', 'name': 'Demand1', 'order_arrival_model': lambda: 1,
+            'order_quantity_model': lambda: 10, 'demand_node': 'D1'}
 ```
 
 ### 5. Assemble and Simulate the Network
@@ -82,184 +76,156 @@ demand = {'ID': 'demand_D1', 'name': 'Demand at Distributor', 'node_type': 'dema
 To create and simulate the supply chain, use the `create_sc_net` function to instantiate the supply chain nodes and assemble them into a network. This function adds metadata to your supply chain, such as the number of nodes, and other relevant information, keeping everything organized. It returns a Python dictionary containing all supply chain components and metadata. The `simulate_sc_net` function then simulates the supply chain network over a specified period and provides a log of the simulation run. It also calculates performance measures such as net profit, throughput, and more. Let's use these functions to build and simulate our supply chain.
 
 ```python
-scnet = scm.create_sc_net([supplier, manufacturer, distributor], [link_s1m1, link_m1d1], [demand])
-scnet = scm.simulate_sc_net(scnet, sim_time=30)
+supplychainnet = scm.create_sc_net(nodes=[supplier1, distributor1], links=[link1], demands=[demand1])
+supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=20)
 ```
 
 ### 6. Review Results
 
-After the simulation, inspect `scnet` to view performance metrics for the supply chain nodes. By default, the simulation log is displayed in the console and also saved to a local file named `simulation_trace.log` in the same directory as your Python script. Below is a sample simulation log generated by this program.
+After the simulation, inspect `supplychainnet` to view performance metrics for the supply chain nodes. By default, the simulation log is displayed in the console and saved to a local file named `simulation_trace.log`, which is located in the same directory as your Python script. Each node in the simulation has its own logger, and logging can be enabled or disabled by providing an additional parameter: `logging=True` or `logging=False` while creating the node. SupplyNetPy uses a global logger referred to as `global_logger`, which allows you to show or hide all logs by calling `scm.global_logger.enable_logging()` or `scm.global_logger.disable_logging()`.
+
+Below is an example of a simulation log generated by this program. At the end of the log, supply chain-level performance metrics are calculated and printed. These performance measures are computed for each node in the supply chain and include:
+
+- Inventory carry cost (holding cost)
+- Inventory spend (replenishment cost)
+- Transportation cost
+- Total cost
+- Revenue
+- Profit
 
 <div id="" style="overflow:scroll; height:600px;">
 ```
-INFO sim_trace - 0.0000:M1: Inventory levels:200
-INFO sim_trace - 0.0000:D1: Inventory levels:50
-INFO sim_trace - 0.0000:D1:Replenishing inventory from supplier:Manufacturer 1, order placed for 100 units.
-INFO sim_trace - 0.0000:M1:Replenishing raw material:Raw Material 1 from supplier:S1, order placed for 300 units. Current inventory level: {'RM1': 0}.
-INFO sim_trace - 0.0000:D1:shipment in transit from supplier:Manufacturer 1.
-INFO sim_trace - 0.0000:M1: Inventory levels:100
-INFO sim_trace - 0.0000:demand_D1:Customer1:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 0.0000:D1: Inventory levels:40
-INFO sim_trace - 0.0000:M1:shipment in transit from supplier:Supplier 1.
-INFO sim_trace - 0.0000:demand_D1:Customer1:Demand at Distributor 1, Order quantity:10 received. Current inv: 40
-INFO sim_trace - 1.0000:demand_D1:Customer2:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 1.0000:D1: Inventory levels:30
-INFO sim_trace - 1.0000:demand_D1:Customer2:Demand at Distributor 1, Order quantity:10 received. Current inv: 30
-INFO sim_trace - 2.0000:D1:Inventory replenished. reorder_quantity=100, Inventory levels:130
-INFO sim_trace - 2.0000:demand_D1:Customer3:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 2.0000:D1: Inventory levels:120
-INFO sim_trace - 2.0000:demand_D1:Customer3:Demand at Distributor 1, Order quantity:10 received. Current inv: 120
-INFO sim_trace - 3.0000:M1:Order received from supplier:Supplier 1, inventory levels: {'RM1': 300}
-INFO sim_trace - 3.0000:demand_D1:Customer4:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 3.0000:D1: Inventory levels:110
-INFO sim_trace - 3.0000:demand_D1:Customer4:Demand at Distributor 1, Order quantity:10 received. Current inv: 110
-INFO sim_trace - 4.0000:demand_D1:Customer5:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 4.0000:D1: Inventory levels:100
-INFO sim_trace - 4.0000:D1:Replenishing inventory from supplier:Manufacturer 1, order placed for 50 units.
-INFO sim_trace - 4.0000:demand_D1:Customer5:Demand at Distributor 1, Order quantity:10 received. Current inv: 100
-INFO sim_trace - 4.0000:D1:shipment in transit from supplier:Manufacturer 1.
-INFO sim_trace - 4.0000:M1: Inventory levels:50
-INFO sim_trace - 4.0000:M1:Replenishing raw material:Raw Material 1 from supplier:S1, order placed for 750 units. Current inventory level: {'RM1': 210}.
-INFO sim_trace - 4.0000:M1:shipment in transit from supplier:Supplier 1.
-INFO sim_trace - 5.0000:demand_D1:Customer6:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 5.0000:D1: Inventory levels:90
-INFO sim_trace - 5.0000:demand_D1:Customer6:Demand at Distributor 1, Order quantity:10 received. Current inv: 90
-INFO sim_trace - 6.0000:M1: 30 units manufactured.
-INFO sim_trace - 6.0000:M1: Product inventory levels:80
-INFO sim_trace - 6.0000:D1:Inventory replenished. reorder_quantity=50, Inventory levels:140
-INFO sim_trace - 6.0000:demand_D1:Customer7:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 6.0000:D1: Inventory levels:130
-INFO sim_trace - 6.0000:demand_D1:Customer7:Demand at Distributor 1, Order quantity:10 received. Current inv: 130
-INFO sim_trace - 7.0000:M1:Order received from supplier:Supplier 1, inventory levels: {'RM1': 870}
-INFO sim_trace - 7.0000:demand_D1:Customer8:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 7.0000:D1: Inventory levels:120
-INFO sim_trace - 7.0000:demand_D1:Customer8:Demand at Distributor 1, Order quantity:10 received. Current inv: 120
-INFO sim_trace - 8.0000:demand_D1:Customer9:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 8.0000:D1: Inventory levels:110
-INFO sim_trace - 8.0000:demand_D1:Customer9:Demand at Distributor 1, Order quantity:10 received. Current inv: 110
-INFO sim_trace - 9.0000:M1: 30 units manufactured.
-INFO sim_trace - 9.0000:M1: Product inventory levels:110
-INFO sim_trace - 9.0000:demand_D1:Customer10:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 9.0000:D1: Inventory levels:100
-INFO sim_trace - 9.0000:D1:Replenishing inventory from supplier:Manufacturer 1, order placed for 50 units.
-INFO sim_trace - 9.0000:demand_D1:Customer10:Demand at Distributor 1, Order quantity:10 received. Current inv: 100
-INFO sim_trace - 9.0000:D1:shipment in transit from supplier:Manufacturer 1.
-INFO sim_trace - 9.0000:M1: Inventory levels:60
-INFO sim_trace - 9.0000:M1:Sufficient raw material inventory for Raw Material 1, no order placed. Current inventory level: {'RM1': 780}.
-INFO sim_trace - 10.0000:demand_D1:Customer11:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 10.0000:D1: Inventory levels:90
-INFO sim_trace - 10.0000:demand_D1:Customer11:Demand at Distributor 1, Order quantity:10 received. Current inv: 90
-INFO sim_trace - 11.0000:D1:Inventory replenished. reorder_quantity=50, Inventory levels:140
-INFO sim_trace - 11.0000:demand_D1:Customer12:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 11.0000:D1: Inventory levels:130
-INFO sim_trace - 11.0000:demand_D1:Customer12:Demand at Distributor 1, Order quantity:10 received. Current inv: 130
-INFO sim_trace - 12.0000:M1: 30 units manufactured.
-INFO sim_trace - 12.0000:M1: Product inventory levels:90
-INFO sim_trace - 12.0000:demand_D1:Customer13:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 12.0000:D1: Inventory levels:120
-INFO sim_trace - 12.0000:demand_D1:Customer13:Demand at Distributor 1, Order quantity:10 received. Current inv: 120
-INFO sim_trace - 13.0000:demand_D1:Customer14:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 13.0000:D1: Inventory levels:110
-INFO sim_trace - 13.0000:demand_D1:Customer14:Demand at Distributor 1, Order quantity:10 received. Current inv: 110
-INFO sim_trace - 14.0000:demand_D1:Customer15:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 14.0000:D1: Inventory levels:100
-INFO sim_trace - 14.0000:D1:Replenishing inventory from supplier:Manufacturer 1, order placed for 50 units.
-INFO sim_trace - 14.0000:demand_D1:Customer15:Demand at Distributor 1, Order quantity:10 received. Current inv: 100
-INFO sim_trace - 14.0000:D1:shipment in transit from supplier:Manufacturer 1.
-INFO sim_trace - 14.0000:M1: Inventory levels:40
-INFO sim_trace - 14.0000:M1:Replenishing raw material:Raw Material 1 from supplier:S1, order placed for 780 units. Current inventory level: {'RM1': 690}.
-INFO sim_trace - 14.0000:M1:shipment in transit from supplier:Supplier 1.
-INFO sim_trace - 15.0000:M1: 30 units manufactured.
-INFO sim_trace - 15.0000:M1: Product inventory levels:70
-INFO sim_trace - 15.0000:demand_D1:Customer16:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 15.0000:D1: Inventory levels:90
-INFO sim_trace - 15.0000:demand_D1:Customer16:Demand at Distributor 1, Order quantity:10 received. Current inv: 90
-INFO sim_trace - 16.0000:D1:Inventory replenished. reorder_quantity=50, Inventory levels:140
-INFO sim_trace - 16.0000:demand_D1:Customer17:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 16.0000:D1: Inventory levels:130
-INFO sim_trace - 16.0000:demand_D1:Customer17:Demand at Distributor 1, Order quantity:10 received. Current inv: 130
-INFO sim_trace - 17.0000:M1:Order received from supplier:Supplier 1, inventory levels: {'RM1': 1380}
-INFO sim_trace - 17.0000:demand_D1:Customer18:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 17.0000:D1: Inventory levels:120
-INFO sim_trace - 17.0000:demand_D1:Customer18:Demand at Distributor 1, Order quantity:10 received. Current inv: 120
-INFO sim_trace - 18.0000:M1: 30 units manufactured.
-INFO sim_trace - 18.0000:M1: Product inventory levels:100
-INFO sim_trace - 18.0000:demand_D1:Customer19:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 18.0000:D1: Inventory levels:110
-INFO sim_trace - 18.0000:demand_D1:Customer19:Demand at Distributor 1, Order quantity:10 received. Current inv: 110
-INFO sim_trace - 19.0000:demand_D1:Customer20:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 19.0000:D1: Inventory levels:100
-INFO sim_trace - 19.0000:D1:Replenishing inventory from supplier:Manufacturer 1, order placed for 50 units.
-INFO sim_trace - 19.0000:demand_D1:Customer20:Demand at Distributor 1, Order quantity:10 received. Current inv: 100
-INFO sim_trace - 19.0000:D1:shipment in transit from supplier:Manufacturer 1.
-INFO sim_trace - 19.0000:M1: Inventory levels:50
-INFO sim_trace - 19.0000:M1:Sufficient raw material inventory for Raw Material 1, no order placed. Current inventory level: {'RM1': 1290}.
-INFO sim_trace - 20.0000:demand_D1:Customer21:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 20.0000:D1: Inventory levels:90
-INFO sim_trace - 20.0000:demand_D1:Customer21:Demand at Distributor 1, Order quantity:10 received. Current inv: 90
-INFO sim_trace - 21.0000:M1: 30 units manufactured.
-INFO sim_trace - 21.0000:M1: Product inventory levels:80
-INFO sim_trace - 21.0000:D1:Inventory replenished. reorder_quantity=50, Inventory levels:140
-INFO sim_trace - 21.0000:demand_D1:Customer22:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 21.0000:D1: Inventory levels:130
-INFO sim_trace - 21.0000:demand_D1:Customer22:Demand at Distributor 1, Order quantity:10 received. Current inv: 130
-INFO sim_trace - 22.0000:demand_D1:Customer23:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 22.0000:D1: Inventory levels:120
-INFO sim_trace - 22.0000:demand_D1:Customer23:Demand at Distributor 1, Order quantity:10 received. Current inv: 120
-INFO sim_trace - 23.0000:demand_D1:Customer24:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 23.0000:D1: Inventory levels:110
-INFO sim_trace - 23.0000:demand_D1:Customer24:Demand at Distributor 1, Order quantity:10 received. Current inv: 110
-INFO sim_trace - 24.0000:M1: 30 units manufactured.
-INFO sim_trace - 24.0000:M1: Product inventory levels:110
-INFO sim_trace - 24.0000:demand_D1:Customer25:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 24.0000:D1: Inventory levels:100
-INFO sim_trace - 24.0000:D1:Replenishing inventory from supplier:Manufacturer 1, order placed for 50 units.
-INFO sim_trace - 24.0000:demand_D1:Customer25:Demand at Distributor 1, Order quantity:10 received. Current inv: 100
-INFO sim_trace - 24.0000:D1:shipment in transit from supplier:Manufacturer 1.
-INFO sim_trace - 24.0000:M1: Inventory levels:60
-INFO sim_trace - 24.0000:M1:Sufficient raw material inventory for Raw Material 1, no order placed. Current inventory level: {'RM1': 1110}.
-INFO sim_trace - 25.0000:demand_D1:Customer26:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 25.0000:D1: Inventory levels:90
-INFO sim_trace - 25.0000:demand_D1:Customer26:Demand at Distributor 1, Order quantity:10 received. Current inv: 90
-INFO sim_trace - 26.0000:D1:Inventory replenished. reorder_quantity=50, Inventory levels:140
-INFO sim_trace - 26.0000:demand_D1:Customer27:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 26.0000:D1: Inventory levels:130
-INFO sim_trace - 26.0000:demand_D1:Customer27:Demand at Distributor 1, Order quantity:10 received. Current inv: 130
-INFO sim_trace - 27.0000:M1: 30 units manufactured.
-INFO sim_trace - 27.0000:M1: Product inventory levels:90
-INFO sim_trace - 27.0000:demand_D1:Customer28:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 27.0000:D1: Inventory levels:120
-INFO sim_trace - 27.0000:demand_D1:Customer28:Demand at Distributor 1, Order quantity:10 received. Current inv: 120
-INFO sim_trace - 28.0000:demand_D1:Customer29:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 28.0000:D1: Inventory levels:110
-INFO sim_trace - 28.0000:demand_D1:Customer29:Demand at Distributor 1, Order quantity:10 received. Current inv: 110
-INFO sim_trace - 29.0000:demand_D1:Customer30:Demand at Distributor 1, Order quantity:10, available.
-INFO sim_trace - 29.0000:D1: Inventory levels:100
-INFO sim_trace - 29.0000:D1:Replenishing inventory from supplier:Manufacturer 1, order placed for 50 units.
-INFO sim_trace - 29.0000:demand_D1:Customer30:Demand at Distributor 1, Order quantity:10 received. Current inv: 100
-INFO sim_trace - 29.0000:D1:shipment in transit from supplier:Manufacturer 1.
-INFO sim_trace - 29.0000:M1: Inventory levels:40
-INFO sim_trace - 29.0000:M1:Sufficient raw material inventory for Raw Material 1, no order placed. Current inventory level: {'RM1': 1020}.
-Performance Metrics:
-Total Available Inventory: 140
-Average Available Inventory: 201.33333333333331
-Total Inventory Carry Cost: 4745.0
-Total Inventory Spend: 36830
-Total Transport Cost: 50
-Total Revenue: 31500
-Total Cost: 51790.0
-Total Profit: -20290.0
-Total Demand Placed by Customers: [30, 300]
-Total Fulfillment Received by Customers: [30, 300]
-Total Demand Placed by Site: [10, 2230]
-Total Fulfillment Received by Site: [9, 2180]
-Total Demand Placed: [40, 2530]
-Total Fulfillment Received: [39, 2480]
-Average Cost per Order: 1294.75
-Average Cost per Item: 20.470355731225297
+INFO Distributor1 - 0.0000:D1: Inventory levels:50
+INFO Distributor1 - 0.0000:D1:Replenishing inventory from supplier:Supplier1, order placed for 100 units.
+INFO Distributor1 - 0.0000:D1:shipment in transit from supplier:Supplier1.
+INFO Demand1 - 0.0000:d1:Customer1:Order quantity:10, available.
+INFO Distributor1 - 0.0000:D1: Inventory levels:40
+INFO Demand1 - 0.0000:d1:Customer1:Order quantity:10 received.
+INFO Demand1 - 1.0000:d1:Customer2:Order quantity:10, available.
+INFO Distributor1 - 1.0000:D1: Inventory levels:30
+INFO Demand1 - 1.0000:d1:Customer2:Order quantity:10 received.
+INFO Distributor1 - 2.0000:D1:Inventory replenished. reorder_quantity=100, Inventory levels:130
+INFO Demand1 - 2.0000:d1:Customer3:Order quantity:10, available.
+INFO Distributor1 - 2.0000:D1: Inventory levels:120
+INFO Demand1 - 2.0000:d1:Customer3:Order quantity:10 received.
+INFO Demand1 - 3.0000:d1:Customer4:Order quantity:10, available.
+INFO Distributor1 - 3.0000:D1: Inventory levels:110
+INFO Demand1 - 3.0000:d1:Customer4:Order quantity:10 received.
+INFO Demand1 - 4.0000:d1:Customer5:Order quantity:10, available.
+INFO Distributor1 - 4.0000:D1: Inventory levels:100
+INFO Distributor1 - 4.0000:D1:Replenishing inventory from supplier:Supplier1, order placed for 50 units.
+INFO Demand1 - 4.0000:d1:Customer5:Order quantity:10 received.
+INFO Distributor1 - 4.0000:D1:shipment in transit from supplier:Supplier1.
+INFO Demand1 - 5.0000:d1:Customer6:Order quantity:10, available.
+INFO Distributor1 - 5.0000:D1: Inventory levels:90
+INFO Demand1 - 5.0000:d1:Customer6:Order quantity:10 received.
+INFO Distributor1 - 6.0000:D1:Inventory replenished. reorder_quantity=50, Inventory levels:140
+INFO Demand1 - 6.0000:d1:Customer7:Order quantity:10, available.
+INFO Distributor1 - 6.0000:D1: Inventory levels:130
+INFO Demand1 - 6.0000:d1:Customer7:Order quantity:10 received.
+INFO Demand1 - 7.0000:d1:Customer8:Order quantity:10, available.
+INFO Distributor1 - 7.0000:D1: Inventory levels:120
+INFO Demand1 - 7.0000:d1:Customer8:Order quantity:10 received.
+INFO Demand1 - 8.0000:d1:Customer9:Order quantity:10, available.
+INFO Distributor1 - 8.0000:D1: Inventory levels:110
+INFO Demand1 - 8.0000:d1:Customer9:Order quantity:10 received.
+INFO Demand1 - 9.0000:d1:Customer10:Order quantity:10, available.
+INFO Distributor1 - 9.0000:D1: Inventory levels:100
+INFO Distributor1 - 9.0000:D1:Replenishing inventory from supplier:Supplier1, order placed for 50 units.
+INFO Demand1 - 9.0000:d1:Customer10:Order quantity:10 received.
+INFO Distributor1 - 9.0000:D1:shipment in transit from supplier:Supplier1.
+INFO Demand1 - 10.0000:d1:Customer11:Order quantity:10, available.
+INFO Distributor1 - 10.0000:D1: Inventory levels:90
+INFO Demand1 - 10.0000:d1:Customer11:Order quantity:10 received.
+INFO Distributor1 - 11.0000:D1:Inventory replenished. reorder_quantity=50, Inventory levels:140
+INFO Demand1 - 11.0000:d1:Customer12:Order quantity:10, available.
+INFO Distributor1 - 11.0000:D1: Inventory levels:130
+INFO Demand1 - 11.0000:d1:Customer12:Order quantity:10 received.
+INFO Demand1 - 12.0000:d1:Customer13:Order quantity:10, available.
+INFO Distributor1 - 12.0000:D1: Inventory levels:120
+INFO Demand1 - 12.0000:d1:Customer13:Order quantity:10 received.
+INFO Demand1 - 13.0000:d1:Customer14:Order quantity:10, available.
+INFO Distributor1 - 13.0000:D1: Inventory levels:110
+INFO Demand1 - 13.0000:d1:Customer14:Order quantity:10 received.
+INFO Demand1 - 14.0000:d1:Customer15:Order quantity:10, available.
+INFO Distributor1 - 14.0000:D1: Inventory levels:100
+INFO Distributor1 - 14.0000:D1:Replenishing inventory from supplier:Supplier1, order placed for 50 units.
+INFO Demand1 - 14.0000:d1:Customer15:Order quantity:10 received.
+INFO Distributor1 - 14.0000:D1:shipment in transit from supplier:Supplier1.
+INFO Demand1 - 15.0000:d1:Customer16:Order quantity:10, available.
+INFO Distributor1 - 15.0000:D1: Inventory levels:90
+INFO Demand1 - 15.0000:d1:Customer16:Order quantity:10 received.
+INFO Distributor1 - 16.0000:D1:Inventory replenished. reorder_quantity=50, Inventory levels:140
+INFO Demand1 - 16.0000:d1:Customer17:Order quantity:10, available.
+INFO Distributor1 - 16.0000:D1: Inventory levels:130
+INFO Demand1 - 16.0000:d1:Customer17:Order quantity:10 received.
+INFO Demand1 - 17.0000:d1:Customer18:Order quantity:10, available.
+INFO Distributor1 - 17.0000:D1: Inventory levels:120
+INFO Demand1 - 17.0000:d1:Customer18:Order quantity:10 received.
+INFO Demand1 - 18.0000:d1:Customer19:Order quantity:10, available.
+INFO Distributor1 - 18.0000:D1: Inventory levels:110
+INFO Demand1 - 18.0000:d1:Customer19:Order quantity:10 received.
+INFO Demand1 - 19.0000:d1:Customer20:Order quantity:10, available.
+INFO Distributor1 - 19.0000:D1: Inventory levels:100
+INFO Distributor1 - 19.0000:D1:Replenishing inventory from supplier:Supplier1, order placed for 50 units.
+INFO Demand1 - 19.0000:d1:Customer20:Order quantity:10 received.
+INFO Distributor1 - 19.0000:D1:shipment in transit from supplier:Supplier1.
+INFO sim_trace - Supply chain performance measures:
+INFO sim_trace - nodes: {'S1': Supplier1, 'D1': Distributor1}
+INFO sim_trace - links: {'L2': S1 to D1}
+INFO sim_trace - demands: {'d1': Demand1}
+INFO sim_trace - env: <simpy.core.Environment object at 0x0000024C30017E10>
+INFO sim_trace - num_of_nodes: 2
+INFO sim_trace - num_of_links: 1
+INFO sim_trace - num_suppliers: 1
+INFO sim_trace - num_manufacturers: 0
+INFO sim_trace - num_distributors: 1
+INFO sim_trace - num_retailers: 0
+INFO sim_trace - total_available_inv: 100
+INFO sim_trace - avg_available_inv: 112.5
+INFO sim_trace - total_inv_carry_cost: 410.0
+INFO sim_trace - total_inv_spend: 25000
+INFO sim_trace - total_transport_cost: 25
+INFO sim_trace - total_revenue: 21000
+INFO sim_trace - total_cost: 25435.0
+INFO sim_trace - total_profit: -4435.0
+INFO sim_trace - total_demand_by_customers: [20, 200]
+INFO sim_trace - total_fulfillment_received_by_customers: [20, 200]
+INFO sim_trace - total_demand_by_site: [5, 300]
+INFO sim_trace - total_fulfillment_received_by_site: [4, 250]
+INFO sim_trace - total_demand: [25, 500]
+INFO sim_trace - total_fulfillment_received: [24, 450]
+INFO sim_trace - total_shortage: [0, 0]
+INFO sim_trace - total_backorders: [0, 0]
+INFO sim_trace - avg_cost_per_order: 1017.4
+INFO sim_trace - avg_cost_per_item: 50.87
 ```
 </div>
 
+To access node performance metrics easily, call `node.stats.get_statistics()`. In this example, the `D1` node level statistics can be accessed with the following code:
+
+```python
+D1_node = supplychainnet["nodes"]["D1"] # Get D1 node 
+stats = D1_node.stats.get_statistics() # Get D1_node statistics
+print(stats) # print
+```
+Here is the output produced by the code mentioned above.
+```
+{'demand_placed': [5, 300], 
+'fulfillment_received': [4, 250], 
+'demand_received': [20, 200], 
+'demand_fulfilled': [20, 200], 
+'orders_shortage': [0, 0], 
+'backorder': [0, 0], 
+'inventory_level': 100, 
+'inventory_waste': 0, 
+'inventory_carry_cost': 410.0, 
+'inventory_spend_cost': 25000, 
+'transportation_cost': 25, 
+'node_cost': 25435.0, 
+'revenue': 21000, 
+'profit': -4435.0}
+```
 ---
 
 ## Alternative Approach: Using Object-Oriented API
@@ -269,46 +235,39 @@ This approach demonstrates how to build and simulate a supply chain using Supply
 ```python
 import SupplyNetPy.Components as scm
 import simpy
-simtime = 31
+
 env = simpy.Environment() # create a simpy environment
 
-supplier = scm.Supplier(env=env, ID='S1', name='Supplier', node_type="infinite_supplier") # create an infinite supplier
+# create an infinite supplier
+supplier1 = scm.Supplier(env=env, ID='S1', name='Supplier', node_type="infinite_supplier") 
 
-factory = scm.Manufacturer(env=env, ID='F1', name='factory 1', capacity=1000, initial_level=1000, inventory_holding_cost=0.1,
-                           replenishment_policy=scm.RQReplenishment, policy_param={'R':500, 'Q':200},
-                           product_buy_price=150, product_sell_price=300)
+# create a distributor node
+distributor1 = scm.InventoryNode(env=env, ID='D1', name='Distributor1', node_type='distributor',
+                                 capacity=150, initial_level=50, inventory_holding_cost=0.2,
+                                 replenishment_policy=scm.SSReplenishment, 
+                                 policy_param={'s':100, 'S':150}, product_buy_price=100,
+                                 product_sell_price=105)
 
+# create a link for distributor
+link1 = scm.Link(env=env, ID='L1', source=supplier, sink=distributor1, cost=5, lead_time=lambda: 2)
 
-distributor1 = scm.InventoryNode(env=env, ID='D1', name='Distribution Center 1', node_type="distributor",
-                                capacity=500, initial_level=500, inventory_holding_cost=0.22,
-                                replenishment_policy = scm.SSReplenishment, policy_param={'s':300, 'S':200},
-                                product_buy_price=150, product_sell_price=300)
+# create demand at distributor1
+demand1 = scm.Demand(env=env, ID='d1', name='Demand1', order_arrival_model=lambda: 1, 
+                     order_quantity_model=lambda:10, demand_node=distributor1)
 
-link1 = scm.Link(env=env, ID='L1', source=supplier, sink=distributor1, cost=10, lead_time=lambda: 1)
-link2 = scm.Link(env=env, ID='L2', source=supplier, sink=factory, cost=10, lead_time=lambda: 1)
-
-
-
-demand = scm.Demand(env=env, ID='demand_D1', name='Demand at Distributor',
-                    order_arrival_model=lambda: 1, order_quantity_model=lambda:10,
-                    delivery_cost=lambda:10, lead_time=lambda: 1, demand_node=distributor1)
-
-inventory_nodes = [supplier, factory, distributor1]
-inventory_links = [link1, link2]
-demand_nodes = [demand]
-env.run(until=simtime)
-supplynet = scm.create_sc_net(nodes = inventory_nodes, links = inventory_links, demands = demand_nodes)
-supplynet = scm.simulate_sc_net(supplynet, sim_time=simtime)
+# we can simulate the supply chain 
+env.run(until=20)
 ```
 
-After running the simulation, the simulation log will be printed to the screen, just as with the functional API. However, to view a summary of the supply chain's performance (such as inventory costs, transportation costs and profits), you need to call the `get_statistics()` method on each node object. For example:
+This script generates an identical simulation log because the network configuration and demand are deterministic. Final statistics will not be included in the log, as overall supply chain statistics are calculated by the function `simulate_sc_net`. However, node-level statistics will still be available and can be accessed as mentioned earlier. We can proceed to create and simulate the supply chain network using the same functions, `create_sc_net` and `simulate_sc_net`, as demonstrated below.
 
 ```python
-print(manufacturer.get_statistics())
-print(distributor.get_statistics())
-print(supplier.get_statistics())
+# create supply chain network using utilities
+supplychainnet = scm.create_sc_net(env=env, nodes = [supplier1, distributor1], 
+                                   links = [link1], demands = [demand1])
+
+# simulate and see results
+supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=20)
 ```
 
-This will display detailed performance metrics for each node in the supply chain.
-
-This is to include a Python file directly.
+ Note that an additional parameter, `env`, is passed to the function `create_sc_net` to create a supply chain network. This is necessary because the SimPy environment is created and used as a parameter when creating other nodes and links.

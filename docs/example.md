@@ -1,108 +1,290 @@
-# SupplyNetPy Example: Six-Node Supply Chain
+# Example: A Simple Four Node Supply Chain With Factory
 
-This example demonstrates how to model and simulate a simple supply chain network for a single product using SupplyNetPy. The network consists of six nodes: a supplier, a manufacturer, a distributor, and three retailers. Retailers replenish inventory from the distributor, while the manufacturer sources raw materials from the supplier. The supplier is assumed to have an infinite supply of raw materials.
+This example demonstrates how to create an end-to-end supply chain involving a raw material supplier, a factory, and a warehouse. 
 
 ![alt text](img_six_node_sc.png)
 
-## 1. Importing the Library
+## 1. Creating Nodes
+
+In this scenario, we create a supplier with a limited inventory capacity. A raw material needs to be created and provided to the supplier when it is created with finite inventory. This raw material is defined by several parameters, including ID, name, extraction quantity, extraction time, and cost. The supplier is designed to hold only a single type of raw material in its inventory and is responsible for mining it to maintain inventory levels to fill capacity.
 
 ```python
-import SupplyNetPy.Components as scm
+
+import SupplyNetPy.Components as scm # import SupplyNetPy
+
+raw_mat1 = scm.RawMaterial(ID='rm1', name='raw_mat1', extraction_quantity=1000,
+                           extraction_time=1, mining_cost=0.5, cost=0.8)
+
+supplier1 = {'ID':'S1', 'name':'supplier1', 'node_type':'supplier', 'capacity':5000,
+            'initial_level':5000, 'inventory_holding_cost':0.01, 'raw_material':raw_mat1}
 ```
 
-## 2. Defining Supply Chain Nodes
-
-Each node is defined as a dictionary with required parameters. All nodes are collected in a list called `nodes`.
+Creating a factory requires a product. A product and a factory can be created and configured as follows. 
 
 ```python
-nodes = [
-        {'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
+product1 = scm.Product(ID='p1', name='product1', manufacturing_cost=20, manufacturing_time=1, 
+                       batch_size=1000, raw_materials=[(raw_mat1, 2)], sell_price=30)
 
-        {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer',
-         'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5,
-         'replenishment_policy': 'sS', 'policy_param': [150], 'product_sell_price': 310},
+factory1 = {'ID':'F1', 'name':'factory1', 'node_type':'factory', 
+            'capacity':2500, 'initial_level':2500, 'inventory_holding_cost':0.02, 
+            'replenishment_policy':scm.SSReplenishment, 'policy_param': {'s':1000,'S':2500},
+            'product':product1, 'product_sell_price':30}
 
-        {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor',
-         'capacity': 200, 'initial_level': 50, 'inventory_holding_cost': 1,
-         'replenishment_policy': 'sS', 'policy_param': [100], 'product_sell_price': 320},
-
-        {'ID': 'R1', 'name': 'Retailer 1', 'node_type': 'retailer',
-         'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3,
-         'replenishment_policy': 'sS', 'policy_param': [50], 'product_sell_price': 330},
-
-        {'ID': 'R2', 'name': 'Retailer 2', 'node_type': 'retailer',
-         'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3,
-         'replenishment_policy': 'sS', 'policy_param': [50], 'product_sell_price': 335},
-
-        {'ID': 'R3', 'name': 'Retailer 3', 'node_type': 'retailer',
-         'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3,
-         'replenishment_policy': 'sS', 'policy_param': [50], 'product_sell_price': 325}
-]
+distributor1 = {'ID': 'D1', 'name': 'Distributor1', 'node_type': 'distributor', 
+                'capacity': 1000, 'initial_level': 1000, 'inventory_holding_cost': 0.2, 
+                'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':300,'S':1000},
+                'product_buy_price':30,'product_sell_price': 35}
 ```
 
-> **Note:**  
-> The `sS` replenishment policy is a reorder level-based policy: when inventory drops below threshold `s`, an order is placed to restock up to capacity `S`.
+The factory's behavior is to produce products based on a replenishment policy. In this example, inventory will be replenished when the level drops below a threshold (s). Therefore, the factory will begin manufacturing products once the inventory falls below this level and increase it back up to its maximum capacity (S).
 
-## 3. Defining Links Between Nodes
+## 2. Defining Links
 
 Links represent the flow of products between nodes, with associated transportation costs and lead times.
 
 ```python
-import random
+links1f1 = {'ID': 'L1', 'source': 'S1', 'sink': 'F1', 'cost': 100, 'lead_time': lambda: 2}
 
-LOW = 1
-HIGH = 4
-# let us sample the lead time for these links from a uniform distribution
-def sample_from_uniform(low = LOW, high = HIGH): 
-        return random.randint(start = low, stop = high)
-
-links = [
-        {'ID': 'L1', 'source': 'S1', 'sink': 'M1', 'cost': 5, 'lead_time': sample_from_uniform},
-        {'ID': 'L2', 'source': 'M1', 'sink': 'D1', 'cost': 5, 'lead_time': sample_from_uniform},
-        {'ID': 'L3', 'source': 'D1', 'sink': 'R1', 'cost': 5, 'lead_time': sample_from_uniform},
-        {'ID': 'L4', 'source': 'D1', 'sink': 'R2', 'cost': 5, 'lead_time': sample_from_uniform},
-        {'ID': 'L5', 'source': 'D1', 'sink': 'R3', 'cost': 5, 'lead_time': sample_from_uniform},
-]
+linkf1d1 = {'ID': 'L2', 'source': 'F1', 'sink': 'D1', 'cost': 120, 'lead_time': lambda: 3}
 ```
 
-## 4. Modeling Demand
+## 3. Modeling Demand
 
-Demand is generated at the retailer nodes using deterministic arrival and quantity models.
+Demand is generated at the distributor using deterministic arrival and quantity models.
+
 
 ```python
-
-Q_low = 5
-Q_high = 15
-# let us sample the order size from a uniform distribution
-def random_quantity(low = Q_low, high = Q_high):
-        return random.randint(start = low, stop = high)
-
-
-demands = [
-        {'ID': 'demand_R1', 'name': 'Demand 1', 'node_type': 'demand',
-         'order_arrival_model': lambda: 1, 'order_quantity_model': random_quantity, 'demand_node': 'R1'},
-
-        {'ID': 'demand_R2', 'name': 'Demand 2', 'node_type': 'demand',
-         'order_arrival_model': lambda: 1, 'order_quantity_model': random_quantity, 'demand_node': 'R2'},
-
-        {'ID': 'demand_R3', 'name': 'Demand 3', 'node_type': 'demand',
-         'order_arrival_model': lambda: 1, 'order_quantity_model': random_quantity, 'demand_node': 'R3'}
-]
+demand1 = {'ID': 'd1', 'name': 'Demand1', 'order_arrival_model': lambda: 0.4,
+           'order_quantity_model': lambda: 30, 'demand_node': 'D1'}
 ```
 
-## 5. Running the Simulation
+## 4. Running the Simulation
 
-Create the supply chain network and simulate for 30 time units.
+Create the supply chain network and simulate it.
 
 ```python
-scm.global_logger.enable_logging()
-supplychainnet = scm.simulate_sc_net(scm.create_sc_net(nodes, links, demands), sim_time=30)
+scm.global_logger.enable_logging() # enable logging
+
+supplychainnet = scm.create_sc_net(nodes=[supplier1, factory1, distributor1], 
+                                   links=[links1f1, linkf1d1], demands=[demand1])
+
+supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=20)
 ```
 
----
+## 5. Review Results
 
-**Key Takeaways:**
+Here is the simulation log generated by the network.
 
-- The simulation demonstrates how inventory depletes over time and how unmet demand accumulates when supply is insufficient.
-
-- You can modify node parameters, replenishment policies, or demand models to explore different supply chain behaviors.
+<div id="" style="overflow:scroll; height:600px;">
+```
+INFO factory1 - 0.0000:F1: Inventory levels:2500
+INFO Distributor1 - 0.0000:D1: Inventory levels:1000
+INFO Demand1 - 0.0000:d1:Customer1:Order quantity:30, available.
+INFO Distributor1 - 0.0000:D1: Inventory levels:970
+INFO Demand1 - 0.0000:d1:Customer1:Order quantity:30 received.
+INFO Demand1 - 0.4000:d1:Customer2:Order quantity:30, available.
+INFO Distributor1 - 0.4000:D1: Inventory levels:940
+INFO Demand1 - 0.4000:d1:Customer2:Order quantity:30 received.
+INFO Demand1 - 0.8000:d1:Customer3:Order quantity:30, available.
+INFO Distributor1 - 0.8000:D1: Inventory levels:910
+INFO Demand1 - 0.8000:d1:Customer3:Order quantity:30 received.
+INFO Demand1 - 1.2000:d1:Customer4:Order quantity:30, available.
+INFO Distributor1 - 1.2000:D1: Inventory levels:880
+INFO Demand1 - 1.2000:d1:Customer4:Order quantity:30 received.
+INFO Demand1 - 1.6000:d1:Customer5:Order quantity:30, available.
+INFO Distributor1 - 1.6000:D1: Inventory levels:850
+INFO Demand1 - 1.6000:d1:Customer5:Order quantity:30 received.
+INFO supplier1 - 2.0000:S1: Inventory level:5000
+INFO Demand1 - 2.0000:d1:Customer6:Order quantity:30, available.
+INFO Distributor1 - 2.0000:D1: Inventory levels:820
+INFO Demand1 - 2.0000:d1:Customer6:Order quantity:30 received.
+INFO Demand1 - 2.4000:d1:Customer7:Order quantity:30, available.
+INFO Distributor1 - 2.4000:D1: Inventory levels:790
+INFO Demand1 - 2.4000:d1:Customer7:Order quantity:30 received.
+INFO Demand1 - 2.8000:d1:Customer8:Order quantity:30, available.
+INFO Distributor1 - 2.8000:D1: Inventory levels:760
+INFO Demand1 - 2.8000:d1:Customer8:Order quantity:30 received.
+INFO supplier1 - 3.0000:S1: Inventory level:5000
+INFO Demand1 - 3.2000:d1:Customer9:Order quantity:30, available.
+INFO Distributor1 - 3.2000:D1: Inventory levels:730
+INFO Demand1 - 3.2000:d1:Customer9:Order quantity:30 received.
+INFO Demand1 - 3.6000:d1:Customer10:Order quantity:30, available.
+INFO Distributor1 - 3.6000:D1: Inventory levels:700
+INFO Demand1 - 3.6000:d1:Customer10:Order quantity:30 received.
+INFO Demand1 - 4.0000:d1:Customer11:Order quantity:30, available.
+INFO Distributor1 - 4.0000:D1: Inventory levels:670
+INFO Demand1 - 4.0000:d1:Customer11:Order quantity:30 received.
+INFO supplier1 - 4.0000:S1: Inventory level:5000
+INFO Demand1 - 4.4000:d1:Customer12:Order quantity:30, available.
+INFO Distributor1 - 4.4000:D1: Inventory levels:640
+INFO Demand1 - 4.4000:d1:Customer12:Order quantity:30 received.
+INFO Demand1 - 4.8000:d1:Customer13:Order quantity:30, available.
+INFO Distributor1 - 4.8000:D1: Inventory levels:610
+INFO Demand1 - 4.8000:d1:Customer13:Order quantity:30 received.
+INFO supplier1 - 5.0000:S1: Inventory level:5000
+INFO Demand1 - 5.2000:d1:Customer14:Order quantity:30, available.
+INFO Distributor1 - 5.2000:D1: Inventory levels:580
+INFO Demand1 - 5.2000:d1:Customer14:Order quantity:30 received.
+INFO Demand1 - 5.6000:d1:Customer15:Order quantity:30, available.
+INFO Distributor1 - 5.6000:D1: Inventory levels:550
+INFO Demand1 - 5.6000:d1:Customer15:Order quantity:30 received.
+INFO supplier1 - 6.0000:S1: Inventory level:5000
+INFO Demand1 - 6.0000:d1:Customer16:Order quantity:30, available.
+INFO Distributor1 - 6.0000:D1: Inventory levels:520
+INFO Demand1 - 6.0000:d1:Customer16:Order quantity:30 received.
+INFO Demand1 - 6.4000:d1:Customer17:Order quantity:30, available.
+INFO Distributor1 - 6.4000:D1: Inventory levels:490
+INFO Demand1 - 6.4000:d1:Customer17:Order quantity:30 received.
+INFO Demand1 - 6.8000:d1:Customer18:Order quantity:30, available.
+INFO Distributor1 - 6.8000:D1: Inventory levels:460
+INFO Demand1 - 6.8000:d1:Customer18:Order quantity:30 received.
+INFO supplier1 - 7.0000:S1: Inventory level:5000
+INFO Demand1 - 7.2000:d1:Customer19:Order quantity:30, available.
+INFO Distributor1 - 7.2000:D1: Inventory levels:430
+INFO Demand1 - 7.2000:d1:Customer19:Order quantity:30 received.
+INFO Demand1 - 7.6000:d1:Customer20:Order quantity:30, available.
+INFO Distributor1 - 7.6000:D1: Inventory levels:400
+INFO Demand1 - 7.6000:d1:Customer20:Order quantity:30 received.
+INFO supplier1 - 8.0000:S1: Inventory level:5000
+INFO Demand1 - 8.0000:d1:Customer21:Order quantity:30, available.
+INFO Distributor1 - 8.0000:D1: Inventory levels:370
+INFO Demand1 - 8.0000:d1:Customer21:Order quantity:30 received.
+INFO Demand1 - 8.4000:d1:Customer22:Order quantity:30, available.
+INFO Distributor1 - 8.4000:D1: Inventory levels:340
+INFO Demand1 - 8.4000:d1:Customer22:Order quantity:30 received.
+INFO Demand1 - 8.8000:d1:Customer23:Order quantity:30, available.
+INFO Distributor1 - 8.8000:D1: Inventory levels:310
+INFO Demand1 - 8.8000:d1:Customer23:Order quantity:30 received.
+INFO supplier1 - 9.0000:S1: Inventory level:5000
+INFO Demand1 - 9.2000:d1:Customer24:Order quantity:30, available.
+INFO Distributor1 - 9.2000:D1: Inventory levels:280
+INFO Distributor1 - 9.2000:D1:Replenishing inventory from supplier:factory1, order placed for 720 units.
+INFO Demand1 - 9.2000:d1:Customer24:Order quantity:30 received.
+INFO Distributor1 - 9.2000:D1:shipment in transit from supplier:factory1.
+INFO factory1 - 9.2000:F1: Inventory levels:1780
+INFO Demand1 - 9.6000:d1:Customer25:Order quantity:30, available.
+INFO Distributor1 - 9.6000:D1: Inventory levels:250
+INFO Demand1 - 9.6000:d1:Customer25:Order quantity:30 received.
+INFO supplier1 - 10.0000:S1: Inventory level:5000
+INFO Demand1 - 10.0000:d1:Customer26:Order quantity:30, available.
+INFO Distributor1 - 10.0000:D1: Inventory levels:220
+INFO Demand1 - 10.0000:d1:Customer26:Order quantity:30 received.
+INFO Demand1 - 10.4000:d1:Customer27:Order quantity:30, available.
+INFO Distributor1 - 10.4000:D1: Inventory levels:190
+INFO Demand1 - 10.4000:d1:Customer27:Order quantity:30 received.
+INFO Demand1 - 10.8000:d1:Customer28:Order quantity:30, available.
+INFO Distributor1 - 10.8000:D1: Inventory levels:160
+INFO Demand1 - 10.8000:d1:Customer28:Order quantity:30 received.
+INFO supplier1 - 11.0000:S1: Inventory level:5000
+INFO Demand1 - 11.2000:d1:Customer29:Order quantity:30, available.
+INFO Distributor1 - 11.2000:D1: Inventory levels:130
+INFO Demand1 - 11.2000:d1:Customer29:Order quantity:30 received.
+INFO Demand1 - 11.6000:d1:Customer30:Order quantity:30, available.
+INFO Distributor1 - 11.6000:D1: Inventory levels:100
+INFO Demand1 - 11.6000:d1:Customer30:Order quantity:30 received.
+INFO supplier1 - 12.0000:S1: Inventory level:5000
+INFO Demand1 - 12.0000:d1:Customer31:Order quantity:30, available.
+INFO Distributor1 - 12.0000:D1: Inventory levels:70
+INFO Demand1 - 12.0000:d1:Customer31:Order quantity:30 received.
+INFO Distributor1 - 12.2000:D1:Inventory replenished. reorder_quantity=720, Inventory levels:790
+INFO Demand1 - 12.4000:d1:Customer32:Order quantity:30, available.
+INFO Distributor1 - 12.4000:D1: Inventory levels:760
+INFO Demand1 - 12.4000:d1:Customer32:Order quantity:30 received.
+INFO Demand1 - 12.8000:d1:Customer33:Order quantity:30, available.
+INFO Distributor1 - 12.8000:D1: Inventory levels:730
+INFO Demand1 - 12.8000:d1:Customer33:Order quantity:30 received.
+INFO supplier1 - 13.0000:S1: Inventory level:5000
+INFO Demand1 - 13.2000:d1:Customer34:Order quantity:30, available.
+INFO Distributor1 - 13.2000:D1: Inventory levels:700
+INFO Demand1 - 13.2000:d1:Customer34:Order quantity:30 received.
+INFO Demand1 - 13.6000:d1:Customer35:Order quantity:30, available.
+INFO Distributor1 - 13.6000:D1: Inventory levels:670
+INFO Demand1 - 13.6000:d1:Customer35:Order quantity:30 received.
+INFO supplier1 - 14.0000:S1: Inventory level:5000
+INFO Demand1 - 14.0000:d1:Customer36:Order quantity:30, available.
+INFO Distributor1 - 14.0000:D1: Inventory levels:640
+INFO Demand1 - 14.0000:d1:Customer36:Order quantity:30 received.
+INFO Demand1 - 14.4000:d1:Customer37:Order quantity:30, available.
+INFO Distributor1 - 14.4000:D1: Inventory levels:610
+INFO Demand1 - 14.4000:d1:Customer37:Order quantity:30 received.
+INFO Demand1 - 14.8000:d1:Customer38:Order quantity:30, available.
+INFO Distributor1 - 14.8000:D1: Inventory levels:580
+INFO Demand1 - 14.8000:d1:Customer38:Order quantity:30 received.
+INFO supplier1 - 15.0000:S1: Inventory level:5000
+INFO Demand1 - 15.2000:d1:Customer39:Order quantity:30, available.
+INFO Distributor1 - 15.2000:D1: Inventory levels:550
+INFO Demand1 - 15.2000:d1:Customer39:Order quantity:30 received.
+INFO Demand1 - 15.6000:d1:Customer40:Order quantity:30, available.
+INFO Distributor1 - 15.6000:D1: Inventory levels:520
+INFO Demand1 - 15.6000:d1:Customer40:Order quantity:30 received.
+INFO supplier1 - 16.0000:S1: Inventory level:5000
+INFO Demand1 - 16.0000:d1:Customer41:Order quantity:30, available.
+INFO Distributor1 - 16.0000:D1: Inventory levels:490
+INFO Demand1 - 16.0000:d1:Customer41:Order quantity:30 received.
+INFO Demand1 - 16.4000:d1:Customer42:Order quantity:30, available.
+INFO Distributor1 - 16.4000:D1: Inventory levels:460
+INFO Demand1 - 16.4000:d1:Customer42:Order quantity:30 received.
+INFO Demand1 - 16.8000:d1:Customer43:Order quantity:30, available.
+INFO Distributor1 - 16.8000:D1: Inventory levels:430
+INFO Demand1 - 16.8000:d1:Customer43:Order quantity:30 received.
+INFO supplier1 - 17.0000:S1: Inventory level:5000
+INFO Demand1 - 17.2000:d1:Customer44:Order quantity:30, available.
+INFO Distributor1 - 17.2000:D1: Inventory levels:400
+INFO Demand1 - 17.2000:d1:Customer44:Order quantity:30 received.
+INFO Demand1 - 17.6000:d1:Customer45:Order quantity:30, available.
+INFO Distributor1 - 17.6000:D1: Inventory levels:370
+INFO Demand1 - 17.6000:d1:Customer45:Order quantity:30 received.
+INFO supplier1 - 18.0000:S1: Inventory level:5000
+INFO Demand1 - 18.0000:d1:Customer46:Order quantity:30, available.
+INFO Distributor1 - 18.0000:D1: Inventory levels:340
+INFO Demand1 - 18.0000:d1:Customer46:Order quantity:30 received.
+INFO Demand1 - 18.4000:d1:Customer47:Order quantity:30, available.
+INFO Distributor1 - 18.4000:D1: Inventory levels:310
+INFO Demand1 - 18.4000:d1:Customer47:Order quantity:30 received.
+INFO Demand1 - 18.8000:d1:Customer48:Order quantity:30, available.
+INFO Distributor1 - 18.8000:D1: Inventory levels:280
+INFO Distributor1 - 18.8000:D1:Replenishing inventory from supplier:factory1, order placed for 720 units.
+INFO Demand1 - 18.8000:d1:Customer48:Order quantity:30 received.
+INFO Distributor1 - 18.8000:D1:shipment in transit from supplier:factory1.
+INFO factory1 - 18.8000:F1: Inventory levels:1060
+INFO supplier1 - 19.0000:S1: Inventory level:5000
+INFO Demand1 - 19.2000:d1:Customer49:Order quantity:30, available.
+INFO Distributor1 - 19.2000:D1: Inventory levels:250
+INFO Demand1 - 19.2000:d1:Customer49:Order quantity:30 received.
+INFO Demand1 - 19.6000:d1:Customer50:Order quantity:30, available.
+INFO Distributor1 - 19.6000:D1: Inventory levels:220
+INFO Demand1 - 19.6000:d1:Customer50:Order quantity:30 received.
+INFO Demand1 - 20.0000:d1:Customer51:Order quantity:30, available.
+INFO Distributor1 - 20.0000:D1: Inventory levels:190
+INFO Demand1 - 20.0000:d1:Customer51:Order quantity:30 received.
+INFO sim_trace - Supply chain performance measures:
+INFO sim_trace - nodes: {'S1': supplier1, 'F1': factory1, 'D1': Distributor1}
+INFO sim_trace - links: {'L1': S1 to F1, 'L2': F1 to D1}
+INFO sim_trace - demands: {'d1': Demand1}
+INFO sim_trace - env: <simpy.core.Environment object at 0x00000224CC9C18D0>
+INFO sim_trace - num_of_nodes: 3
+INFO sim_trace - num_of_links: 2
+INFO sim_trace - num_suppliers: 1
+INFO sim_trace - num_manufacturers: 1
+INFO sim_trace - num_distributors: 1
+INFO sim_trace - num_retailers: 0
+INFO sim_trace - total_available_inv: 6250
+INFO sim_trace - avg_available_inv: 7634.5
+INFO sim_trace - total_inv_carry_cost: 3890.4
+INFO sim_trace - total_inv_spend: 21600
+INFO sim_trace - total_transport_cost: 240
+INFO sim_trace - total_revenue: 96750.0
+INFO sim_trace - total_cost: 25730.4
+INFO sim_trace - total_profit: 71019.6
+INFO sim_trace - total_demand_by_customers: [51, 1530]
+INFO sim_trace - total_fulfillment_received_by_customers: [51, 1530]
+INFO sim_trace - total_demand_by_site: [2, 1440]
+INFO sim_trace - total_fulfillment_received_by_site: [1, 720]
+INFO sim_trace - total_demand: [53, 2970]
+INFO sim_trace - total_fulfillment_received: [52, 2250]
+INFO sim_trace - total_shortage: [0, 0]
+INFO sim_trace - total_backorders: [0, 0]
+INFO sim_trace - avg_cost_per_order: 485.4792452830189
+INFO sim_trace - avg_cost_per_item: 8.663434343434345
+```
+</div>
