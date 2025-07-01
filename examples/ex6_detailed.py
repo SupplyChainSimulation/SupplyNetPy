@@ -16,9 +16,7 @@ raw_material2 = scm.RawMaterial(ID="rm2",name="RawMaterial2", extraction_quantit
 
 # Define product
 product = scm.Product(ID="pr1", name="Product1", manufacturing_cost=20, manufacturing_time=2, sell_price=100, 
-                      raw_materials=[{"raw_material": raw_material1, "quantity": 12},
-                      {"raw_material": raw_material2, "quantity": 15}],
-                      batch_size=30)
+                      raw_materials=[(raw_material1,12),(raw_material2,15)],batch_size=30)
 
 # Define suppliers
 supplier1 = scm.Supplier(env=env, ID="s1",name="Supplier1",capacity=10000, initial_level=3000, 
@@ -29,8 +27,7 @@ supplier2 = scm.Supplier(env=env, ID="s2",name="Supplier2",capacity=10000, initi
 # Define manufacturer
 manufacturer = scm.Manufacturer(env=env, ID="m1", name="Manufacturer1", capacity=500, initial_level=300, 
                                 inventory_holding_cost=0.10, product=product, product_sell_price=100,
-                                replenishment_policy=scm.SSReplenishment, policy_param={'s':350,'S':500},
-                                product_buy_price=20)
+                                replenishment_policy=scm.SSReplenishment, policy_param={'s':350,'S':500})
 
 
 # Define distributor

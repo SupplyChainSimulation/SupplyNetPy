@@ -68,7 +68,8 @@ class Lead_time_dist:
         while(k<0):
             k = random.expovariate(1/self.mean)
         return k
-    
+rawmat1 = scm.RawMaterial(ID='rm1', name='raw_material1', extraction_quantity=100, extraction_time=1, mining_cost=0.3, cost=0.5)
+product = scm.Product(ID='p1', name='product1', manufacturing_cost=50, manufacturing_time=2,sell_price=100, raw_materials=[(rawmat1,1)], batch_size=10)
 # function to generate a supply chain network with n nodes
 def generate_supply_chain(n: int, simtime:int) -> dict:
     # decide the number of suppliers, manufacturers, distributors, and retailers
@@ -105,7 +106,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
     for i in range(1, num_suppliers+1):
         ID = "S" + str(i)
         name = "Supplier " + str(i)
-        supplynet["nodes"][ID] = scm.Supplier(env=env, ID=ID, name=name, node_type="infinite_supplier")
+        supplynet["nodes"][ID] = scm.Supplier(env=env, ID=ID, name=name, node_type="infinite_supplier", raw_material=rawmat1)
 
     for i in range(1, num_manufacturers+1):
         ID = "M" + str(i)
@@ -119,7 +120,7 @@ def generate_supply_chain(n: int, simtime:int) -> dict:
         supplynet["nodes"][ID] = scm.Manufacturer(env=env, ID=ID, name=name, 
                                  capacity=capacity, initial_level=initial_level, inventory_holding_cost=inventory_holding_cost, 
                                  replenishment_policy=scm.SSReplenishment, policy_param={'s':s,'S':capacity}, 
-                                 product_buy_price=product_buy_price, product_sell_price=product_sell_price)
+                                 product=product, product_sell_price=product_sell_price)
         for j in range(0, num_suppliers):
             Id = "Ls" + str(j+1) + "m" + str(i)
             cost = random.randint(1, 3)

@@ -6,10 +6,12 @@ import utilities as scm
 
 # import the library
 # import SupplyNetPy.Components as scm
+rawmat1 = scm.RawMaterial(ID='rm1', name='raw_material1', extraction_quantity=100, extraction_time=1, mining_cost=0.3, cost=0.5)
+product = scm.Product(ID='p1', name='product1', manufacturing_cost=50, manufacturing_time=2,sell_price=100, raw_materials=[(rawmat1,1)], batch_size=10)
 
 # ID, name, node_type, capacity, initial_level, inventory_holding_cost, replenishment_policy, policy_parameters
-nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier'},
-            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':150,'S':300},'product_sell_price': 100},
+nodes = [{'ID': 'S1', 'name': 'Supplier 1', 'node_type': 'infinite_supplier','raw_material':rawmat1},
+            {'ID': 'M1', 'name': 'Manufacturer 1', 'node_type': 'manufacturer', 'capacity': 300, 'initial_level': 200, 'inventory_holding_cost': 0.5, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':150,'S':300},'product_sell_price': 100, 'product': product},
             {'ID': 'D1', 'name': 'Distributor 1', 'node_type': 'distributor', 'capacity': 150, 'initial_level': 150, 'inventory_holding_cost': 1, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':50,'S':150},'product_buy_price': 100,'product_sell_price': 120},
             {'ID': 'R1', 'name': 'Retailer 1', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':50,'S':100},'product_buy_price': 100,'product_sell_price': 130},
             {'ID': 'R2', 'name': 'Retailer 2', 'node_type': 'retailer', 'capacity': 100, 'initial_level': 50, 'inventory_holding_cost': 3, 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':50,'S':100},'product_buy_price': 100,'product_sell_price': 128},
