@@ -226,7 +226,7 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
     supplychainnet["num_retailers"] = num_retailers
     return supplychainnet
 
-def simulate_sc_net(supplychainnet, sim_time):
+def simulate_sc_net(supplychainnet, sim_time, logging=True):
     """
     Simulate the supply chain network for a given time period, and calculate performance measures.
 
@@ -239,11 +239,27 @@ def simulate_sc_net(supplychainnet, sim_time):
     """
     logger = global_logger.logger
     env = supplychainnet["env"]
+    
+    
     if(sim_time<=env.now):
         logger.warning(f"You have already ran simulation for this network! \n To create a new network use create_sc_net(), or specify the simulation time grater than {env.now} to run it further.")
         logger.info(f"Performance measures for the supply chain network are calculated and returned.")
-    else:
+    elif isinstance(logging, tuple) and len(logging) == 2:
+        log_start = logging[0]
+        log_stop = logging[1]
+        global_logger.disable_logging()
+        env.run(log_start) # Run the simulation
+        global_logger.enable_logging()
+        env.run(log_stop) # Run the simulation
+        global_logger.disable_logging()
         env.run(sim_time) # Run the simulation
+    elif isinstance(logging, bool) and logging:
+        global_logger.enable_logging()
+        env.run(sim_time) # Run the simulation
+    else:
+        global_logger.disable_logging()
+        env.run(sim_time) # Run the simulation
+
     # Let's create some variables to store stats
     total_available_inv = 0
     avg_available_inv = 0
