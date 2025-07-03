@@ -234,6 +234,9 @@ class Statistics(InfoMixin):
                 setattr(self, key, [0,0])
             elif isinstance(value, (int, float)):
                 setattr(self, key, 0)
+        if hasattr(self.node, 'inventory'):
+            self.node.inventory.carry_cost = 0
+            self.node.inventory.waste = 0
 
     def update_stats(self,**kwargs):
         """
@@ -1622,11 +1625,11 @@ class Inventory(NamedEntity, InfoMixin):
         while True:
             yield self.env.timeout(1)
             while self.perish_queue and self.env.now - self.perish_queue[0][0] >= self.shelf_life:
-                mfg_date, qty = self.perish_queue.pop(0)
-                self.node.logger.logger.info(f"{self.env.now:.4f}: {qty} units expired.")
+                mfg_date, qty = self.perish_queue[0] # get first item in the queue
+                self.node.logger.logger.info(f"{self.env.now:.4f}: {qty} units expired (Mgf date:{mfg_date}).")
                 self.waste += qty
                 if qty > 0:
-                    self.get(qty)
+                    self.get(qty) # get/remove expired items from the inventory
 
     def update_carry_cost(self):
         """
