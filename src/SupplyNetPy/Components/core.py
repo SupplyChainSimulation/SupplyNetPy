@@ -1411,7 +1411,6 @@ class Inventory(NamedEntity, InfoMixin):
         node (Node): Node to which this inventory belongs.
         replenishment_policy (InventoryReplenishment): Replenishment policy for the inventory.
         holding_cost (float): Holding cost per unit per time period.
-        holding_period (float): Time interval for holding cost calculation.
         shelf_life (float): Shelf life for perishable items.
         inv_type (str): Type of the inventory, either "non-perishable" or "perishable".
 
@@ -1426,7 +1425,6 @@ class Inventory(NamedEntity, InfoMixin):
         inv_type (str): Inventory type ("non-perishable" or "perishable").
         holding_cost (float): Holding cost per unit.
         carry_cost (float): Total accumulated carrying cost.
-        carry_period (float): Carrying cost calculation interval.
         replenishment_policy (InventoryReplenishment): Inventory replenishment policy.
         inventory (simpy.Container): SimPy container managing inventory levels.
         last_update_t (float): Last timestamp when carrying cost was updated.
@@ -1451,7 +1449,6 @@ class Inventory(NamedEntity, InfoMixin):
                  node: Node,
                  replenishment_policy: InventoryReplenishment,
                  holding_cost: float = 0.0,
-                 holding_period: float = 1.0,
                  shelf_life: float = 0,
                  inv_type: str = "non-perishable") -> None:
         """
@@ -1464,7 +1461,6 @@ class Inventory(NamedEntity, InfoMixin):
             node (Node): Node to which this inventory belongs.
             replenishment_policy (InventoryReplenishment): Replenishment policy for the inventory.
             holding_cost (float): Holding cost per unit per time period.
-            holding_period (float): Time interval for holding cost calculation.
             shelf_life (float): Shelf life for perishable items.
             inv_type (str): Type of the inventory, either "non-perishable" or "perishable".
 
@@ -1479,7 +1475,6 @@ class Inventory(NamedEntity, InfoMixin):
             inv_type (str): Inventory type ("non-perishable" or "perishable").
             holding_cost (float): Holding cost per unit.
             carry_cost (float): Total accumulated carrying cost.
-            carry_period (float): Carrying cost calculation interval.
             replenishment_policy (InventoryReplenishment): Inventory replenishment policy.
             inventory (simpy.Container): SimPy container managing inventory levels.
             last_update_t (float): Last timestamp when carrying cost was updated.
@@ -1508,7 +1503,7 @@ class Inventory(NamedEntity, InfoMixin):
         validate_positive("Capacity", capacity)
         validate_non_negative("Initial level", initial_level)
         validate_non_negative("Inventory holding cost",holding_cost)
-        self._info_keys = ["capacity", "initial_level", "replenishment_policy", "holding_cost", "holding_period", "shelf_life", "inv_type"]
+        self._info_keys = ["capacity", "initial_level", "replenishment_policy", "holding_cost", "shelf_life", "inv_type"]
         self._stats_keys = ["level", "carry_cost", "instantaneous_levels"]
         self.env = env
         self.capacity = capacity
@@ -1518,7 +1513,6 @@ class Inventory(NamedEntity, InfoMixin):
         self.inv_type = inv_type
         self.holding_cost = holding_cost
         self.carry_cost = 0 # initial carrying cost based on the initial inventory level
-        self.carry_period = holding_period # default carrying cost calculation interval is 1 time unit (day)
         self.replenishment_policy = replenishment_policy
         self.inventory = simpy.Container(env=self.env, capacity=self.capacity, init=self.init_level) # Inventory container setup
         self.last_update_t = self.env.now # last time the carrying cost was updated
@@ -1874,7 +1868,7 @@ class InventoryNode(Node):
         Behavior:
             The inventory node sells the product to the customers. It replenishes the inventory from the suppliers according to the replenishment policy. 
             The inventory node can have multiple suppliers. It chooses a supplier based on the availability of the product at the suppliers.
-            The product buy price is set to the supplier's product sell price. The inventory node sells the product at a higher price than the buy price.
+            The product buy and sell prices are set during initialization. The inventory node is expected to sell the product at a higher price than the buy price, but this is user-configured.
         """
         super().__init__(env=env,ID=ID,name=name,node_type=node_type,**kwargs)
         self._info_keys.extend(["sell_price", "buy_price", "ongoing_order", "selection_policy"])
@@ -2083,7 +2077,7 @@ class Manufacturer(Node):
         
         self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, inv_type=inventory_type, holding_cost=inventory_holding_cost, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life)
         self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
-        self.inventory_raised = self.env.event() # signal to indicate that inventory has bee
+        self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
         self.product = product # product manufactured by the manufacturer
         self.suppliers = []
         self.product.sell_price = product_sell_price
