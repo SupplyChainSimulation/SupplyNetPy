@@ -1039,7 +1039,7 @@ class SelectCheapest(SupplierSelectionPolicy):
             object: The selected supplier.
         """
         self.validate_suppliers()
-        selected = min(self.node.suppliers, key=lambda s: s.transportation_cost)
+        selected = min(self.node.suppliers, key=lambda s: s.cost)
         if self.mode == "fixed" and self.fixed_supplier is None:
             self.fixed_supplier = selected
         return self.fixed_supplier if self.mode == "fixed" else selected
