@@ -1551,13 +1551,9 @@ class Inventory(NamedEntity, InfoMixin):
             amount (float): amount to add
             manufacturing_date (float): only required for perishable inventories
         """
-        if self.inventory.capacity == float('inf'):
+        if self.inventory.level == float('inf') or amount <=0:
             return
         
-        if amount + self.inventory.level > self.capacity:
-            amount = self.capacity - self.inventory.level 
-        if amount <= 0:
-            return
         if self.inv_type == "perishable":
             if manufacturing_date is None:
                 self.node.logger.logger.error("Manufacturing date must be provided for perishable inventory.")
@@ -1586,10 +1582,9 @@ class Inventory(NamedEntity, InfoMixin):
         Returns:
             tuple: (SimPy get event, List of (manufacture_date, quantity)) for perishable items
         """
-        if self.inventory.capacity == float('inf'):
+        if self.inventory.level == float('inf'):
             return self.inventory.get(amount), []
-        if amount == 0:
-            return None, []
+
         man_date_ls = []
         if self.inv_type == "perishable":    
             x_amount = amount
@@ -1907,6 +1902,9 @@ class InventoryNode(Node):
         Returns:
             None
         """
+        if(self.inventory.on_hand + reorder_quantity > self.inventory.inventory.capacity): # check if the inventory can accommodate the reordered quantity
+                reorder_quantity = self.inventory.inventory.capacity - self.inventory.on_hand # if not, adjust reorder quantity to order only what can fit
+
         if supplier.source.inventory.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
             shortage = reorder_quantity - supplier.source.inventory.inventory.level
             supplier.source.stats.update_stats(orders_shortage=[1,shortage], backorder=[1,reorder_quantity])
@@ -1926,8 +1924,6 @@ class InventoryNode(Node):
             lead_time = supplier.lead_time() # get the lead time from the supplier
             validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
             yield self.env.timeout(lead_time) # lead time for the order
-            if(self.inventory.inventory.level + reorder_quantity > self.inventory.inventory.capacity): # check if the inventory can accommodate the reordered quantity
-                reorder_quantity = self.inventory.inventory.capacity - self.inventory.inventory.level # if not, set the reorder quantity to the remaining capacity
             
             if(man_date_ls):
                 for ele in man_date_ls: # get manufacturing date from the supplier
@@ -2236,6 +2232,8 @@ class Manufacturer(Node):
             None
         """
         self.ongoing_order = True # set the order status to True
+        if(self.inventory.on_hand + reorder_quantity > self.inventory.inventory.capacity): # check if the inventory can accommodate the reordered quantity
+                reorder_quantity = self.inventory.inventory.capacity - self.inventory.on_hand # if not, adjust reorder quantity to order only what can fit
         for raw_mat in self.product.raw_materials: # place order for all raw materials required to produce the product
             raw_mat_id = raw_mat[0].ID
             raw_mat_reorder_sz = raw_mat[1]*reorder_quantity
