@@ -454,7 +454,7 @@ class Product(NamedEntity, InfoMixin):
         self.raw_materials = raw_materials # list of raw materials and quantity required to manufacture a single product unit
         self.batch_size = batch_size # number of units manufactured per cycle
 
-class InventoryReplenishment(InfoMixin):
+class InventoryReplenishment(InfoMixin, NamedEntity):
     """
     
     The `InventoryReplenishment` class defines the abstract structure for inventory replenishment policies within SupplyNetPy. It provides a common interface for managing how nodes place replenishment orders during the simulation.
@@ -510,7 +510,7 @@ class InventoryReplenishment(InfoMixin):
         """
         pass
 
-class SSReplenishment(InventoryReplenishment, NamedEntity):
+class SSReplenishment(InventoryReplenishment):
     """
     Implements the (s, S) min-max inventory replenishment policy with optional safety stock support.
 
@@ -534,8 +534,6 @@ class SSReplenishment(InventoryReplenishment, NamedEntity):
         __init__: Initializes the replenishment policy object.
         run: Monitors inventory and places orders based on the (s, S) policy.
     """
-
-
     def __init__(self, env, node, params):
         """ 
         Initialize the replenishment policy object.
@@ -638,7 +636,6 @@ class RQReplenishment(InventoryReplenishment):
         __init__: Initializes the RQ replenishment policy object.
         run: Continuously monitors inventory and places replenishment orders when the reorder point is reached.
     """
-    
     def __init__(self, env, node, params):
         """ 
         Initialize the RQ replenishment policy object.
@@ -706,7 +703,7 @@ class RQReplenishment(InventoryReplenishment):
 
 class PeriodicReplenishment(InventoryReplenishment):
     """
-    Implements a time-based inventory replenishment policy where a fixed quantity `Q` is ordered at regular intervals `T`.
+    Implements a time-based inventory replenishment policy where a fixed quantity `Q` is ordered at regular intervals `T` with optional safety stock support.
 
     This policy ensures consistent inventory reviews and replenishment, independent of the current stock level. Supports an optional initial review delay before starting periodic checks.
 
@@ -771,16 +768,25 @@ class PeriodicReplenishment(InventoryReplenishment):
             None
         """
         T, Q = self.params['T'], self.params['Q']  # get the period and quantity
+        ss = 0
+        if 'safety_stock' in self.params: # check if safety_stock is specified
+            validate_non_negative("Safety stock", self.params['safety_stock'])
+            self.name = "Periodic with safety replenishment (T, Q, safety_stock)"
+            ss = self.params['safety_stock']
+
         if(self.first_review_delay > 0):
             yield self.env.timeout(self.first_review_delay)  # wait for the end of the day
         while True:
             self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}, on hand:{self.node.inventory.on_hand}")
-            supplier = self.node.selection_policy.select(Q) # select a supplier based on the supplier selection policy
+            reorder_quantity = Q
+            if (self.node.inventory.level < ss):
+                reorder_quantity +=  ss - self.node.inventory.level
+            supplier = self.node.selection_policy.select(reorder_quantity) # select a supplier based on the supplier selection policy
             self.node.ongoing_order = True
-            self.env.process(self.node.process_order(supplier, Q))
+            self.env.process(self.node.process_order(supplier, reorder_quantity))
             yield self.env.timeout(T) # periodic replenishment, wait for the next period
 
-class SupplierSelectionPolicy(InfoMixin):
+class SupplierSelectionPolicy(InfoMixin, NamedEntity):
     """
     Defines the framework for supplier selection strategies in the supply chain.
 
@@ -1068,7 +1074,6 @@ class SelectFastest(SupplierSelectionPolicy):
         __init__: Initializes the supplier selection policy and sets the selection mode.
         select: Selects the supplier with the shortest lead time based on the configured mode.
     """
-
     def __init__(self, node, mode="dynamic"):
         """
         Initialize the supplier selection policy object.
@@ -1278,9 +1283,8 @@ class Link(NamedEntity, InfoMixin):
         link_recovery_time (callable): Recovery time function.
 
     Functions:
-    __init__: Initializes the link object and validates parameters.
-    disruption: Simulates link disruption and automatic recovery.
-
+        __init__: Initializes the link object and validates parameters.
+        disruption: Simulates link disruption and automatic recovery.
     """
     def __init__(self, env: simpy.Environment, 
                  ID: str, 
@@ -1441,7 +1445,6 @@ class Inventory(NamedEntity, InfoMixin):
         remove_expired: Automatically removes expired items from perishable inventory.
         update_carry_cost: Updates carrying cost based on inventory level and holding time.
     """
-
     def __init__(self, 
                  env: simpy.Environment, 
                  capacity: float, 
@@ -1799,7 +1802,6 @@ class InventoryNode(Node):
         __init__: Initializes the InventoryNode object.
         process_order: Places an order with the selected supplier and updates inventory upon delivery.
     """
-
     def __init__(self,
                  env: simpy.Environment, 
                  ID: str, 
@@ -1904,6 +1906,10 @@ class InventoryNode(Node):
         """
         if(self.inventory.on_hand + reorder_quantity > self.inventory.inventory.capacity): # check if the inventory can accommodate the reordered quantity
                 reorder_quantity = self.inventory.inventory.capacity - self.inventory.on_hand # if not, adjust reorder quantity to order only what can fit
+
+        if reorder_quantity <= 0:
+            self.ongoing_order = False
+            return  # no need to place an order if reorder quantity is zero
 
         if supplier.source.inventory.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
             shortage = reorder_quantity - supplier.source.inventory.inventory.level
@@ -2234,6 +2240,9 @@ class Manufacturer(Node):
         self.ongoing_order = True # set the order status to True
         if(self.inventory.on_hand + reorder_quantity > self.inventory.inventory.capacity): # check if the inventory can accommodate the reordered quantity
                 reorder_quantity = self.inventory.inventory.capacity - self.inventory.on_hand # if not, adjust reorder quantity to order only what can fit
+        if reorder_quantity <= 0:
+            self.ongoing_order = False
+            return # no need to place an order if reorder quantity is zero
         for raw_mat in self.product.raw_materials: # place order for all raw materials required to produce the product
             raw_mat_id = raw_mat[0].ID
             raw_mat_reorder_sz = raw_mat[1]*reorder_quantity

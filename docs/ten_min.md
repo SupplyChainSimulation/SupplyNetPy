@@ -49,10 +49,11 @@ When creating a manufacturer, distributor, wholesaler, or retailer, you must spe
 
 The SupplyNetPy Components module includes an `InventoryReplenishment` class that can be customized to define specific replenishment policies. Currently, SupplyNetPy supports the following replenishment policies:
 
-- `SSReplenishment`: [Reorder-level (s,S)](api-reference/api-ref-core.md#ssreplenish) — continuously monitor inventory and replenish up to S when the level drops below s. Parameters: {s, S}
-- `SSReplenishment`: [Reorder-level (s,S) with Safety Stock](api-reference/api-ref-core.md#ssreplenish) — reorder-level replenishment that factors in a safety stock buffer. Parameters: {s, S, safety_stock}
-- `RQReplenishment`: [Replenish Quantity (RQ)](api-reference/api-ref-core.md#rqreplenish) — reorder a fixed quantity Q when placing an order.
-- `PeriodicReplenishment`: [Periodic (T,Q)](api-reference/api-ref-core.md#periodicreplenish) — replenish inventory every T days with Q units.
+- [Reorder-level (s,S)](api-reference/api-ref-core.md#ssreplenish) — continuously monitor inventory and replenish up to S when the level drops below s. Parameters: {s, S} (`SSReplenishment`)
+- [Reorder-level (s,S) with Safety Stock](api-reference/api-ref-core.md#ssreplenish) — reorder-level replenishment that factors in a safety stock buffer. Parameters: {s, S, safety_stock} (`SSReplenishment`)
+- [Replenish Quantity (RQ)](api-reference/api-ref-core.md#rqreplenish) — reorder a fixed quantity Q when placing an order. (`RQReplenishment`)
+- [Periodic (T,Q)](api-reference/api-ref-core.md#periodicreplenish) — replenish inventory every T days with Q units. (`PeriodicReplenishment`)
+- [Periodic (T,Q) with safety stock](api-reference/api-ref-core.md#periodicreplenish) — replenish inventory every T days with Q units. If safety stock is specified, then when the safety stock level is violated, order Q units in addition to the quantity needed to maintain safety stock levels. (`PeriodicReplenishment`)
 
 ### 3. Create a Link
 
