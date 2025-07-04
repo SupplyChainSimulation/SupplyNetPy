@@ -264,7 +264,7 @@ class Statistics(InfoMixin):
             else:
                 global_logger.logger.warning(f"{self.node.ID}: (Updaing stats) Attribute {key} not found in Statistics class.")
         if hasattr(self.node, 'inventory'):
-            if self.node.inventory.inventory.capacity != float('inf'):
+            if self.node.inventory.level != float('inf'):
                 self.inventory_level = self.node.inventory.inventory.level if hasattr(self.node, 'inventory') else 0
                 self.node.inventory.update_carry_cost()
                 self.inventory_carry_cost = self.node.inventory.carry_cost
