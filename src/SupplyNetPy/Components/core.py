@@ -562,6 +562,8 @@ class SSReplenishment(InventoryReplenishment):
         self.name = "min-max replenishment (s, S)"
         self.first_review_delay = params.get('first_review_delay', 0)
         self.period = params.get('period',0)
+        if self.period > 0:
+            self.first_review_delay = max(self.first_review_delay - 0.99999, 0.00001)
     
     def run(self):
         """
@@ -588,7 +590,7 @@ class SSReplenishment(InventoryReplenishment):
             s += self.params['safety_stock']
             S += self.params['safety_stock']
 
-        if(self.first_review_delay>0): # if first review delay is specified, wait for the specified time before starting the replenishment process
+        if self.first_review_delay > 0: # if first review delay is specified, wait for the specified time before starting the replenishment process
             yield self.env.timeout(self.first_review_delay)
 
         while True: # run the replenishment process indefinitely
@@ -664,6 +666,8 @@ class RQReplenishment(InventoryReplenishment):
         self.name = "RQ replenishment (R, Q)"
         self.first_review_delay = params.get('first_review_delay', 0)
         self.period = params.get('period', 0)
+        if self.period > 0:
+            self.first_review_delay = max(self.first_review_delay - 0.99999, 0.00001)
         
     def run(self):
         """
@@ -752,6 +756,7 @@ class PeriodicReplenishment(InventoryReplenishment):
         self._info_keys.extend(["name", "first_review_delay"])  # add the keys to the info dictionary
         self.name = "Periodic replenishment (T, Q)"
         self.first_review_delay = params.get('first_review_delay', 0)
+        self.first_review_delay = max(self.first_review_delay - 0.00001, 0.99999)
 
     def run(self):
         """
@@ -767,16 +772,7 @@ class PeriodicReplenishment(InventoryReplenishment):
         Returns:
             None
         """
-        T, Q = self.params['T'], self.params['Q']  # get the period and quantity
-        ss = 0
-        if 'safety_stock' in self.params: # check if safety_stock is specified
-            validate_non_negative("Safety stock", self.params['safety_stock'])
-            self.name = "Periodic with safety replenishment (T, Q, safety_stock)"
-            ss = self.params['safety_stock']
-
-        if(self.first_review_delay > 0):
-            yield self.env.timeout(self.first_review_delay)  # wait for the end of the day
-        while True:
+        def place_order():
             self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}, on hand:{self.node.inventory.on_hand}")
             reorder_quantity = Q
             if (self.node.inventory.level < ss):
@@ -784,6 +780,18 @@ class PeriodicReplenishment(InventoryReplenishment):
             supplier = self.node.selection_policy.select(reorder_quantity) # select a supplier based on the supplier selection policy
             self.node.ongoing_order = True
             self.env.process(self.node.process_order(supplier, reorder_quantity))
+        
+        T, Q = self.params['T'], self.params['Q']  # get the period and quantity
+        ss = 0
+        if 'safety_stock' in self.params: # check if safety_stock is specified
+            validate_non_negative("Safety stock", self.params['safety_stock'])
+            self.name = "Periodic with safety replenishment (T, Q, safety_stock)"
+            ss = self.params['safety_stock']
+        
+        place_order()
+        yield self.env.timeout(self.first_review_delay)  # wait for the end of the day
+        while True:
+            place_order()
             yield self.env.timeout(T) # periodic replenishment, wait for the next period
 
 class SupplierSelectionPolicy(InfoMixin, NamedEntity):
