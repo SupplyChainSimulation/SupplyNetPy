@@ -14,16 +14,12 @@ def check_duplicate_id(used_ids, new_id, entity_type="ID"):
 def process_info_dict(info_dict, logger):
     info_string = ""
     for key, value in info_dict.items():
-        if isinstance(value, list):
-            list_vals = 0
-            if len(value) > 0:
-                list_vals = f"{value[0]} ... "
-                value = np.array(value)
-            info_string += f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]\n"
-            logger.info(f"{key}: (list) len = {len(value)}, sum = {sum(value)}, [{list_vals}]")
-        else:
-            info_string += f"{key}: {value}\n"
-            logger.info(f"{key}: {value}")
+        if isinstance(value, object):
+            value = str(value)
+        if callable(value):
+            value = value.__name__
+        info_string += f"{key}: {value}\n"
+        logger.info(f"{key}: {value}")
     return info_string
 
 
@@ -86,17 +82,14 @@ def get_sc_net_info(supplychainnet):
     logger.info(f"Nodes in the network: {list(supplychainnet['nodes'].keys())}")
     sc_info += "Nodes in the network:\n"
     for node_id, node in supplychainnet["nodes"].items():
-        node_info_dict = node.get_info()
         sc_info += process_info_dict(node.get_info(), logger)
     logger.info(f"Edges in the network: {list(supplychainnet['links'].keys())}")
     sc_info += "Edges in the network:\n"
     for edge_id, edge in supplychainnet["links"].items():
-        edge_info_dict = edge.get_info()
         sc_info += process_info_dict(edge.get_info(), logger)
     logger.info(f"Demands in the network: {list(supplychainnet['demands'].keys())}")                
     sc_info += "Demands in the network:\n"
     for demand_id, demand in supplychainnet["demands"].items():
-        demand_info_dict = demand.get_info()
         sc_info += process_info_dict(demand.get_info(), logger)    
     keys = supplychainnet.keys() - {'nodes', 'links', 'demands', 'env', 'num_of_nodes', 'num_of_links', 'num_suppliers','num_manufacturers', 'num_distributors', 'num_retailers'}
     sc_info += "Supply chain network performance:\n"
@@ -245,6 +238,9 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
         logger.warning(f"You have already ran simulation for this network! \n To create a new network use create_sc_net(), or specify the simulation time grater than {env.now} to run it further.")
         logger.info(f"Performance measures for the supply chain network are calculated and returned.")
     elif isinstance(logging, tuple) and len(logging) == 2:
+        assert logging[0] < logging[1], "Start logging time should be less than stop logging time"
+        assert logging[0] >= 0, "Start logging time should be greater than or equal to 0"
+        assert logging[1] <= sim_time, "Stop logging time should be less than or equal to simulation time"        
         log_start = logging[0]
         log_stop = logging[1]
         global_logger.disable_logging()
