@@ -6,12 +6,42 @@ import numpy as np
 from core import * 
 
 def check_duplicate_id(used_ids, new_id, entity_type="ID"):
+    """
+    Checks if the new_id is already in used_ids. If it is, logs an error and raises a ValueError.
+
+    Parameters:
+        used_ids (list): List of already used IDs.
+        new_id (str): The new ID to check.
+        entity_type (str): Type of the entity for which the ID is being checked (e.g., "node ID", "link ID").
+
+    Attributes:
+        None
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the new_id is already in used_ids.
+    """
     if new_id in used_ids:
         global_logger.logger.error(f"Duplicate {entity_type} {new_id}")
         raise ValueError(f"Duplicate {entity_type}")
     used_ids.append(new_id)
 
 def process_info_dict(info_dict, logger):
+    """
+    Processes the dictionary and logs the key-value pairs.
+
+    Parameters:
+        info_dict (dict): The information dictionary to process.
+        logger (logging.Logger): The logger instance used for logging messages.
+
+    Attributes:
+        None
+    
+    Returns:
+        str: A string representation of the processed information.
+    """
     info_string = ""
     for key, value in info_dict.items():
         if isinstance(value, object):
@@ -22,13 +52,15 @@ def process_info_dict(info_dict, logger):
         logger.info(f"{key}: {value}")
     return info_string
 
-
 def visualize_sc_net(supplychainnet):
     """
     Visualize the supply chain network as a graph.
 
     Parameters:
         supplychainnet (dict): The supply chain network containing nodes and edges.
+
+    Attributes:
+        None
 
     Returns:
         None
@@ -68,6 +100,12 @@ def get_sc_net_info(supplychainnet):
     Parameters: 
         supplychainnet (dict): A dictionary representing the supply chain network.
 
+    Attributes:
+        logger (logging.Logger): The logger instance used for logging messages.
+        sc_info (str): A string to accumulate the supply chain network information.
+        info_keys (list): A list of keys to extract information from the supply chain network.
+        keys (set): A set of keys in the supply chain network regarding performance of the network.
+    
     Returns:
         str: A string containing the supply chain network information.
     """
@@ -108,6 +146,22 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
         nodes (list): A netlist of nodes in the supply chain network.
         links (list): A netlist of links between the nodes.
         demand (list): A netlist of demand nodes in the supply chain network.
+        env (simpy.Environment, optional): A SimPy Environment object. If not provided, a new environment will be created.
+
+    Attributes:
+        global_logger (GlobalLogger): The global logger instance used for logging messages.
+        supplychainnet (dict): A dictionary representing the supply chain network.
+        used_ids (list): A list to keep track of used IDs to avoid duplicates.
+        num_suppliers (int): Counter for the number of suppliers.
+        num_manufacturers (int): Counter for the number of manufacturers.
+        num_distributors (int): Counter for the number of distributors.
+        num_retailers (int): Counter for the number of retailers.
+
+    Raises:
+        ValueError: If the SimPy Environment object is not provided or if there are duplicate IDs in nodes, links, or demands.
+        ValueError: If an invalid node type is encountered.
+        ValueError: If an invalid source or sink node is specified in a link.
+        ValueError: If an invalid demand node is specified in a demand.
 
     Returns:
         dict: A dictionary representing the supply chain network.
