@@ -562,8 +562,6 @@ class SSReplenishment(InventoryReplenishment):
         self.name = "min-max replenishment (s, S)"
         self.first_review_delay = params.get('first_review_delay', 0)
         self.period = params.get('period',0)
-        if self.period > 0:
-            self.first_review_delay = max(self.first_review_delay - 0.99999, 0.00001)
     
     def run(self):
         """
@@ -666,8 +664,6 @@ class RQReplenishment(InventoryReplenishment):
         self.name = "RQ replenishment (R, Q)"
         self.first_review_delay = params.get('first_review_delay', 0)
         self.period = params.get('period', 0)
-        if self.period > 0:
-            self.first_review_delay = max(self.first_review_delay - 0.99999, 0.00001)
         
     def run(self):
         """
@@ -756,7 +752,6 @@ class PeriodicReplenishment(InventoryReplenishment):
         self._info_keys.extend(["name", "first_review_delay"])  # add the keys to the info dictionary
         self.name = "Periodic replenishment (T, Q)"
         self.first_review_delay = params.get('first_review_delay', 0)
-        self.first_review_delay = max(self.first_review_delay - 0.00001, 0.99999)
 
     def run(self):
         """
@@ -772,7 +767,14 @@ class PeriodicReplenishment(InventoryReplenishment):
         Returns:
             None
         """
-        def place_order():
+        T, Q = self.params['T'], self.params['Q']  # get the period and quantity
+        ss = 0
+        if 'safety_stock' in self.params: # check if safety_stock is specified
+            validate_non_negative("Safety stock", self.params['safety_stock'])
+            self.name = "Periodic with safety replenishment (T, Q, safety_stock)"
+            ss = self.params['safety_stock']
+
+        while True:
             self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}, on hand:{self.node.inventory.on_hand}")
             reorder_quantity = Q
             if (self.node.inventory.level < ss):
@@ -780,18 +782,6 @@ class PeriodicReplenishment(InventoryReplenishment):
             supplier = self.node.selection_policy.select(reorder_quantity) # select a supplier based on the supplier selection policy
             self.node.ongoing_order = True
             self.env.process(self.node.process_order(supplier, reorder_quantity))
-        
-        T, Q = self.params['T'], self.params['Q']  # get the period and quantity
-        ss = 0
-        if 'safety_stock' in self.params: # check if safety_stock is specified
-            validate_non_negative("Safety stock", self.params['safety_stock'])
-            self.name = "Periodic with safety replenishment (T, Q, safety_stock)"
-            ss = self.params['safety_stock']
-        
-        place_order()
-        yield self.env.timeout(self.first_review_delay)  # wait for the end of the day
-        while True:
-            place_order()
             yield self.env.timeout(T) # periodic replenishment, wait for the next period
 
 class SupplierSelectionPolicy(InfoMixin, NamedEntity):
@@ -2314,7 +2304,7 @@ class Demand(Node):
         - Order quantities follow the specified stochastic quantity model.
         - Customers can accept split deliveries based on the minimum split ratio.
         - Customers may wait for the fulfillment of their orders up to the defined tolerance time.
-        - If customer tolerance is zero, unfulfilled demand is immediately considered a shortage.
+        - If customer tolerance is zero, customer returns without waiting for fulfillment.
         - Delivery cost and lead time are sampled dynamically for each order.
         - The connected upstream node must not be a supplier; it should typically be a retailer or distributor node.
     """
@@ -2403,7 +2393,7 @@ class Demand(Node):
         lead_time = self.lead_time() # get the lead time from the demand node
         validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
         yield self.env.timeout(lead_time) # wait for the delivery of the order
-        self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity} received.")
+        #self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity} received.")
 
         self.stats.update_stats(fulfillment_received=[1,order_quantity])
         self.demand_node.stats.update_stats(demand_fulfilled=[1,order_quantity]) 

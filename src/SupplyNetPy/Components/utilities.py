@@ -132,7 +132,7 @@ def get_sc_net_info(supplychainnet):
     keys = supplychainnet.keys() - {'nodes', 'links', 'demands', 'env', 'num_of_nodes', 'num_of_links', 'num_suppliers','num_manufacturers', 'num_distributors', 'num_retailers'}
     sc_info += "Supply chain network performance:\n"
     logger.info("Supply chain network performance:")
-    for key in keys:
+    for key in sorted(keys):
         sc_info += f"{key}: {supplychainnet[key]}\n"
         logger.info(f"{key}: {supplychainnet[key]}")
     return sc_info
@@ -302,7 +302,8 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
         global_logger.enable_logging()
         env.run(log_stop) # Run the simulation
         global_logger.disable_logging()
-        env.run(sim_time) # Run the simulation
+        if(sim_time > log_stop):
+            env.run(sim_time) # Run the simulation
     elif isinstance(logging, bool) and logging:
         global_logger.enable_logging()
         env.run(sim_time) # Run the simulation
@@ -366,22 +367,22 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
     total_fulfillment_received[0] = total_fulfillment_received_by_customers[0] + total_fulfillment_received_by_site[0]
     total_fulfillment_received[1] = total_fulfillment_received_by_customers[1] + total_fulfillment_received_by_site[1]
     total_profit = total_revenue - total_cost
-    supplychainnet["total_available_inv"] = total_available_inv
+    supplychainnet["available_inv"] = total_available_inv
     supplychainnet["avg_available_inv"] = avg_available_inv
-    supplychainnet["total_inv_carry_cost"] = total_inv_carry_cost   
-    supplychainnet["total_inv_spend"] = total_inv_spend
-    supplychainnet["total_transport_cost"] = total_transport_cost
-    supplychainnet["total_revenue"] = total_revenue
+    supplychainnet["inventory_carry_cost"] = total_inv_carry_cost   
+    supplychainnet["inventory_spend_cost"] = total_inv_spend
+    supplychainnet["transportation_cost"] = total_transport_cost
+    supplychainnet["revenue"] = total_revenue
     supplychainnet["total_cost"] = total_cost
-    supplychainnet["total_profit"] = total_profit
-    supplychainnet["total_demand_by_customers"] = total_demand_by_customers
-    supplychainnet["total_fulfillment_received_by_customers"] = total_fulfillment_received_by_customers
-    supplychainnet["total_demand_by_site"] = total_demand_by_site
-    supplychainnet["total_fulfillment_received_by_site"] = total_fulfillment_received_by_site
+    supplychainnet["profit"] = total_profit
+    supplychainnet["demand_by_customers"] = total_demand_by_customers
+    supplychainnet["fulfillment_received_by_customers"] = total_fulfillment_received_by_customers
+    supplychainnet["demand_by_site"] = total_demand_by_site
+    supplychainnet["fulfillment_received_by_site"] = total_fulfillment_received_by_site
     supplychainnet["total_demand"] = total_demand_placed
     supplychainnet["total_fulfillment_received"] = total_fulfillment_received
-    supplychainnet["total_shortage"] = total_shortage
-    supplychainnet["total_backorders"] = total_backorders
+    supplychainnet["shortage"] = total_shortage
+    supplychainnet["backorders"] = total_backorders
     # Calculate average cost per order and per item
     if total_demand_placed[0] > 0:
         supplychainnet["avg_cost_per_order"] = total_cost / total_demand_placed[0]
@@ -391,8 +392,10 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
         supplychainnet["avg_cost_per_item"] = total_cost / total_demand_placed[1]
     else:
         supplychainnet["avg_cost_per_item"] = 0
-    
-    logger.info(f"Supply chain performance measures:")
-    for key, value in supplychainnet.items():
-        logger.info(f"{key}: {value}")
+    if isinstance(logging, tuple):
+        global_logger.enable_logging()
+    max_key_length = max(len(key) for key in supplychainnet.keys()) + 1
+    logger.info(f"Supply chain info:")
+    for key in sorted(supplychainnet.keys()):
+        logger.info(f"{key.ljust(max_key_length)}: {supplychainnet[key]}")
     return supplychainnet
