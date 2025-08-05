@@ -2436,6 +2436,7 @@ class Demand(Node):
             elif available >= partial: # or else at least min required 'partial' is available
                 self.env.process(self._process_delivery(available, customer_id))
                 self.demand_node.stats.update_stats(backorder=[0,-available])
+                self.stats.update_stats(fulfillment_received=[-1,0])
                 order_quantity -= available # update order quantity
             else: 
                 self.demand_node.stats.update_stats(orders_shortage=[1,order_quantity-available])
