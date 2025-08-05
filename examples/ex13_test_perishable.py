@@ -35,7 +35,7 @@ demand_ret = scm.Demand(env=env, ID='demand_R1', name='Demand at Retailer', orde
                         order_quantity_model=lambda: 50, demand_node=ret, tolerance = float('inf'))
 
 scm.global_logger.enable_logging(log_to_file=False)
-env.run(until=100)
+env.run(until=1000)
 
 # plot inventory levels at each node
 import matplotlib.pyplot as plt
