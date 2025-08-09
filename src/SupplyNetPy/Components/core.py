@@ -1736,7 +1736,6 @@ class Supplier(Node):
         Returns:
             None
         """
-        yield self.env.timeout(1)
         while True:
             if(self.inventory.inventory.level < self.inventory.inventory.capacity): # check if the inventory is not full
                 mined_quantity = self.raw_material.extraction_quantity
