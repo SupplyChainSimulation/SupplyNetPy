@@ -774,6 +774,9 @@ class PeriodicReplenishment(InventoryReplenishment):
             self.name = "Periodic with safety replenishment (T, Q, safety_stock)"
             ss = self.params['safety_stock']
 
+        if self.first_review_delay > 0:
+            yield self.env.timeout(self.first_review_delay)
+
         while True:
             self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}, on hand:{self.node.inventory.on_hand}")
             reorder_quantity = Q
@@ -1704,12 +1707,13 @@ class Supplier(Node):
         self._info_keys.extend(["raw_material", "sell_price"])
         self.raw_material = raw_material # raw material supplied by the supplier
         self.sell_price = 0
+        if(self.raw_material):
+            self.sell_price = self.raw_material.cost # selling price of the raw material
         if(self.node_type!="infinite_supplier"):
             self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, holding_cost=inventory_holding_cost, replenishment_policy=None)
             self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
             self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
             if(self.raw_material):
-                self.sell_price = self.raw_material.cost # selling price of the raw material
                 self.env.process(self.behavior()) # start the behavior process
             else:
                 self.logger.logger.error(f"{self.ID}:Raw material not provided for this supplier. Recreate it with a raw material.")
