@@ -1,8 +1,12 @@
 import simpy
 import random
 import numpy as np
-import SupplyNetPy.Components as scm
 import matplotlib.pyplot as plt
+import SupplyNetPy.Components as scm
+
+cost = 2
+sell_price = 5
+salvage = 1
 
 mean = 100
 std_dev = 15
@@ -21,7 +25,7 @@ order_quantity = 100 # initial order quantity
 cost_arr = [] # to store cost for each order quantity
 profit_arr = [] # to store profit for each order quantity
 
-for order_quantity in range(20, 190, 10):
+for order_quantity in range(10, 200, 10):
 
     env = simpy.Environment()
 
@@ -30,7 +34,7 @@ for order_quantity in range(20, 190, 10):
 
     #create the distributor
     newsvendor1 = scm.InventoryNode(env=env, ID="D1", name="News Vendor", node_type="distributor",
-                                    capacity=order_quantity, initial_level=order_quantity, 
+                                    capacity=float('inf'), initial_level=order_quantity, 
                                     inventory_holding_cost=0.1, inventory_type="perishable", 
                                     shelf_life=1.00001, replenishment_policy=scm.PeriodicReplenishment,
                                     policy_param={"T": 1, "Q": order_quantity}, 
