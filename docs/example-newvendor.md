@@ -96,7 +96,7 @@ It is a simple three-node supply chain with one supplier, a newsvendor (retailer
 
 
 ```python
-{{include('../examples/ex8_newsvendor.py')}}
+{{include('../examples/py/newsvendor.py')}}
 ```
 
 The following plot shows the relationship between profit and order quantity (Q). The curve clearly indicates that the maximum profit is achieved when Q is approximately 110, confirming the analytical solution for the optimal order quantity.
@@ -104,7 +104,6 @@ The following plot shows the relationship between profit and order quantity (Q).
 ![alt text](img_newsvendor_Q.png)
 
 
-
 ## Takeway
 
-This example demonstrated how to solve the newsvendor problem using simulation-based approaches using SupplyNetPy library. By simulating different order quantities and evaluating the resulting profits, you can visualize and confirm the optimal order quantity that maximizes expected profit. This approach can be extended to more complex inventory scenarios and demand distributions, providing valuable insights for inventory management decisions.
+This example demonstrated how to solve the newsvendor problem using simulation-based approaches using SupplyNetPy library. By simulating different order quantities and evaluating the resulting profits, we can visualize and confirm the optimal order quantity that maximizes expected profit. This approach can be extended to more complex inventory scenarios and demand distributions, providing valuable insights for inventory management decisions.

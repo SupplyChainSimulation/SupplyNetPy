@@ -26,7 +26,9 @@ SupplyNetPy enables users to:
     - (s, S) replenishment
     - (s, S) with safety stock
     - Reorder point–quantity (RQ)
+    - Reorder point–quantity (RQ) with safety stock
     - Periodic review (Q, T)
+    - Periodic review (Q, T) with safety stock
 - **Flexible lead times**: Define deterministic or stochastic lead times and transportation costs.
 - **Simple API**: Build and simulate supply chain models using clear Python code.
 - **Performance tracking**: Automatically generate logs and compute supply chain performance indicators.
@@ -37,14 +39,14 @@ SupplyNetPy enables users to:
 
 SupplyNetPy provides core components for supply chain modeling:
 
-- **Node classes**: `Supplier`, `Manufacturer`, `Distributor`, `Retailer`, `Demand`
+- **Node classes**: `Node`, `Supplier`, `Manufacturer`, `InventoryNode`, `Demand`.
 - **Link**: Represents transportation connections between nodes, with configurable cost and lead time
 - **Inventory**: Tracks stock levels and related operations at each node.
 - **Product and RawMaterial**: Define supply chain items.
 - **InventoryReplenishment**: Abstract base for implementing replenishment policies:
     - **SSReplenishment**: order up to max when stock drops below s.
-    - **RQReplenishment**: Fixed quantity reorder when stock drops below a threshold.
-    - **PeriodicReplenishment**: Replenish at regular time intervals.
+    - **RQReplenishment**: fixed quantity reorder when stock drops below a threshold.
+    - **PeriodicReplenishment**: replenish at regular time intervals.
 
 - **SupplierSelectionPolicy**: Abstract base for implementing supplier selection strategies:
     - **SelectFirst**: Selects the first supplier.
@@ -58,7 +60,7 @@ SupplyNetPy provides core components for supply chain modeling:
 ## Why SupplyNetPy?
 
 - **Open-source and extensible**: Designed for researchers, students, and professionals; easy to extend or integrate into larger systems.
-- **Specialized for supply chain dynamics**: Purpose-built for supply chain simulation, not generic discrete-event modeling.
+- **Specialized for supply chain dynamics**: Specifically designed and built for supply chain simulation.
 - **Reproducible and customizable**: Enables experimentation with fully configurable models, suppliers behaviours and stochastic elements.
 
 ---
