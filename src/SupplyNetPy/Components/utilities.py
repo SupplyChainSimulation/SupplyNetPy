@@ -1,9 +1,7 @@
 import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
-import numpy as np
-#from SupplyNetPy.Components.core import *
-from core import * 
+from SupplyNetPy.Components.core import *
 
 def check_duplicate_id(used_ids, new_id, entity_type="ID"):
     """
@@ -169,6 +167,9 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
     if (isinstance(nodes[0],Node) or isinstance(links[0],Link) or isinstance(demands[0],Demand)) and env is None:
         global_logger.logger.error("Please provide SimPy Environment object env")
         raise ValueError("A SimPy Environment object is required!")
+    if len(nodes)==0 or len(links)==0 or len(demands)==0:
+        global_logger.logger.error("Nodes, links, and demands cannot be empty")
+        raise ValueError("Nodes, links, and demands cannot be empty")
     if(env is None):
         env = simpy.Environment()
     supplychainnet = {"nodes":{},"links":{},"demands":{}} # create empty supply chain network
@@ -316,6 +317,7 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
     avg_available_inv = 0
     total_inv_carry_cost = 0
     total_inv_spend = 0
+    total_inv_waste = 0
     total_transport_cost = 0
     total_revenue = 0
     total_cost = 0
@@ -328,7 +330,7 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
     total_fulfillment_received = [0, 0] # [orders, products]
     total_shortage = [0, 0] # [orders, products]
     total_backorders = [0, 0] # [orders, products]
-
+    
     for key, node in supplychainnet["nodes"].items():
         if("infinite" in node.node_type.lower()): # skip infinite suppliers
             continue
@@ -338,6 +340,7 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
             avg_available_inv += sum([x[1] for x in node.inventory.instantaneous_levels])/len(node.inventory.instantaneous_levels) 
         total_inv_carry_cost += node.inventory.carry_cost
         total_inv_spend += node.stats.inventory_spend_cost
+        total_inv_waste += node.stats.inventory_waste
         total_transport_cost += node.stats.transportation_cost
         total_cost += node.stats.node_cost
         total_revenue += node.stats.revenue
@@ -371,6 +374,7 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
     supplychainnet["avg_available_inv"] = avg_available_inv
     supplychainnet["inventory_carry_cost"] = total_inv_carry_cost   
     supplychainnet["inventory_spend_cost"] = total_inv_spend
+    supplychainnet["inventory_waste"] = total_inv_waste
     supplychainnet["transportation_cost"] = total_transport_cost
     supplychainnet["revenue"] = total_revenue
     supplychainnet["total_cost"] = total_cost
@@ -399,3 +403,37 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
     for key in sorted(supplychainnet.keys()):
         logger.info(f"{key.ljust(max_key_length)}: {supplychainnet[key]}")
     return supplychainnet
+
+def print_node_wise_performance(nodes_object_list):
+    """
+    This function prints the performance metrics for each supply chain node provided in the nodes_object_list.
+
+    Parameters:
+        nodes_object_list (list): List of supply chain node objects
+
+    Returns: 
+        None
+    """
+
+    if not nodes_object_list:
+        print("No nodes provided.")
+        return
+
+    # Pre-fetch statistics from all nodes
+    stats_per_node = {node.name: node.stats.get_statistics() for node in nodes_object_list}
+    stat_keys = sorted(next(iter(stats_per_node.values())).keys())
+
+    # Determine column widths
+    col_width = 25
+    header = "Performance Metric".ljust(col_width)
+    for name in stats_per_node:
+        header += name.ljust(col_width)
+    print(header)
+
+    # Print row-wise stats
+    for key in stat_keys:
+        row = key.ljust(col_width)
+        for name in stats_per_node:
+            value = stats_per_node[name].get(key, "N/A")
+            row += str(value).ljust(col_width)
+        print(row)
