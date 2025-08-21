@@ -53,7 +53,10 @@ def validate_number(name: str, value) -> None:
         
 class NamedEntity:
     """
-    The `NamedEntity` class provides a standardized way to display meaningful names for objects in the supply chain model. When printed or displayed, the object will show its `name` (if defined), otherwise its `ID`, or the class name as a fallback. This improves the readability and interpretability of simulation outputs by ensuring objects are easily identifiable.
+    The `NamedEntity` class provides a standardized way to display names of the objects in the supply chain model. 
+    When printed or displayed, the object will show its `name` (if defined), otherwise its `ID`, or the class name 
+    as a fallback. This improves the readability and interpretability of simulation outputs by ensuring objects are 
+    easily identifiable.
     
     Parameters:
         None
@@ -75,7 +78,9 @@ class NamedEntity:
 
 class InfoMixin:
     """
-    The `InfoMixin` class allows objects to easily provide their key details and statistics as dictionaries. This helps in quickly summarizing, logging, or analyzing object data in a structured and consistent way across the simulation.
+    The `InfoMixin` class allows objects to easily provide their key details and statistics as dictionaries. 
+    This helps in quickly summarizing, logging, or analyzing object data in a structured and consistent way 
+    across the simulation.
 
     Parameters:
         None
@@ -127,7 +132,10 @@ class InfoMixin:
 
 class Statistics(InfoMixin):
     """
-    The `Statistics` class tracks and summarizes key performance indicators for each node in the supply chain. It monitors essential metrics such as demand, inventory levels, shortages, backorders, costs, revenue, and profit. The class supports both automatic periodic updates and manual updates through the `update_stats` method, which can be called at any point in the simulation to immediately record changes. By maintaining detailed, node-specific statistics, this class provides valuable insights into supply chain efficiency, product flow, and financial outcomes in real time.
+    The `Statistics` class tracks and summarizes key performance indicators for each node in the supply chain. 
+    It monitors essential metrics such as demand, inventory levels, shortages, backorders, costs, revenue, and profit. 
+    The class supports both automatic periodic updates and manual updates through the `update_stats` method, 
+    which can be called at any point in the simulation to immediately record changes.
 
     Parameters:
         node (object): The node for which statistics are tracked.
@@ -136,7 +144,7 @@ class Statistics(InfoMixin):
 
     Attributes:
         node (object): The node to which this statistics object belongs.
-        name (str): Name of the statistics object.
+        name (str): Name of the statistics object. By default, it is the node's name post-fix " statistics".
         demand_placed (list): Orders and quantities placed by this node.
         fulfillment_received (list): Orders and quantities received by this node.
         demand_received (list): Orders and quantities demanded at this node.
@@ -276,7 +284,7 @@ class Statistics(InfoMixin):
             if "cost" in key: # consider all cost attributes
                 total_cost += value
         self.node_cost = total_cost
-        self.revenue = self.demand_received[1] * self.node.sell_price if hasattr(self.node, 'sell_price') else 0
+        self.revenue = self.demand_fulfilled[1] * self.node.sell_price if hasattr(self.node, 'sell_price') else 0
         self.profit = self.revenue - self.node_cost
 
     def update_stats_periodically(self, period):
@@ -298,7 +306,9 @@ class Statistics(InfoMixin):
 
 class RawMaterial(NamedEntity, InfoMixin):
     """
-    The `RawMaterial` class represents the basic input resources in a supply chain model. It defines key properties of a raw material, including extraction rate, extraction time, mining cost, and selling price. This class helps model the sourcing and extraction processes in the network, providing the foundation for simulating how raw materials flow through the supply chain.
+    The `RawMaterial` class represents a raw material in a supply chain. It defines key properties of a raw material, 
+    including extraction rate, extraction time, mining cost, and selling price. This class helps model the extraction 
+    processes at a raw material supplier node in the network.
 
     Parameters:
         ID (str): ID of the raw material.
@@ -354,6 +364,7 @@ class RawMaterial(NamedEntity, InfoMixin):
         """
         validate_positive("Extraction quantity", extraction_quantity)
         validate_non_negative("Extraction time", extraction_time)
+        validate_non_negative("Mining Cost", mining_cost)
         validate_positive("Cost", cost)
         self._info_keys = ["ID", "name", "extraction_quantity", "extraction_time", "mining_cost", "cost"]
         self._stats_keys = []        
@@ -366,7 +377,11 @@ class RawMaterial(NamedEntity, InfoMixin):
 
 class Product(NamedEntity, InfoMixin):
     """
-    The `Product` class models a finished good in the supply chain. It defines essential properties such as manufacturing cost, manufacturing time, selling price, and the raw materials required to produce it. The class supports both buying and manufacturing workflows, allowing nodes to either purchase the product directly or produce it using defined raw material combinations. Products are typically manufactured in batches, with each batch size and cycle time configurable, making it easy to model real-world production processes.
+    The `Product` class models a finished good in the supply chain. It defines essential properties such 
+    as manufacturing cost, manufacturing time, selling price, and the raw materials required to produce it. 
+    The class supports both buying and manufacturing workflows, allowing nodes to either purchase the product 
+    directly or produce it using defined raw material combinations. Products are typically manufactured in 
+    batches, with each batch size and cycle time configurable, making it easy to model real-world production processes.
 
     Parameters:
         ID (str): ID of the product.
@@ -374,7 +389,7 @@ class Product(NamedEntity, InfoMixin):
         manufacturing_cost (float): Manufacturing cost per unit.
         manufacturing_time (float): Time to manufacture one batch.
         sell_price (float): Selling price per unit.
-        raw_materials (list): List of (raw material object, quantity) tuples required for one unit.
+        raw_materials (list): List of (raw material object, quantity) tuples required to produce one unit.
         batch_size (int): Number of units manufactured per cycle.
         buy_price (float, optional): Buying price per unit (default is 0).
 
@@ -387,7 +402,7 @@ class Product(NamedEntity, InfoMixin):
         manufacturing_time (float): Manufacturing time for one batch.
         sell_price (float): Selling price per unit.
         buy_price (float): Buying price per unit.
-        raw_materials (list): List of (raw material, quantity) tuples required for one unit.
+        raw_materials (list): List of (raw material, quantity) tuples required to produce one unit.
         batch_size (int): Units manufactured per cycle.
 
     Functions:
@@ -443,6 +458,12 @@ class Product(NamedEntity, InfoMixin):
         if raw_materials is None or len(raw_materials) == 0:
             global_logger.logger.error("Raw materials cannot be empty.")
             raise ValueError("Raw materials cannot be empty.")
+        for raw_mat in raw_materials:
+            if not isinstance(raw_mat[0], RawMaterial):
+                raise ValueError("Invalid raw material.")
+            if raw_mat[1] <= 0:
+                raise ValueError("Invalid quantity for raw material.")
+            
         self._info_keys = ["ID", "name", "manufacturing_cost", "manufacturing_time", "sell_price", "buy_price", "raw_materials", "batch_size"]
         self._stats_keys = []
         self.ID = ID # ID of the product (alphanumeric)
@@ -457,11 +478,15 @@ class Product(NamedEntity, InfoMixin):
 class InventoryReplenishment(InfoMixin, NamedEntity):
     """
     
-    The `InventoryReplenishment` class defines the abstract structure for inventory replenishment policies within SupplyNetPy. It provides a common interface for managing how nodes place replenishment orders during the simulation.
+    The `InventoryReplenishment` class defines the abstract structure for inventory replenishment policies within 
+    SupplyNetPy. It provides a common interface for managing how nodes place replenishment orders during the simulation.
 
-    This class is not intended for direct use. It must be subclassed to implement specific replenishment strategies, such as (s, S), reorder point–quantity (RQ), or periodic review policies.
+    This class is not intended for direct use. It must be subclassed to implement specific replenishment strategies, 
+    such as min-max (s, S), reorder point, quantity (RQ), or periodic review (TQ) policies.
 
-    The `run` method should be overridden to define the replenishment logic for the policy. The class integrates with the SimPy environment to support time-driven inventory management. The `inventory_drop` event is used to signal stock depletion, enabling the replenishment process to respond to changes in inventory levels in real time.
+    The `run` method should be overridden to define the replenishment logic for the policy. The class integrates with 
+    the SimPy environment to support time-driven inventory management. The `inventory_drop` event is used to signal stock 
+    depletion, enabling the replenishment process to respond to changes in inventory levels in real time.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
@@ -499,6 +524,8 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
         Returns:
             None
         """
+        if not isinstance(env, simpy.Environment):
+            raise ValueError("Invalid environment. Provide a valid SimPy environment.")
         self._info_keys = ["node", "params"]
         self.env = env  # simulation environment
         self.node = node  # node to which this policy applies
@@ -512,9 +539,13 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
 
 class SSReplenishment(InventoryReplenishment):
     """
-    Implements the (s, S) min-max inventory replenishment policy with optional safety stock support.
+    Implements the (s, S) or min-max inventory replenishment policy with optional safety stock support.
 
-    When the inventory level falls to or below the reorder point (s), an order is placed to replenish stock up to the order-up-to level (S). If safety stock is provided, both the reorder point and the order-up-to level are adjusted accordingly. The policy supports both event-driven and periodic inventory checks, with an optional initial review delay. Supplier selection is automatically managed using the node’s supplier selection policy.
+    When the inventory level falls to or below the reorder point (s), an order is placed to replenish 
+    stock up to the order-up-to level (S). If safety stock is provided, both the reorder point and the 
+    order-up-to level are adjusted accordingly. The policy supports both event-driven and periodic inventory 
+    checks, with an optional initial review delay. Supplier selection is automatically managed using the 
+    node’s supplier selection policy.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
@@ -555,8 +586,14 @@ class SSReplenishment(InventoryReplenishment):
         Returns:
             None
         """
+
+
         validate_non_negative("Reorder point (s)", params['s']) # this assertion ensures that the reorder point is positive
         validate_positive("Order-up-to level (S)", params['S']) # this assertion ensures that the order-up-to level is non-negative
+        if 's' not in params or 'S' not in params:
+            raise ValueError("Parameters 's' and 'S' must be provided for the (s, S) replenishment policy.")
+        if params['s'] > params['S']:
+            raise ValueError("Reorder point (s) must be less than or equal to order-up-to level (S).")
         super().__init__(env, node, params)
         self._info_keys.extend(["name","first_review_delay","period"])
         self.name = "min-max replenishment (s, S)"
@@ -607,13 +644,14 @@ class SSReplenishment(InventoryReplenishment):
 
 class RQReplenishment(InventoryReplenishment):
     """
-    Implements a Reorder Quantity (RQ) Inventory Replenishment Policy.
+    Implements a Reorder Quantity (RQ) Inventory Replenishment Policy with optional safety stock support.
 
     This policy continuously monitors inventory levels and places a replenishment order when the inventory 
     falls to or below the reorder point (R). The replenishment quantity is fixed at Q units per order.
 
-    The inventory can be checked continuously (event-based) if 'period' is set to 0 (default) and periodically if a positive 'period' is provided.
-    An optional first review delay can be configured to introduce a delay before the first inventory check begins.
+    The inventory can be checked continuously (event-based) if 'period' is set to 0 (default) and periodically if 
+    a positive 'period' is provided. An optional first review delay can be configured to introduce a delay before 
+    the first inventory check begins.
 
     Supplier selection is managed automatically using the node's supplier selection policy. If the selected 
     supplier does not have sufficient inventory, the shortage is recorded.
@@ -621,7 +659,7 @@ class RQReplenishment(InventoryReplenishment):
     Parameters:
         env (simpy.Environment): Simulation environment.
         node (object): Node to which this policy applies.
-        params (dict): Parameters for the replenishment policy: R, Q, and optional parameters(fist_review_delay, period).
+        params (dict): Parameters for the replenishment policy: R, Q, and optional parameters (safety_stock, first_review_delay, period).
 
     Attributes:
         _info_keys (list): List of keys to include in the info dictionary.
@@ -643,7 +681,7 @@ class RQReplenishment(InventoryReplenishment):
         Parameters:
             env (simpy.Environment): Simulation environment.
             node (object): Node to which this policy applies.
-            params (dict): Replenishment policy parameters.
+            params (dict): Replenishment policy parameters R, Q, and optional parameters (safety_stock, first_review_delay, period).
 
         Attributes:
             _info_keys (list): List of keys to include in the info dictionary.
@@ -703,16 +741,19 @@ class RQReplenishment(InventoryReplenishment):
 
 class PeriodicReplenishment(InventoryReplenishment):
     """
-    Implements a time-based inventory replenishment policy where a fixed quantity `Q` is ordered at regular intervals `T` with optional safety stock support.
+    Implements a time-based inventory replenishment policy where a fixed quantity `Q` is ordered at regular intervals
+    `T` with optional safety stock support.
 
-    This policy ensures consistent inventory reviews and replenishment, independent of the current stock level. Supports an optional initial review delay before starting periodic checks.
+    This policy ensures consistent inventory reviews and replenishment, independent of the current stock level. Supports 
+    an optional initial review delay before starting periodic checks.
 
-    Supplier selection is automatically managed using the node’s defined supplier selection policy. Shortages are recorded if the supplier does not have enough stock.
+    Supplier selection is automatically managed using the node’s defined supplier selection policy. Shortages are 
+    recorded if the supplier does not have enough stock.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
         node (object): Node to which this policy applies.
-        params (dict): Dictionary containing replenishment parameters: T, Q, and optional parameters (first_review_delay).
+        params (dict): Dictionary containing replenishment parameters: T, Q, and optional parameters (safety_stock, first_review_delay).
 
     Attributes:
         _info_keys (list): List of keys to include in the info dictionary.
@@ -733,7 +774,7 @@ class PeriodicReplenishment(InventoryReplenishment):
         Parameters:
             env (simpy.Environment): simulation environment
             node (object): node to which this policy applies
-            params (dict): parameters for the replenishment policy (T, Q)
+            params (dict): parameters for the replenishment policy (T, Q), and optional parameters (safety_stock, first_review_delay).
 
         Attributes:
             _info_keys (list): list of keys to include in the info dictionary
@@ -746,7 +787,7 @@ class PeriodicReplenishment(InventoryReplenishment):
         Returns:
             None
         """
-        validate_non_negative("Replenishment period (T)", params['T'])  # this assertion ensures that the replenishment period is non-negative
+        validate_positive("Replenishment period (T)", params['T'])  # this assertion ensures that the replenishment period is positive
         validate_positive("Replenishment quantity (Q)", params['Q'])  # this assertion ensures that the replenishment quantity is positive
         super().__init__(env, node, params)
         self._info_keys.extend(["name", "first_review_delay"])  # add the keys to the info dictionary
@@ -1056,9 +1097,8 @@ class SelectFastest(SupplierSelectionPolicy):
     Selects the supplier with the shortest lead time to deliver the product.
 
     The selection is based on minimizing lead time among all connected suppliers.
-    Supports both:
-        - Dynamic selection: Evaluated at each order event.
-        - Fixed selection: Locks the first selected supplier for all subsequent orders.
+    Supports both dynamic selection (evaluated at each order event) and fixed selection (locks the first 
+    selected supplier for all subsequent orders).
 
     Parameters:
         node (object): Node to which this supplier selection policy applies.
@@ -1119,10 +1159,17 @@ class Node(NamedEntity, InfoMixin):
 
     Each node can experience disruptions either probabilistically or based on custom-defined disruption and recovery times.
     During disruptions, the node becomes inactive and resumes operations after the specified recovery period.
-    Tracks key performance metrics like transportation costs, node-specific costs, profit and net profit, products sold, demand placed, and shortages.
+    Tracks key performance metrics like transportation costs, node-specific costs, profit and net profit, products sold, 
+    demand placed, and shortages.
 
-    Supports integration with Replenishment policies: (s, S), RQ, Periodic and Supplier selection policies: Available, Cheapest, Fastest
-    Supported node types: "infinite_supplier", "supplier", "manufacturer", "factory", "warehouse", "distributor", "retailer", "store", "demand"
+    Supports integration with inbuilt replenishment policies: SS, RQ, Periodic and any custom policy created by extending 
+    the `ReplenishmentPolicy` class.
+
+    Supplier selection policies: Available, Cheapest, Fastest and any custom policy created by extending the 
+    `SupplierSelectionPolicy` class.
+
+    Supported node types: "infinite_supplier", "supplier", "manufacturer", "factory", "warehouse", "distributor", 
+    "retailer", "store", "demand"
 
     Parameters:
         env (simpy.Environment): Simulation environment.
@@ -1189,6 +1236,8 @@ class Node(NamedEntity, InfoMixin):
         Returns:
             None
         """
+        if not isinstance(env, simpy.Environment):
+            raise ValueError("Invalid environment. Provide a valid SimPy environment.")
         if(node_type.lower() not in ["infinite_supplier","supplier", "manufacturer", "factory", "warehouse", "distributor", "retailer", "store", "demand"]):
             global_logger.logger.error(f"Invalid node type. Node type: {node_type}")
             raise ValueError("Invalid node type.")
@@ -1232,6 +1281,7 @@ class Node(NamedEntity, InfoMixin):
         Returns:
             None
         """
+        # TODO: interrupt all ongoing processes spawned by this node on disruption, and resume them after recovery.
         while True:
             if(self.node_status=="active"):
                 if(self.node_disrupt_time): # if node_disrupt_time is provided, wait for the disruption time
@@ -1249,8 +1299,8 @@ class Node(NamedEntity, InfoMixin):
                 validate_positive(name="node_recovery_time", value=recovery_time) # check if disrupt_time is positive
                 yield self.env.timeout(recovery_time)
                 self.node_status = "active"
-                self.logger.logger.info(f"{self.env.now}:{self.ID}: Node recovered from disruption.")    
-            
+                self.logger.logger.info(f"{self.env.now}:{self.ID}: Node recovered from disruption.")
+
 class Link(NamedEntity, InfoMixin):
     """
     Represents a transportation connection between two nodes in the supply network.
@@ -1328,7 +1378,12 @@ class Link(NamedEntity, InfoMixin):
         """
         self._info_keys = ["ID", "source", "sink", "cost", "lead_time", "link_failure_p"]
         self._stats_keys = ["status"]
-
+        if not isinstance(env, simpy.Environment):
+            raise ValueError("Invalid environment. Provide a valid SimPy environment.")
+        if not isinstance(source, Node) or not isinstance(sink, Node):
+            raise ValueError("Invalid source or sink node. Provide valid Node instances.")
+        if not callable(lead_time):
+            raise ValueError("Invalid lead time function. Provide a callable function.")
         if(lead_time == None):
             global_logger.logger.error("Lead time cannot be None. Provide a function to model stochastic lead time.")
             raise ValueError("Lead time cannot be None. Provide a function to model stochastic lead time.")
@@ -1382,6 +1437,7 @@ class Link(NamedEntity, InfoMixin):
         Returns:
             None
         """
+        # TODO: interrupt all ongoing transports by this link on disruption.
         while True:
             if(self.status=="active"):
                 if(self.link_disrupt_time): # if link_disrupt_time is provided, wait for the disruption time
@@ -1405,8 +1461,8 @@ class Inventory(NamedEntity, InfoMixin):
     """
     The Inventory class models stock management within a node in the supply network. 
     It supports both perishable and non-perishable items, enforces capacity limits, 
-    tracks on-hand levels, and integrates with replenishment policies. For perishable 
-    inventories, it manages product shelf life and automatically removes expired items. 
+    tracks on-hand levels, and notifies replenishment policy whenever inventory levels drops.
+    For perishable inventories, it manages product shelf life and automatically removes expired items. 
     The class also records inventory levels and calculates carrying costs over time.
 
     Parameters:
@@ -1507,6 +1563,7 @@ class Inventory(NamedEntity, InfoMixin):
         validate_positive("Capacity", capacity)
         validate_non_negative("Initial level", initial_level)
         validate_non_negative("Inventory holding cost",holding_cost)
+        validate_non_negative("Shelf life", shelf_life)
         self._info_keys = ["capacity", "initial_level", "replenishment_policy", "holding_cost", "shelf_life", "inv_type"]
         self._stats_keys = ["level", "carry_cost", "instantaneous_levels"]
         self.env = env
@@ -1522,6 +1579,7 @@ class Inventory(NamedEntity, InfoMixin):
         self.last_update_t = self.env.now # last time the carrying cost was updated
         
         if self.inv_type == "perishable":
+            validate_positive("Shelf life", shelf_life)
             self.shelf_life = shelf_life
             self.perish_queue = [(0, initial_level)]
             self.waste = 0
@@ -1623,6 +1681,8 @@ class Inventory(NamedEntity, InfoMixin):
                 self.waste += qty
                 if qty > 0:
                     self.get(qty) # get/remove expired items from the inventory
+                else:
+                    self.perish_queue.pop(0)
 
     def update_carry_cost(self):
         """
@@ -1634,12 +1694,12 @@ class Inventory(NamedEntity, InfoMixin):
 
 class Supplier(Node):
     """
-    The Supplier class represents a supplier in the supply network that continuously 
+    The `Supplier` class represents a supplier in the supply network that continuously 
     extracts raw materials whenever the inventory is not full. Each supplier is associated 
     with a specific raw material and can have either finite or infinite inventory capacity.
 
     For finite suppliers, raw materials are extracted in batches based on the extraction 
-    quantity and extraction time specified by the RawMaterial object. For infinite suppliers, 
+    quantity and extraction time specified by the instance of `RawMaterial` class. For infinite suppliers, 
     inventory is considered unlimited.
 
     Parameters:
@@ -1755,13 +1815,13 @@ class Supplier(Node):
 
 class InventoryNode(Node):
     """
-    The InventoryNode class represents an inventory management node in the supply network, 
-    such as a retailer or distributor. It manages inventory levels, replenishment policies, 
+    The `InventoryNode` class represents an inventory management node in the supply network, 
+    such as a retailer, a store, a warehouse, or distributor. It manages inventory levels, replenishment policies, 
     supplier selection, and order processing dynamically.
 
     The node can handle both perishable and non-perishable inventories and supports 
-    automatic replenishment using various replenishment policies. InventoryNode 
-    interacts with multiple supplier links and selects suppliers based on the 
+    automatic replenishment using various replenishment policies. The node can also
+    interact with multiple supplier links and selects suppliers based on the 
     configured selection policy.
 
     Parameters:
@@ -1864,16 +1924,21 @@ class InventoryNode(Node):
             None
 
         Behavior:
-            The inventory node sells the product to the customers. It replenishes the inventory from the suppliers according to the replenishment policy. 
-            The inventory node can have multiple suppliers. It chooses a supplier based on the availability of the product at the suppliers.
-            The product buy and sell prices are set during initialization. The inventory node is expected to sell the product at a higher price than the buy price, but this is user-configured.
+            The inventory node stocks the product in inventory to make it available to the consumer node or demand node (end customer). 
+            It orders product from its supplier node to maintain the right inventory levels according to the replenishment policy.
+            The inventory node can have multiple suppliers. It chooses a supplier based on the specified supplier selection policy. 
+            The product buy and sell prices are set during initialization. The inventory node is expected to sell the product at 
+            a higher price than the buy price, but this is user-configured.
         """
         super().__init__(env=env,ID=ID,name=name,node_type=node_type,**kwargs)
+        validate_non_negative("Product Sell Price", product_sell_price)
+        validate_non_negative("Product Buy Price", product_buy_price)
         self._info_keys.extend(["sell_price", "buy_price", "ongoing_order", "selection_policy"])
+        self.replenishment_policy = None
         if(replenishment_policy):
             self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
             self.env.process(self.replenishment_policy.run())
-
+            
         self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, 
                                    inv_type=inventory_type, holding_cost=inventory_holding_cost, 
                                    replenishment_policy=self.replenishment_policy, shelf_life=shelf_life)
@@ -2003,8 +2068,8 @@ class Manufacturer(Node):
 
     Behavior:
         The manufacturer continuously monitors raw material inventory levels and initiates production when raw materials 
-        are available. Finished products are added to the inventory upon completion. If raw materials are insufficient, 
-        the manufacturer places replenishment orders with connected suppliers.
+        are available. Finished products are added to the inventory upon completion of a manufacturing cycle. If raw 
+        materials are insufficient, the manufacturer places replenishment orders with connected suppliers.
 
     Assumptions:
         The manufacturer produces only a single type of product.
@@ -2072,8 +2137,11 @@ class Manufacturer(Node):
         if product == None:
             global_logger.logger.error("Product not provided for the manufacturer.")
             raise ValueError("Product not provided for the manufacturer.")
-        
+        elif not isinstance(product, Product):
+            raise ValueError("Invalid product type. Expected a Product instance.")
+        validate_positive("Product Sell Price", product_sell_price)
         self._info_keys.extend(["replenishment_policy", "product_sell_price"])
+        self.replenishment_policy = None
         if(replenishment_policy):
             self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
             self.env.process(self.replenishment_policy.run())
@@ -2178,7 +2246,7 @@ class Manufacturer(Node):
 
     def process_order_raw(self, raw_mat_id, supplier, reorder_quantity):
         """
-        Place an order for raw materials from the suppliers.
+        Place an order for given raw material from the given supplier for replenishment.
         
         Parameters:
             supplier (Link): The supplier link from which the order is placed.
@@ -2226,7 +2294,7 @@ class Manufacturer(Node):
     
     def process_order(self, supplier, reorder_quantity):
         """
-        Place an order for raw materials from the suppliers.
+        Place an order for raw materials and replenish raw materials inventory.
         
         Parameters:
             supplier (Link): Supplier link
@@ -2255,13 +2323,19 @@ class Manufacturer(Node):
 
 class Demand(Node):
     """
-    The `Demand` class represents a customer-facing node that generates and fulfills product orders within the supply network. It models dynamic demand patterns using user-defined functions for order arrival times and order quantities, and manages customer tolerance for waiting in case of product unavailability.
-    The demand node automatically places customer orders at configurable intervals and can handle situations where the requested quantity is not immediately available. Customers can either wait (if tolerance is set) or leave the system unfulfilled.
+    The `Demand` class represents a demand node that generates product orders within the supply network. 
+    It models dynamic demand patterns using user-defined functions for order arrival times and order quantities, and manages 
+    customer tolerance for waiting in case of product unavailability.
+    The demand node automatically places customer orders at configurable intervals and can handle situations where the requested 
+    quantity is not immediately available. Customers can either wait (if tolerance is set) or leave the system unfulfilled.
 
-    For example, if customers arrive at a rate of one every 5 minutes and order between 10-20 units per request, the demand node will place these orders to its connected supply node. If the requested quantity is unavailable, the system either splits the order (if partial fulfillment is allowed) or waits for the inventory to be replenished, depending on the customer's tolerance.
-
-    The class supports: Customizable lead time and delivery cost per order, Dynamic order splitting based on the minimum split ratio, Backorder management and real-time inventory check.
-    The customer behavior, order processing, and shortage tracking are automatically simulated using SimPy processes.
+    The class supports: 
+    
+    - Customizable lead time and delivery cost per order, 
+    
+    - Dynamic order splitting based on the minimum split ratio, 
+    
+    - Backorder management and real-time inventory check.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
@@ -2299,16 +2373,20 @@ class Demand(Node):
     Behavior:
         The demand node generates customer orders at random intervals and quantities using the specified arrival 
         and quantity models. If the upstream inventory can satisfy the order, delivery is processed immediately. 
-        If not, the customer may wait for the order to be fulfilled within their tolerance time, possibly accepting 
+        If not, 
+        
+        - the customer may leave immediately (if tolerance is zero)
+
+        - else, the customer waits for the order to be fulfilled within their tolerance time, possibly accepting
         partial deliveries if a split ratio is allowed. If the tolerance is exceeded, the unmet demand is recorded as a shortage.
 
     Assumptions:
         - Customer orders arrive following the provided stochastic arrival model.
         - Order quantities follow the specified stochastic quantity model.
-        - Customers can accept split deliveries based on the minimum split ratio.
         - Customers may wait for the fulfillment of their orders up to the defined tolerance time.
+        - Customers can accept split deliveries based on the minimum split ratio.
         - If customer tolerance is zero, customer returns without waiting for fulfillment.
-        - Delivery cost and lead time are sampled dynamically for each order.
+        - Delivery cost and lead time are sampled dynamically for each order (if specified).
         - The connected upstream node must not be a supplier; it should typically be a retailer or distributor node.
     """
     def __init__(self,
@@ -2358,6 +2436,8 @@ class Demand(Node):
         """
         if order_arrival_model is None or order_quantity_model is None:
             raise ValueError("Order arrival and quantity models cannot be None.")
+        if not callable(order_arrival_model) or not callable(order_quantity_model):
+            raise ValueError("Order arrival and quantity models must be callable functions.")
         if demand_node is None or "supplier" in demand_node.node_type:
             raise ValueError("Demand node must be a valid non-supplier node.")
         validate_non_negative("Customer tolerance", tolerance)
