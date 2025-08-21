@@ -6,6 +6,7 @@ nav:
   - Examples: 
     - Supply Chain With Factory: example.md
     - News Vendor Example: example-newvendor.md
+    - Complex Supply Chain Example: example-complex.md
   - API reference:
     - Introduction: api-reference/api-intro.md
     - Components.core:

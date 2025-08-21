@@ -30,30 +30,27 @@ import SupplyNetPy.Components as scm
 import simpy
 env = simpy.Environment()
 
-# lets create a single product supply chain with just one retailer
-# lets create a product
-product1 = scm.Product(sku="12325",name="Brush",description="Cleaning supplies",cost=200,profit=100,product_type="Non-perishable",shelf_life=None)
+# let us define a supplier with infinite supply
+supplier1 = {'ID': 'S1', 'name': 'Supplier1', 'node_type': 'infinite_supplier'}
 
-# lets create a retailer 
-retailer1 = scm.Retailer(env=env,name=f"retailer1",node_id=125,location="Mumbai",products=[product1],inv_capacity=300,
-                         inv_holding_cost=3,reorder_level=100,)
+# a distributor with inventory
+distributor1 = {'ID': 'D1', 'name': 'Distributor1', 'node_type': 'distributor', 
+                'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 0.2,  # inventory params
+                'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s':100,'S':150}, # inventory params
+                'product_buy_price': 100,'product_sell_price': 105}
 
-# lets create some random demand at this retailer using Poisson distribution
-demand_ret1 = scm.Demand(env=env, arr_dist="Poisson",arr_params=[6],node=retailer1,demand_dist="Uniform",demand_params=[1,10])
+# linking supplier1 with distributor1
+link1 = {'ID': 'L1', 'source': 'S1', 'sink': 'D1', 'cost': 5, 'lead_time': lambda: 2}
 
-# lets assemble all nodes into a supply chain network
-scnet = scm.createSC(products=[product1],
-                     nodes = [retailer1],
-                     links = [],
-                     demands = [demand_ret1])
+# define demand at the distributor
+demand1 = {'ID': 'd1', 'name': 'Demand1', 'order_arrival_model': lambda: 1,
+            'order_quantity_model': lambda: 10, 'demand_node': 'D1'}
 
-# lets simulate it and see the log on screen
-# by deafult the logging is set to appear on screen,
-# and also written in a file called simulation.log under directory 'simlog'
+# create a supply chain network
+supplychainnet = scm.create_sc_net(nodes=[supplier1, distributor1], links=[link1], demands=[demand1])
 
-# lets change it to appear on the screen for now
-scm.global_logger.enable_logging(log_to_file=False,log_to_screen=True)
-scm.simulate_sc_net(env,scnet,sim_time=20)
+# simulate and see results
+supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=20, logging=True)
 ~~~
 
 
