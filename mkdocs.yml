@@ -33,7 +33,12 @@ nav:
       - Manufacturer: api-reference/api-ref-core/#manufacturerclass
       - Demand: api-reference/api-ref-core/#demandclass
     - Components.logger: api-reference/api-ref-logger.md
-    - Components.utilities: api-reference/api-ref-utilities.md
+    - Components.utilities: 
+      - Creating a Supply Chain: api-reference/api-ref-utilities/#create_sc_net
+      - Simulating the Network: api-reference/api-ref-utilities/#simulate_sc_net
+      - Visualizing the Network: api-reference/api-ref-utilities/#visualize_sc_net
+      - Printing Node-wise Performance: api-reference/api-ref-utilities/#print_node_wise_performance
+      - Getting Supply Chain Information: api-reference/api-ref-utilities/#get_sc_net_info
 
 theme:
   name: readthedocs
