@@ -55,4 +55,4 @@ supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=20, logging=True)
 
 
 ## Documentation
-For detailed documentation and advanced usage, please refer to the [official documentation](#).
+For detailed documentation and advanced usage, please refer to the [official documentation](https://supplychainsimulation.github.io/SupplyNetPy/).
