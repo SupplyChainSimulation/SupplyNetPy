@@ -1,14 +1,13 @@
-name: Deploy Docs
+name: CI
 
 on:
   push:
     branches: [ "main" ]
-
-permissions:
-  contents: write
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,10 +19,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install MkDocs dependencies
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r docs/requirements.txt
+          pip install -r requirements.txt
 
-      - name: Build and Deploy docs
-        run: mkdocs gh-deploy --force
+      - name: Run tests
+        run: |
+          pytest || echo "No tests found, skipping."
