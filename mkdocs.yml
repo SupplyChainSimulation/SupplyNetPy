@@ -1,4 +1,10 @@
 site_name: SupplyNetPy Documentation
+
+site_url: https://supplychainsimulation.github.io/SupplyNetPy/
+
+extra_css:
+  - https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css
+
 nav:
   - Home: index.md
   - SupplyNetPy in 10 Minutes: ten_min.md
@@ -57,5 +63,3 @@ plugins:
           paths: [src]
           options:
             show_source: false
-
-site_url: https://supplychainsimulation.github.io/SupplyNetPy/
