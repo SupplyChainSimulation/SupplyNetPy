@@ -3,8 +3,6 @@ import simpy
 from unittest.mock import MagicMock, patch
 import SupplyNetPy.Components.utilities as utilities
 
-# Import the functions to test
-
 # Dummy classes to mock core.py dependencies
 class DummyStats:
     def __init__(self):
