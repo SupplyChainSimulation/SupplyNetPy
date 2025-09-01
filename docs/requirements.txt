@@ -1,8 +1,6 @@
 mkdocs
 mkdocs-autorefs
 mkdocs-rtd-dropdown
-markdown-include
 mkdocs-include
-mkdocs-include-markdown-plugin
 mkdocstrings
 mkdocstrings-python
