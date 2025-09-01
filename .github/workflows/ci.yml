@@ -30,6 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          if [ -f docs/requirements.txt ]; then pip install -r docs/requirements.txt; else pip install mkdocs; fi
           pip install pytest pytest-cov flake8
 
       - name: Run lint (flake8)
@@ -37,3 +38,6 @@ jobs:
 
       - name: Run tests
         run: pytest --maxfail=1 --disable-warnings -q --cov=src
+
+      - name: Build docs
+        run: mkdocs build --strict
