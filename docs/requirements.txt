@@ -3,4 +3,5 @@ mkdocs-autorefs
 mkdocs-rtd-dropdown
 mkdocs-include
 mkdocs-include-markdown-plugin
+mkdocstrings
 mkdocstrings-python
