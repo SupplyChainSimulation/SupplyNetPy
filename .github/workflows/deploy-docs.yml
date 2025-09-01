@@ -21,11 +21,17 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install dependencies
         run: |
-          pip install mkdocs
-          pip install mkdocstrings-python
-          pip install mkdocs-include
+          if [ -f docs/requirements.txt ]; then pip install -r docs/requirements.txt; else pip install mkdocs; fi
 
       - name: Build and Deploy
         run: mkdocs gh-deploy --force
