@@ -28,5 +28,5 @@ jobs:
         run: |
           pytest || echo "No tests found, skipping."
       
-      - name: Debug file paths
-        run: ls -R
+      - name: Show installed packages
+        run: pip list | grep mkdocs
