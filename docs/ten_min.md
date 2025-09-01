@@ -252,3 +252,4 @@ supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=20, logging=True)
 ```
 
  Note that an additional parameter, `env`, is passed to the function `create_sc_net` to create a supply chain network. This is necessary because the SimPy environment (`env`) is now created by us and the same needs to be used for creating the supply chain network and running the simulations.
+ 

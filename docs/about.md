@@ -62,5 +62,3 @@ SupplyNetPy provides core components for supply chain modeling:
 - **Open-source and extensible**: Designed for researchers, students, and professionals; easy to extend or integrate into larger systems.
 - **Specialized for supply chain dynamics**: Specifically designed and built for supply chain simulation.
 - **Reproducible and customizable**: Enables experimentation with fully configurable models, suppliers behaviours and stochastic elements.
-
----
