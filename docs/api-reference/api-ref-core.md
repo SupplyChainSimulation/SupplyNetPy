@@ -205,6 +205,3 @@ This module includes the following primary classes:
 <div id="demandclass">
 <h3 class="classhead">Class Demand</h3></div>
 :::SupplyNetPy.Components.core.Demand
-
-
----
