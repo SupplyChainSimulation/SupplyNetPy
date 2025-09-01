@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r install docs/requirements.txt
+          pip install -r docs/requirements.txt
           
       - name: Build and Deploy
         run: mkdocs gh-deploy --force
