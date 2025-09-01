@@ -23,10 +23,8 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r docs/requirements.txt
 
       - name: Run tests
         run: |
           pytest || echo "No tests found, skipping."
-      
-      - name: Show installed packages
-        run: pip list | grep mkdocs
