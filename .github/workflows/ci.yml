@@ -27,3 +27,6 @@ jobs:
       - name: Run tests
         run: |
           pytest || echo "No tests found, skipping."
+      
+      - name: Debug file paths
+        run: ls -R
