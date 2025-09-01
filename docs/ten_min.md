@@ -5,7 +5,7 @@
 SupplyNetPy can be installed using pip:
 
 ```sh
-pip install -i https://test.pypi.org/simple/ supplynetpy
+pip install supplynetpy
 ```
 
 ## Quick Start: Building a Simple Three-Node Supply Chain
