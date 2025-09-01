@@ -1,3 +1,4 @@
 mkdocs
 mkdocstrings-python
 mkdocs-include
+mkdocs-include-markdown-plugin
