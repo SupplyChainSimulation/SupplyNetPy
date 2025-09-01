@@ -96,7 +96,7 @@ It is a simple three-node supply chain with one supplier, a newsvendor (retailer
 
 
 ```python
-{{include('examples/py/newsvendor.py')}}
+{{include('../examples/py/newsvendor.py')}}
 ```
 
 The following plot shows the relationship between profit and order quantity (Q). The curve clearly indicates that the maximum profit is achieved when Q is approximately 110, confirming the analytical solution for the optimal order quantity.
