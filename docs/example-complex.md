@@ -26,7 +26,7 @@ This example demonstrates how to build and simulate a multi‑echelon, hybrid su
 > This script constructs a hybrid network with two distributors and five retailers, then runs a short simulation.
 
 ```python
-{{include('../examples/py/hybrid_big_sc.py')}}
+{{include('examples/py/hybrid_big_sc.py')}}
 ```
 
 ## Sample Output
