@@ -57,3 +57,5 @@ plugins:
           paths: [src]
           options:
             show_source: false
+
+site_url: https://supplychainsimulation.github.io/SupplyNetPy/
