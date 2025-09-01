@@ -6,7 +6,7 @@ SupplyNetPy is a Python library specifically designed and developed to model and
 
 - [SupplyNetPy in 10 minutes](ten_min.md)
     - [Installation](ten_min.md#installation)
-    - [Creating a supply chain network](ten_min.md#lets-create-a-supply-chain-network)
+    - [Creating a supply chain network](ten_min.md#1-import-the-library)
     - [Simulating supply chains](example.md)
 - [Examples](example.md)
 - [API references](api-reference/api-intro.md)
