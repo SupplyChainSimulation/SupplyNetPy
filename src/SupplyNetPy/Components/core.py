@@ -1241,6 +1241,10 @@ class Node(NamedEntity, InfoMixin):
         if(node_type.lower() not in ["infinite_supplier","supplier", "manufacturer", "factory", "warehouse", "distributor", "retailer", "store", "demand"]):
             global_logger.logger.error(f"Invalid node type. Node type: {node_type}")
             raise ValueError("Invalid node type.")
+        if not callable(node_disrupt_time):
+            node_disrupt_time = lambda val=node_disrupt_time: val # convert to a callable function
+        if not callable(node_recovery_time):
+            node_recovery_time = lambda val=node_recovery_time: val # convert to a callable function
         if node_disrupt_time is not None:
             validate_number(name="node_disrupt_time", value=node_disrupt_time()) # check if disrupt_time is a number
         if node_recovery_time is not None:
@@ -1383,7 +1387,7 @@ class Link(NamedEntity, InfoMixin):
         if not isinstance(source, Node) or not isinstance(sink, Node):
             raise ValueError("Invalid source or sink node. Provide valid Node instances.")
         if not callable(lead_time):
-            raise ValueError("Invalid lead time function. Provide a callable function.")
+            lead_time = lambda val=lead_time: val # convert to callable 
         if(lead_time == None):
             global_logger.logger.error("Lead time cannot be None. Provide a function to model stochastic lead time.")
             raise ValueError("Lead time cannot be None. Provide a function to model stochastic lead time.")
@@ -2436,8 +2440,14 @@ class Demand(Node):
         """
         if order_arrival_model is None or order_quantity_model is None:
             raise ValueError("Order arrival and quantity models cannot be None.")
-        if not callable(order_arrival_model) or not callable(order_quantity_model):
-            raise ValueError("Order arrival and quantity models must be callable functions.")
+        if not callable(order_arrival_model):
+            order_arrival_model = lambda val=order_arrival_model: val # convert into callable
+        if not callable(order_quantity_model):
+            order_quantity_model = lambda val=order_quantity_model: val # convert into callable
+        if not callable(delivery_cost):
+            delivery_cost = lambda val=delivery_cost: val # convert into callable
+        if not callable(lead_time):
+            lead_time = lambda val=lead_time: val # convert into callable
         if demand_node is None or "supplier" in demand_node.node_type:
             raise ValueError("Demand node must be a valid non-supplier node.")
         validate_non_negative("Customer tolerance", tolerance)
