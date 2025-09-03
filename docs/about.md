@@ -6,15 +6,13 @@
 
 ## Purpose
 
-SupplyNetPy enables users to:
-
 - Construct detailed supply chain models, including suppliers, manufacturers, distributors, retailers, and demand points.
 
 - Simulate inventory dynamics by modeling stock levels, replenishment cycles, lead times, supplier selection, costs, and disruptions.
 
 - Test and compare inventory replenishment policies and supplier selection strategies.
 
-- Analyze performance through generated logs and computed metrics such as throughput, stockouts, costs, and net profit.
+- Analyze performance through generated logs and computed metrics such as throughput, revenue, stockouts, costs, and profit.
 
 ---
 
