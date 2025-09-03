@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/api-reference/api-ref-utilities/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Creating a Supply Chain - SupplyNetPy Documentation</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Creating a Supply Chain";
+        var mkdocs_page_input_path = "api-reference/api-ref-utilities.md";
+        var mkdocs_page_url = "/SupplyNetPy/api-reference/api-ref-utilities/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy Documentation
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../example/">Supply Chain With Factory</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../example-newvendor/">News Vendor Example</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../example-complex/">Complex Supply Chain Example</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Components.core</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../api-ref-core/">Overview</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#namedentity">NamedEntity</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#infomixin">InfoMixin</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#statistics">Statistics</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#rawmat">RawMaterial</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#product">Product</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#inventoryreplenishment">InventoryReplenishment</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#ssreplenish">SSReplenishment</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#rqreplenish">RQReplenishment</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#periodicreplenish">PeriodicReplenishment</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#supplierselectionpolicy">SupplierSelectionPolicy</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#selectfirst">SelectFirst</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#selectavailable">SelectAvailable</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#selectcheapest">SelectCheapest</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#selectfastest">SelectFastest</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#nodeclass">Node</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#linkclass">Link</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#inventoryclass">Inventory</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#supplierclass">Supplier</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#inventorynodeclass">InventoryNode</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#manufacturerclass">Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="../api-ref-core/#demandclass">Demand</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" >Components.utilities</a>
+    <ul class="current">
+                <li class="toctree-l2 current"><a class="reference internal current" href="#">Creating a Supply Chain</a>
+    <ul class="current">
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="" href="#simulate_sc_net">Simulating the Network</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="#visualize_sc_net">Visualizing the Network</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="#print_node_wise_performance">Printing Node-wise Performance</a>
+                </li>
+                <li class="toctree-l2"><a class="" href="#get_sc_net_info">Getting Supply Chain Information</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-logger/">Components.logger</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy Documentation</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API reference</li>
+          <li class="breadcrumb-item">Components.utilities</li>
+      <li class="breadcrumb-item active">Creating a Supply Chain</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h2 id="supplynetpy-componentsutilities-module">SupplyNetPy <code>Components.utilities</code> Module</h2>
+<p>The utility module offers various functions to create, simulate, access information, and visualize the supply chain network more effectively.</p>
+<div id="create_sc_net"></div>
+
+<h2 id="creating-a-supply-chain-network">Creating a Supply Chain Network</h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="SupplyNetPy.Components.utilities"></a>
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="SupplyNetPy.Components.utilities.create_sc_net" class="doc doc-heading">
+            <code class="highlight language-python">create_sc_net(nodes, links, demands, env=None)</code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>This functions inputs the nodes, links and demand netlists and creates supply chain nodes, links and demand objects. 
+It then creates a supply chain network by putting all the objects in a dictionary.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>nodes</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A netlist of nodes in the supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>links</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A netlist of links between the nodes.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>demand</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A netlist of demand nodes in the supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>env</code></b>
+                  (<code><span title="SupplyNetPy.Components.core.simpy.Environment">Environment</span></code>, default:
+                      <code>None</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>A SimPy Environment object. If not provided, a new environment will be created.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>global_logger</code></b>
+                  (<code><a class="autorefs autorefs-internal" title="GlobalLogger (SupplyNetPy.Components.core.GlobalLogger)" href="../api-ref-logger/#SupplyNetPy.Components.logger.GlobalLogger">GlobalLogger</a></code>)
+              –
+              <div class="doc-md-description">
+                <p>The global logger instance used for logging messages.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>supplychainnet</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A dictionary representing the supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>used_ids</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A list to keep track of used IDs to avoid duplicates.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>num_suppliers</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Counter for the number of suppliers.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>num_manufacturers</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Counter for the number of manufacturers.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>num_distributors</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Counter for the number of distributors.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>num_retailers</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Counter for the number of retailers.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Raises:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If the SimPy Environment object is not provided or if there are duplicate IDs in nodes, links, or demands.</p>
+              </div>
+            </li>
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If an invalid node type is encountered.</p>
+              </div>
+            </li>
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If an invalid source or sink node is specified in a link.</p>
+              </div>
+            </li>
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If an invalid demand node is specified in a demand.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+<b><code>dict</code></b>              –
+              <div class="doc-md-description">
+                <p>A dictionary representing the supply chain network.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><hr />
+<div id="check_duplicate_id"></div>
+<p>The following is a helper function used by <code>create_sc_net()</code> to check if there are duplicate IDs.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="SupplyNetPy.Components.utilities"></a>
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="SupplyNetPy.Components.utilities.check_duplicate_id" class="doc doc-heading">
+            <code class="highlight language-python">check_duplicate_id(used_ids, new_id, entity_type='ID')</code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Checks if the new_id is already in used_ids. If it is, logs an error and raises a ValueError.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>used_ids</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>List of already used IDs.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>new_id</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The new ID to check.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>entity_type</code></b>
+                  (<code><span title="str">str</span></code>, default:
+                      <code>&#39;ID&#39;</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Type of the entity for which the ID is being checked (e.g., "node ID", "link ID").</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Raises:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If the new_id is already in used_ids.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><hr />
+<div id="simulate_sc_net"></div>
+
+<h2 id="simulating-the-network">Simulating the Network</h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="SupplyNetPy.Components.utilities"></a>
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="SupplyNetPy.Components.utilities.simulate_sc_net" class="doc doc-heading">
+            <code class="highlight language-python">simulate_sc_net(supplychainnet, sim_time, logging=True)</code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Simulate the supply chain network for a given time period, and calculate performance measures.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>supplychainnet</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>sim_time</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Simulation time.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+<b><code>supplychainnet</code></b>(                  <code><span title="dict">dict</span></code>
+)              –
+              <div class="doc-md-description">
+                <p>Updated dict with listed performance measures.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><hr />
+<div id="visualize_sc_net"></div>
+
+<h2 id="visualizing-the-network">Visualizing the Network</h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="SupplyNetPy.Components.utilities"></a>
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="SupplyNetPy.Components.utilities.visualize_sc_net" class="doc doc-heading">
+            <code class="highlight language-python">visualize_sc_net(supplychainnet)</code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Visualize the supply chain network as a graph.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>supplychainnet</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The supply chain network containing nodes and edges.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><hr />
+<div id="print_node_wise_performance"></div>
+
+<h2 id="printing-node-wise-performance">Printing Node-wise Performance</h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="SupplyNetPy.Components.utilities"></a>
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="SupplyNetPy.Components.utilities.print_node_wise_performance" class="doc doc-heading">
+            <code class="highlight language-python">print_node_wise_performance(nodes_object_list)</code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>This function prints the performance metrics for each supply chain node provided in the nodes_object_list.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>nodes_object_list</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>List of supply chain node objects</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><hr />
+<div id="get_sc_net_info"></div>
+
+<h2 id="getting-supply-chain-information">Getting Supply Chain Information</h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="SupplyNetPy.Components.utilities"></a>
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="SupplyNetPy.Components.utilities.get_sc_net_info" class="doc doc-heading">
+            <code class="highlight language-python">get_sc_net_info(supplychainnet)</code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Get supply chain network information. </p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>supplychainnet</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A dictionary representing the supply chain network.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="SupplyNetPy.Components.logger.logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>sc_info</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A string to accumulate the supply chain network information.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>info_keys</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A list of keys to extract information from the supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>keys</code></b>
+                  (<code><span title="set">set</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A set of keys in the supply chain network regarding performance of the network.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+<b><code>str</code></b>              –
+              <div class="doc-md-description">
+                <p>A string containing the supply chain network information.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><hr />
+<div id="process_info_dict"></div>
+
+<p>The following is a helper function that gets information from individual nodes or links used in <code>get_sc_net_info()</code>.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="SupplyNetPy.Components.utilities"></a>
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="SupplyNetPy.Components.utilities.process_info_dict" class="doc doc-heading">
+            <code class="highlight language-python">process_info_dict(info_dict, logger)</code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Processes the dictionary and logs the key-value pairs.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>info_dict</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The information dictionary to process.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="SupplyNetPy.Components.logger.logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+<b><code>str</code></b>              –
+              <div class="doc-md-description">
+                <p>A string representation of the processed information.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../api-ref-core/" class="btn btn-neutral float-left" title="Overview"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../api-ref-logger/" class="btn btn-neutral float-right" title="Components.logger">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../api-ref-core/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../api-ref-logger/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
