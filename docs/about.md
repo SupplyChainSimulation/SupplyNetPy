@@ -60,3 +60,19 @@ SupplyNetPy provides core components for supply chain modeling:
 - **Open-source and extensible**: Designed for researchers, students, and professionals; easy to extend or integrate into larger systems.
 - **Specialized for supply chain dynamics**: Specifically designed and built for supply chain simulation.
 - **Reproducible and customizable**: Enables experimentation with fully configurable models, suppliers behaviours and stochastic elements.
+
+---
+## Authors
+
+
+[![GitHub](img/github.png)](https://github.com/tusharlone) 
+[![profile](img/profile-user.png)](https:\\tusharlone.github.io) &nbsp; Tushar Lone <br>
+[![GitHub](img/github.png)](https://github.com/NehaKaranjkar) 
+[![profile](img/profile-user.png)](https:\\nehakaranjkar.github.io) &nbsp; Neha Karanjkar <br>
+[![GitHub](img/github.png)](https://github.com/LekshmiPremkumar)
+[![profile](img/profile-user.png)](https:\\lekshmipremkumar.github.io) &nbsp; Lekshmi P<br>
+
+---
+## License
+
+[License](license.md)
