@@ -4,47 +4,26 @@ site_url: https://supplychainsimulation.github.io/SupplyNetPy/
 
 extra_css:
   - https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css
+  - extra.css
 
 nav: 
   - Home: index.md
   - SupplyNetPy in 10 Minutes: ten_min.md
   - About: about.md
   - Examples: 
-    - Supply Chain With Factory: example.md
-    - News Vendor Example: example-newvendor.md
-    - Complex Supply Chain Example: example-complex.md
-  - API reference:
-    - Introduction: api-reference/api-intro.md
-    - Components.core:
-      - Overview: api-reference/api-ref-core.md
-      - NamedEntity: api-reference/api-ref-core/#namedentity
-      - InfoMixin: api-reference/api-ref-core/#infomixin
-      - Statistics: api-reference/api-ref-core/#statistics
-      - RawMaterial: api-reference/api-ref-core/#rawmat
-      - Product: api-reference/api-ref-core/#product
-      - InventoryReplenishment: api-reference/api-ref-core/#inventoryreplenishment
-      - SSReplenishment: api-reference/api-ref-core/#ssreplenish
-      - RQReplenishment: api-reference/api-ref-core/#rqreplenish
-      - PeriodicReplenishment: api-reference/api-ref-core/#periodicreplenish
-      - SupplierSelectionPolicy: api-reference/api-ref-core/#supplierselectionpolicy
-      - SelectFirst: api-reference/api-ref-core/#selectfirst
-      - SelectAvailable: api-reference/api-ref-core/#selectavailable
-      - SelectCheapest: api-reference/api-ref-core/#selectcheapest
-      - SelectFastest: api-reference/api-ref-core/#selectfastest
-      - Node: api-reference/api-ref-core/#nodeclass
-      - Link: api-reference/api-ref-core/#linkclass
-      - Inventory: api-reference/api-ref-core/#inventoryclass
-      - Supplier: api-reference/api-ref-core/#supplierclass
-      - InventoryNode: api-reference/api-ref-core/#inventorynodeclass
-      - Manufacturer: api-reference/api-ref-core/#manufacturerclass
-      - Demand: api-reference/api-ref-core/#demandclass
-    - Components.utilities:
-      - Creating a Supply Chain: api-reference/api-ref-utilities.md
-      - Simulating the Network: api-reference/api-ref-utilities/#simulate_sc_net
-      - Visualizing the Network: api-reference/api-ref-utilities/#visualize_sc_net
-      - Printing Node-wise Performance: api-reference/api-ref-utilities/#print_node_wise_performance
-      - Getting Supply Chain Information: api-reference/api-ref-utilities/#get_sc_net_info
-    - Components.logger: api-reference/api-ref-logger.md
+    - Basic:
+      - Supply Chain With Factory: example.md
+      - News Vendor Example: example-newvendor.md
+    - Advanced:
+      - Complex Supply Chain Example: example-complex.md
+  - API Reference:
+      - Introduction: api-reference/api-intro.md
+      - Core Components: api-reference/api-ref-core.md
+      - Utilities: api-reference/api-ref-utilities.md
+      - Logger: api-reference/api-ref-logger.md
+  - Known Issues and Planned Work:
+      - Known Issues: known-issues/#known-issues
+      - Planned Work: known-issues/#planned-work
 
 theme:
   name: readthedocs
@@ -52,6 +31,7 @@ theme:
   hljs_languages:
     - yaml
     - rust
+    - python
 
 plugins:
   - search
@@ -62,4 +42,18 @@ plugins:
         python:
           paths: [src]
           options:
-            show_source: false
+            docstring_style: google
+            docstring_section_style: table   # nice compact parameter tables
+            show_source: true
+            show_signature: true
+            show_root_heading: true      # adds a heading for each object
+            show_root_toc_entry: true    # makes it appear in sidebar
+            separate_signature: true
+            show_signature_annotations: true
+            show_object_full_path: false
+            heading_level: 2
+            merge_init_into_class: true
+            members_order: source            # or "alphabetical"
+            inherited_members: false
+            show_if_no_docstring: false
+            group_by_category: true          # groups classes/functions/vars
