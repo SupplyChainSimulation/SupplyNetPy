@@ -2,7 +2,7 @@
 
 This example demonstrates how to create an end-to-end supply chain involving a raw material supplier, a factory, and a warehouse. 
 
-![alt text](img_six_node_sc.png)
+![alt text](img/img_six_node_sc.png)
 
 ## 1. Creating Nodes
 

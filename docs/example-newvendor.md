@@ -80,7 +80,7 @@ So, the optimal order quantity is approximately **110 units**.<br>
 
 It is a simple three-node supply chain with one supplier, a newsvendor (retailer), and normally distributed demand at the newsvendor.
 
-![Newsvendor](newsvendor.png)
+![Newsvendor](img/newsvendor.png)
 
 **Simulation Setup:**
 
@@ -101,7 +101,7 @@ It is a simple three-node supply chain with one supplier, a newsvendor (retailer
 
 The following plot shows the relationship between profit and order quantity (Q). The curve clearly indicates that the maximum profit is achieved when Q is approximately 110, confirming the analytical solution for the optimal order quantity.
 
-![alt text](img_newsvendor_Q.png)
+![alt text](img/img_newsvendor_Q.png)
 
 
 ## Takeway

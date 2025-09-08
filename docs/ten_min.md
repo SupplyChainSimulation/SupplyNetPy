@@ -12,7 +12,7 @@ pip install supplynetpy
 
 Follow these steps to create and simulate a basic supply chain with a supplier and a manufacturer:
 
-![A three node supply chain.](img_two_node_sc.png)
+![A three node supply chain.](img/img_two_node_sc.png)
 
 ### 1. Import the Library
 

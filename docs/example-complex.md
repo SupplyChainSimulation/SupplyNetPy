@@ -2,7 +2,7 @@
 
 This example demonstrates how to build and simulate a multi‑echelon, hybrid supply chain with different replenishment policies in **SupplyNetPy**.
 
-![Newsvendor](bread_sc.png)
+![Newsvendor](img/bread_sc.png)
 
 ## Goals
 
