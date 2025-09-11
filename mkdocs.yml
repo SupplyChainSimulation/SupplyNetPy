@@ -21,9 +21,7 @@ nav:
       - Core Components: api-reference/api-ref-core.md
       - Utilities: api-reference/api-ref-utilities.md
       - Logger: api-reference/api-ref-logger.md
-  - Known Issues and Planned Work:
-      - Known Issues: known-issues/#known-issues
-      - Planned Work: known-issues/#planned-work
+      - Known Issues and Planned Work: known-issues.md
 
 theme:
   name: readthedocs
