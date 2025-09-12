@@ -4,7 +4,7 @@ site_url: https://supplychainsimulation.github.io/SupplyNetPy/
 
 extra_css:
   - https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css
-  - extra.css
+  - css/extra.css
 
 nav: 
   - Home: index.md
