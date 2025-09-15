@@ -4,13 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "supplynetpy"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = ["simpy"]
 requires-python = ">=3.8"
 
 authors = [
   {name = "Tushar Lone", email = "tusharlone28@gmail.com"},
   {name = "Neha Karanjkar", email = "nehak@iitgoa.ac.in"},
+  {name = "Lekshmi P", email = "Lekshmi20231101@iitgoa.ac.in"},
 ]
 maintainers = [
   {name = "Tushar Lone", email = "tusharlone28@gmail.com"},
