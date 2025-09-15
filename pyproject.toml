@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "supplynetpy"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
   "simpy",
 ]
@@ -23,3 +23,6 @@ classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "Programming Language :: Python"
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/supplynetpy"]
