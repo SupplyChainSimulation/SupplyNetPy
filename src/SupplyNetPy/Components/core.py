@@ -1241,11 +1241,11 @@ class Node(NamedEntity, InfoMixin):
         if(node_type.lower() not in ["infinite_supplier","supplier", "manufacturer", "factory", "warehouse", "distributor", "retailer", "store", "demand"]):
             global_logger.logger.error(f"Invalid node type. Node type: {node_type}")
             raise ValueError("Invalid node type.")
-        if not callable(node_disrupt_time):
-            node_disrupt_time = lambda val=node_disrupt_time: val # convert to a callable function
         if not callable(node_recovery_time):
             node_recovery_time = lambda val=node_recovery_time: val # convert to a callable function
         if node_disrupt_time is not None:
+            if not callable(node_disrupt_time):
+                node_disrupt_time = lambda val=node_disrupt_time: val # convert to a callable function
             validate_number(name="node_disrupt_time", value=node_disrupt_time()) # check if disrupt_time is a number
         if node_recovery_time is not None:
             validate_number(name="node_recovery_time", value=node_recovery_time()) # check if disrupt_time is a number
