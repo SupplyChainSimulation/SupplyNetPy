@@ -1,4 +1,4 @@
-# SupplyNetPy: Complex Hybrid Network Example
+# Complex Supply Chain Network
 
 This example demonstrates how to build and simulate a multi‑echelon, hybrid supply chain with different replenishment policies in **SupplyNetPy**.
 

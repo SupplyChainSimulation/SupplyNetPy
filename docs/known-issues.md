@@ -14,7 +14,7 @@ This page lists known issues, current limitations, and planned improvements for 
 
 ## Planned Work
 
-- **Case Studies**: Example supply chain models from pharma, retail, and e-commerce domains.  
+- **Case Studies**: Real-world supply chain models.
 - **Logistics Operations**: Geographic map locations, CO₂ calculations, and fleet management.  
 - **Node/Link Disruption**: For resilience and risk assessment, this feature will interrupt events impacted by disruptions (earthquakes, natural calamities, pandemics, etc.).  
 - **Simulation Parallelization**: To enable faster execution of the model and support real-time simulation.  

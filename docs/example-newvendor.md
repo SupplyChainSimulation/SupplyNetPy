@@ -1,10 +1,10 @@
 <style>
     img{
-        width:500px;
+        width:70%;
     }
 </style>
 
-# Example: News Vendor Problem
+# News Vendor Problem
 
 This example illustrates how to model and simulate the classic **newsvendor problem**. In this problem, a decision-maker must determine the optimal order quantity for a perishable product with uncertain demand, aiming to maximize expected profit by balancing the risks of overstocking and understocking. 
 
