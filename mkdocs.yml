@@ -6,6 +6,13 @@ extra_css:
   - https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css
   - css/extra.css
 
+markdown_extensions:
+  - pymdownx.arithmatex:
+      generic: true # or other configuration specific to the extension
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js # Example for MathJax
+
 nav: 
   - Home: index.md
   - SupplyNetPy in 10 Minutes: ten_min.md
@@ -13,9 +20,12 @@ nav:
   - Examples: 
     - Basic:
       - Supply Chain With Factory: example.md
-      - News Vendor Example: example-newvendor.md
+      - News Vendor: example-newvendor.md
+      - Estimating EOQ: EOQ_est.md
+      - Estimating Safety Stock: safety_inv_est.md
     - Advanced:
       - Complex Supply Chain Example: example-complex.md
+      - Case Study: case_study_pharma.md
   - API Reference:
       - Introduction: api-reference/api-intro.md
       - Core Components: api-reference/api-ref-core.md
