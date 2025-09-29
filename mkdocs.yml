@@ -24,7 +24,7 @@ nav:
       - Estimating EOQ: EOQ_est.md
       - Estimating Safety Stock: safety_inv_est.md
     - Advanced:
-      - Complex Supply Chain Example: example-complex.md
+      - Complex Supply Chain: example-complex.md
       - Pharmacy Supply Chain: case_study_pharma.md
   - API Reference:
       - Introduction: api-reference/api-intro.md
