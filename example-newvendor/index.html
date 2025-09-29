@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/example-newvendor/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>News Vendor - SupplyNetPy</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "News Vendor";
+        var mkdocs_page_input_path = "example-newvendor.md";
+        var mkdocs_page_url = "/SupplyNetPy/example-newvendor/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../about/">About</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul class="current">
+                  <li class="toctree-l1 current"><a class="reference internal current" >Basic</a>
+    <ul class="current">
+                <li class="toctree-l2"><a class="reference internal" href="../example/">Supply Chain With Factory</a>
+                </li>
+                <li class="toctree-l2 current"><a class="reference internal current" href="#">News Vendor</a>
+    <ul class="current">
+    <li class="toctree-l3"><a class="reference internal" href="#problem-definition">Problem Definition</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#analytical-solution">Analytical Solution</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example-parameters">Example Parameters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modeling-and-simulating-the-newsvendor-problem">Modeling and Simulating the Newsvendor Problem</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#takeway">Takeway</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../example-complex/">Complex Supply Chain</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../case_study_pharma/">Pharmacy Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">Examples</li>
+          <li class="breadcrumb-item">Basic</li>
+      <li class="breadcrumb-item active">News Vendor</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <style>
+    img{
+        width:70%;
+    }
+</style>
+
+<h1 id="news-vendor-problem">News Vendor Problem</h1>
+<p>This example illustrates how to model and simulate the classic <strong>newsvendor problem</strong>. In this problem, a decision-maker must determine the optimal order quantity for a perishable product with uncertain demand, aiming to maximize expected profit by balancing the risks of overstocking and understocking. </p>
+<h2 id="problem-definition">Problem Definition</h2>
+<p>The newsvendor orders Q units every day. Each unit costs c, and the selling price is p. The newsvendor faces normally distributed demand with mean &mu; and standard deviation &sigma;. If, on a certain day, the actual demand is k, then the net profit after selling k units is calculated as:</p>
+<p><span>
+    <strong>Profit</strong> = <strong>Revenue</strong> &minus; <strong>Order Cost</strong> = <em>k</em> &times; <em>p</em> &minus; <em>Q</em> &times; <em>c</em>
+</span></p>
+<p>However, if there are any units left unsold at the end of the day, they are considered wastage since they cannot be sold the next day. The newsvendor can sell these unsold units back to the supplier at a lower price, called the salvage value s. If the actual demand that day is less than the order size Q, then the net profit is thus calulated as:</p>
+<p><span>
+    <strong>Profit</strong> = <strong>Revenue</strong> + <strong>Salvage</strong> &minus; <strong>Order Cost</strong> = <em>k</em> &times; <em>p</em> + (<em>Q</em> &minus; <em>k</em>) &times; <em>s</em> &minus; <em>Q</em> &times; <em>c</em>
+</span></p>
+<p>When the actual demand <em>k</em> exceeds the newsvendor's order quantity <em>Q</em>, the profit is calculated as:</p>
+<p><span>
+    <strong>Profit</strong> = <em>Q</em> &times; <em>p</em> &minus; <em>Q</em> &times; <em>c</em>
+</span> 
+&emsp; &emsp; (In this case, all available units are sold, and the profit is based on the total revenue from selling <em>Q</em> units minus the total ordering cost.)</p>
+<p>So, the newsvendor problem is defined by following parameters.</p>
+<ul>
+<li><strong>Ordering cost (c)</strong>: Cost per unit ordered.</li>
+<li><strong>Selling price (p)</strong>: Price per unit sold.</li>
+<li><strong>Salvage value (s)</strong>: Value per unsold unit at the end of the period.</li>
+<li><strong>Mean demand (&mu;)</strong>: Average demand during the period.</li>
+<li><strong>Standard deviation of demand (&sigma;)</strong>: Demand variability.</li>
+<li><strong>Number of samples (n)</strong>: Number of demand samples for simulation.</li>
+<li><strong>Order quantity (Q)</strong>: Quantity ordered for the period.</li>
+</ul>
+<p>The objective is to find the order quantity Q<sup>*</sup> that maximizes expected profit.</p>
+<h2 id="analytical-solution">Analytical Solution</h2>
+<p>The optimal order quantity is given by:</p>
+<p><span>
+    Q<sup>*</sup> = &mu; + &sigma; &middot; &Phi;<sup>&minus;1</sup>
+    (<span style="vertical-align:middle;">C<sub>u</sub> / (C<sub>u</sub> + C<sub>o</sub>)</span>)
+</span></p>
+<p>where:</p>
+<ul>
+<li>C<sub>u</sub> = p - c: Underage cost (profit lost per unit of unmet demand)</li>
+<li>C<sub>o</sub> = c - s: Overage cost (cost per unsold unit)</li>
+<li>&Phi;<sup>-1</sup>: Inverse standard normal </li>
+<li>C<sub>u</sub>/(C<sub>u</sub> + C<sub>o</sub>): Critical ratio (proportion of demand to satisfy)</li>
+</ul>
+<h2 id="example-parameters">Example Parameters</h2>
+<p>Given:<br>
+  c = 2<br>
+  p = 5<br>
+  s = 1<br>
+  &mu; = 100<br>
+  &sigma; = 15<br>
+  n = 1000<br>
+  Q = 100 (example order quantity)<br></p>
+<p>Plugging in the values:<br>
+C<sub>u</sub> = 5 - 2 = 3<br>
+C<sub>o</sub> = 2 - 1 = 1<br>
+Critical ratio = 3/(3 + 1) = 0.75<br>
+Q<sup><em></sup> = 100 + 15 &middot; &Phi;<sup>-1</sup>(0.75)<br>
+Q<sup></em></sup> &approx; 100 + 15 &middot; 0.6745 = 110.12<br>
+So, the optimal order quantity is approximately <strong>110 units</strong>.<br></p>
+<h2 id="modeling-and-simulating-the-newsvendor-problem">Modeling and Simulating the Newsvendor Problem</h2>
+<p>It is a simple three-node supply chain with one supplier, a newsvendor (retailer), and normally distributed demand at the newsvendor.</p>
+<p><img alt="Newsvendor" src="../img/newsvendor.png" /></p>
+<p><strong>Simulation Setup:</strong></p>
+<ul>
+<li>An <em>infinite_supplier</em> is used to ensure unlimited supply to the newsvendor.</li>
+<li>The focus of the simulation is on the newsvendor node <code>newsvendor1</code>, which:<ul>
+<li>Maintains perishable inventory with a shelf life of 1 day. (Shelf life is set to value 1.00001 to avoid expiration before daily consumption.)</li>
+<li>Uses a periodic replenishment policy, ordering every day.</li>
+</ul>
+</li>
+<li>The link between the supplier and the newsvendor has a lead time of 0, meaning orders are delivered immediately each day.</li>
+<li>Demand is modeled as a normal distribution. The <code>normal_quantity()</code> function samples order sizes from this distribution.</li>
+<li>Setting <code>consume_available</code> flag to True for demand allows partial fulfillment. This is necessary because, in the simulation model, the demand appears as a single order of Q units, but in reality, these are individual customers purchasing newspapers.</li>
+<li>This setup ensures that the simulation accurately represents the intended demand and fulfillment process for the newsvendor problem.</li>
+</ul>
+<pre><code class="language-python">import simpy
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+import SupplyNetPy.Components as scm
+
+cost = 2
+sell_price = 5
+salvage = 1
+
+mean = 100
+std_dev = 15
+num_samples = 1000
+def normal_quantity():
+    &quot;&quot;&quot;Generates a random order quantity based on a normal distribution.&quot;&quot;&quot;
+    sample = random.gauss(mean, std_dev)
+    while(sample&lt;0):
+        sample = random.gauss(mean, std_dev)
+    return sample
+
+cost = 2 # newspaper buy price
+sell_price = 5 # newspaper sell price
+salvage = 1 # newspaper salvage price
+order_quantity = 100 # initial order quantity
+cost_arr = [] # to store cost for each order quantity
+profit_arr = [] # to store profit for each order quantity
+
+for order_quantity in range(10, 200, 10):
+
+    env = simpy.Environment()
+
+    # create an infinite supplier
+    supplier1 = scm.Supplier(env=env, ID=&quot;S1&quot;, name=&quot;Supplier1&quot;, node_type=&quot;infinite_supplier&quot;)
+
+    #create the distributor
+    newsvendor1 = scm.InventoryNode(env=env, ID=&quot;D1&quot;, name=&quot;News Vendor&quot;, node_type=&quot;distributor&quot;,
+                                    capacity=float('inf'), initial_level=order_quantity, 
+                                    inventory_holding_cost=0.1, inventory_type=&quot;perishable&quot;, 
+                                    shelf_life=1.00001, replenishment_policy=scm.PeriodicReplenishment,
+                                    policy_param={&quot;T&quot;: 1, &quot;Q&quot;: order_quantity}, 
+                                    product_sell_price=sell_price, product_buy_price=cost)
+
+    link1 = scm.Link(env=env,ID=&quot;l1&quot;, source=supplier1, sink=newsvendor1, cost=10, lead_time=lambda: 0)
+
+    demand1 = scm.Demand(env=env,ID=&quot;d1&quot;, name=&quot;demand_d1&quot;, 
+                        order_arrival_model=lambda: 1, consume_available=True,
+                        order_quantity_model=normal_quantity, demand_node=newsvendor1)
+
+    scm.global_logger.disable_logging()
+    env.run(until=num_samples)
+
+    # Calculate the cost and profit
+    # total demand fulfilled by newsvendor is available in variable demand_fulfilled
+    # list element 0 is number of orders, element 1 is total quantity
+    daily_sales = newsvendor1.stats.demand_fulfilled[1] 
+    wasted_inventory = newsvendor1.inventory.waste
+    everyday_profit = (daily_sales*sell_price + wasted_inventory*salvage - order_quantity*num_samples*cost)/num_samples
+    profit_arr.append([order_quantity,everyday_profit])
+
+profit_arr = np.array(profit_arr) # convert to numpy array for easier manipulation
+Q = np.argmax(profit_arr[:,1]) # index of maximum profit
+plt.plot(profit_arr[:,0], profit_arr[:,1], marker='.', linestyle='-', color='b')
+plt.plot(profit_arr[Q,0], profit_arr[Q,1], marker='o', linestyle='-', color='r', label=f'Q={profit_arr[Q,0]}')
+plt.xlabel('Order Quantity')
+plt.ylabel('Profit')
+plt.title('Profit vs Order Quantity')
+plt.legend()
+plt.grid()
+plt.show()
+</code></pre>
+<p>The following plot shows the relationship between profit and order quantity (Q). The curve clearly indicates that the maximum profit is achieved when Q is approximately 110, confirming the analytical solution for the optimal order quantity.</p>
+<p><img alt="alt text" src="../img/img_newsvendor_Q.png" /></p>
+<h2 id="takeway">Takeway</h2>
+<p>This example demonstrated how to solve the newsvendor problem using simulation-based approaches using SupplyNetPy library. By simulating different order quantities and evaluating the resulting profits, we can visualize and confirm the optimal order quantity that maximizes expected profit. This approach can be extended to more complex inventory scenarios and demand distributions, providing valuable insights for inventory management decisions.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../example/" class="btn btn-neutral float-left" title="Supply Chain With Factory"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../EOQ_est/" class="btn btn-neutral float-right" title="Estimating EOQ">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../example/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../EOQ_est/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

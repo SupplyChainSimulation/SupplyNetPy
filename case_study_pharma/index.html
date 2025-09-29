@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/case_study_pharma/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Pharmacy Supply Chain - SupplyNetPy</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Pharmacy Supply Chain";
+        var mkdocs_page_input_path = "case_study_pharma.md";
+        var mkdocs_page_url = "/SupplyNetPy/case_study_pharma/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../about/">About</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../example/">Supply Chain With Factory</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" >Advanced</a>
+    <ul class="current">
+                <li class="toctree-l2"><a class="reference internal" href="../example-complex/">Complex Supply Chain</a>
+                </li>
+                <li class="toctree-l2 current"><a class="reference internal current" href="#">Pharmacy Supply Chain</a>
+    <ul class="current">
+    <li class="toctree-l3"><a class="reference internal" href="#system-description">System Description</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#algorithm-process-flow-of-perishable-inventory">Algorithm: Process flow of Perishable Inventory</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#assumptions">Assumptions</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#system-configuration">System Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#implementation">Implementation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#assessing-time-complexity">Assessing Time Complexity</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#estimating-confidence-interval">Estimating Confidence Interval</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#running-the-model-with-varying-s-s">Running the Model with Varying (S, s)</a>
+    </li>
+    </ul>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">Examples</li>
+          <li class="breadcrumb-item">Advanced</li>
+      <li class="breadcrumb-item active">Pharmacy Supply Chain</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <p><small>Find the Google Colab notebook for this example <a href="https://colab.research.google.com/drive/1MFIXSqRlrWP5QIQZHiUtqzo6DZFcHA0w?usp=sharing" target="_blank">here</a>.</small></p>
+<h1 id="pharmacy-supply-chain">Pharmacy Supply Chain</h1>
+<p>This study is from a publication <strong>'Improving Simulation Optimization Run Time When Solving For Periodic Review Inventory Policies in A Pharmacy'</strong>, read it <a href="https://informs-sim.org/wsc21papers/232.pdf">here</a>. This study uses the simulation-based optimization (SBO) method to find the optimum values of replenishment policy parameters (s, S) to minimize the overall cost of the pharmacy supply chain.</p>
+<p>In this example, we aim to understand the supply chain network system described by the authors and to use SupplyNetPy to implement it and replicate the results. This exercise allows us to evaluate the complexity of reconstructing a specific system with SupplyNetPy and to validate the library.</p>
+<h2 id="system-description">System Description</h2>
+<p>It is a single echelon supply chain: (A distributor: Hospital Pharmacy, and a supplier: Pharmaceutical Manufacturing Facility)</p>
+<ul>
+<li>A distributor facing stochastic demand is connected to an infinite supplier.</li>
+<li>The supplier can be disrupted with probability = 0.001 at given day t.</li>
+<li>The distributor replenishment policy: (s,S)</li>
+<li>The product is perishable with shelf life of 90 days.</li>
+<li>The authors model and simulate the system to find optimum values of policy parameters (s,S) that minimizes total expected cost per day</li>
+</ul>
+<p><img alt="image-2.png" src="../img/case_study_pharma_files/case_study_pharma_sc.png" /></p>
+<p>Inventory Type: Perishable <br>
+Inventory position (level at given time t) = inventory on hand + inventory en route <br>
+Replenishment Policy: (s,S) When level falls below s, order is placed for (S - current inventory position) units <br>
+Review period = 1 day (monitor inventory everyday) <br>
+H = Inventory at hand <br>
+H' = Inventory at hand that expires at the end of the day t <br>
+P = Inventory position = H + inventory en route <br></p>
+<p><img alt="image.png" src="../img/case_study_pharma_files/case_study_pharma_flow.png" /></p>
+<p>This flowchart illustrates the order and sequence of events that take place at the pharmacy. <br>
+<small>(<a href="https://informs-sim.org/wsc21papers/232.pdf" target="_blank">Image source</a>)</small></p>
+<h2 id="algorithm-process-flow-of-perishable-inventory">Algorithm: Process flow of Perishable Inventory</h2>
+<pre><code class="language-algorithm">Begin day t
+    1. Order arrive at the Pharmacy
+    2. Update Inventory Levels (H)
+    3. Satisfy demand based on Inventory Levels
+        3.1. If (d&gt;H):
+            - demand Satisfied = H
+            - Shortage = d-H
+            - Waste = 0
+        3.2. Else:
+            - demand Satisfied = d
+            - Shortage = 0
+            - Waste = max{0,H'-d}
+    4. Discard Expired Drugs
+    5. Update Inventory Levels (H)
+        5.1. Is (s&gt;P) and (Supplier not Disrupted):
+            - Place order for (S-P)
+        5.2. Else:
+            - Do not place order
+    6. End of the day t
+</code></pre>
+<p><strong>Optimization Objective: Minimize Expected Cost per day</strong> <br>
+Costs of interest are shortage, waste, holding and ordering <br></p>
+<h2 id="assumptions">Assumptions</h2>
+<ul>
+<li>All drugs that arrive in the same month come from the same production batch and have 
+ same end of the month expiration date. Hence drugs are only discarded at the end of the month.</li>
+<li>The inventory on-hand is know each day.</li>
+<li>Estimated days until inventory expires is known each day.</li>
+<li>Lead time is deterministic and +ve. The Order placed at the end of the day (t-1), and arrives at the begining of the day t.</li>
+<li>Demand is stochastic.</li>
+<li>Supply uncertainty is due to disruptions
+ (these two are independent of each other)</li>
+<li>All demand that is not met is lost.</li>
+<li>First in first out protocol is followed when serving orders.</li>
+</ul>
+<h2 id="system-configuration">System Configuration</h2>
+<ul>
+<li>T = number of days (360 days)</li>
+<li>l = deterministic lead time (6 days)</li>
+<li>e = shelf life of the drugs (months) (3 months)</li>
+<li>R = number of simulation replication (5000)</li>
+<li>b = shortage cost (5 units)</li>
+<li>z = waste cost (1 units)</li>
+<li>h = holding cost (0.001 units)</li>
+<li>o = ordering cost (0.5 units)</li>
+<li>dt = demand on day t (stochastic) (Poission 25/day)</li>
+<li>yt = binary variable for supply disruption status on day t (yt=0 disrupted, yt=1 available) (stochastic) (p=0.01)</li>
+<li>disrupt_time ~ Geom(p=0.01)</li>
+<li>recovery_time ~ Geom(p=1/30)</li>
+</ul>
+<h2 id="implementation">Implementation</h2>
+<pre><code class="language-python">import simpy
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import figure
+import SupplyNetPy.Components as scm
+</code></pre>
+<pre><code class="language-python">class Distributions:
+    &quot;&quot;&quot;
+    Class to generate random numbers for demand (order quantity) and order arrival arrival times.
+    Parameters:
+        mu (float): Mean of the exponential distribution for order arrival times.
+        lam (float): Lambda parameter of the Poisson distribution for demand (order quantity).        
+    &quot;&quot;&quot;
+    def __init__(self,mu=1,lam=1,p=0.01):
+        self.mu = mu
+        self.lam = lam
+        self.p = p
+
+    def poisson_demand(self):
+        return np.random.poisson(self.lam)
+
+    def expo_arrival(self):
+        return np.random.exponential(self.mu)
+
+    def geometric(self):
+        return np.random.geometric(self.p,1)[0]
+
+def manufacturer_date_cal(time_now):
+    &quot;&quot;&quot;Calculate manufacturing date rounded down to the nearest month.&quot;&quot;&quot;
+    return time_now - (time_now % 30) 
+
+# Global parameters
+T = 360     #number of days (360 days)
+l = 6       #deterministic lead time (6 days)
+e = 90      #shelf life of the drugs (months) (3 months)
+R = 5000    #number of simulation replication (5000)
+b = 5       #shortage cost (5 units)
+z = 1       #waste cost (1 units)
+h = 0.001   #holding cost (0.001 units)
+o = 0.5     #ordering cost (0.5 units)
+dt = 25     #demand on day t (stochastic) (Poission 25/day)
+# yt = binary variable for supply disruption status on day t (yt=0 disrupted, yt=1 available) (stochastic) (p=0.01)
+yt_p = 0.01  # ~ Geometric(p=0.01), sampled from Geometric distribution with probability p = 0.01
+yt_r = 1/30 # node recovery time ~ Geometric(p=1/30), sampled from Geometric distribution with probability p = 1/30 = 0.033
+price = 7 # unit cost of drug
+
+def setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time):
+    &quot;&quot;&quot;Setup environment, supplier, distributor, link, and demand process.&quot;&quot;&quot;
+    supplier = scm.Supplier(env, &quot;S1&quot;, &quot;Supplier 1&quot;, &quot;infinite_supplier&quot;, 
+                            node_disrupt_time=disrupt_time.geometric,
+                            node_recovery_time=recovery_time.geometric)
+
+    distributor = scm.InventoryNode(env, &quot;D1&quot;, &quot;Distributor 1&quot;, &quot;distributor&quot;,
+                                    capacity=float('inf'), initial_level=ini_level,
+                                    inventory_holding_cost=h, inventory_type=&quot;perishable&quot;,
+                                    manufacture_date=manufacturer_date_cal, shelf_life=e,
+                                    replenishment_policy=scm.SSReplenishment,
+                                    policy_param={'s': s, 'S': S},
+                                    product_buy_price=0, product_sell_price=price)
+
+    link = scm.Link(env, &quot;l1&quot;, supplier, distributor, cost=o, lead_time=lambda: l)
+
+    demand = scm.Demand(env, &quot;d1&quot;, &quot;demand 1&quot;, order_arrival_model=lambda: 1,
+                        order_quantity_model=st.poisson_demand, demand_node=distributor)
+
+    return supplier, distributor, demand, link
+
+def single_sim_run(S, s, ini_level, logging=True):
+    &quot;&quot;&quot;Run a single simulation instance and return expected cost.&quot;&quot;&quot;
+    env = simpy.Environment()
+    st = Distributions(mu=1, lam=dt)
+    disrupt_time = Distributions(p=yt_p)
+    recovery_time = Distributions(p=yt_r)
+
+    supplier, distributor, demand, link = setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time)
+
+    pharma_chain = scm.create_sc_net(env=env, nodes=[supplier, distributor], links=[link], demands=[demand])
+    pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=30,logging=logging)
+    supplier.stats.reset()
+    distributor.stats.reset()
+    demand.stats.reset()
+    pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T,logging=logging)
+
+    shortage = distributor.stats.orders_shortage[1]
+    waste = distributor.stats.inventory_waste
+    holding = distributor.stats.inventory_carry_cost
+    transport = distributor.stats.transportation_cost
+
+    total_cost = (shortage * b + waste * z + holding + transport)
+    norm_cost = total_cost / ((T - 30) * (b + z + h + o)) * price
+
+    if logging:
+        print(&quot;Shortage cost:&quot;, shortage * b)
+        print(&quot;Waste cost:&quot;, waste * z)
+        print(&quot;Holding cost:&quot;, holding)
+        print(&quot;Transportation cost:&quot;, transport)
+
+    return norm_cost
+
+def run_for_s(s_low, s_high, s_step, capacity, ini_level, num_replications):
+    &quot;&quot;&quot;Run simulations across reorder point values and report results.&quot;&quot;&quot;
+    results = []
+    st = Distributions(mu=1, lam=dt)
+    disrupt_time = Distributions(p=yt_p)
+    recovery_time = Distributions(p=yt_r)
+
+
+    #print(&quot;reorder_point, exp_cost_per_day, std, std_err&quot;)
+    for s in range(s_low, s_high, s_step):
+        costs = []
+        for _ in range(num_replications):
+            env = simpy.Environment()
+            supplier, distributor, demand, link = setup_simulation(env, s, capacity, ini_level, st, disrupt_time, recovery_time)
+
+            pharma_chain = scm.create_sc_net(env=env, nodes=[supplier, distributor], links=[link], demands=[demand])
+            pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=30,logging=False)
+            supplier.stats.reset()
+            distributor.stats.reset()
+            demand.stats.reset()
+            pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T,logging=False)
+
+            shortage = distributor.stats.orders_shortage[1]
+            waste = distributor.stats.inventory_waste
+            holding = distributor.stats.inventory_carry_cost
+            transport = distributor.stats.transportation_cost
+
+            total_cost = (shortage * b + waste * z + holding + transport)
+            norm_cost = total_cost / ((T - 30) * (b + z + h + o)) * price
+            costs.append(norm_cost)
+
+        mean_cost = np.mean(costs)
+        std_dev = np.std(costs)
+        std_err = std_dev / np.sqrt(num_replications)
+
+        #print(f&quot;[{s}, {mean_cost}, {std_dev}, {std_err}]&quot;)
+        results.append((s, mean_cost, std_dev, std_err))
+
+    return results
+# Parameters for the simulation
+s_low = 100
+s_high = 5000
+s_step = 100
+capacity = 5000
+ini_level = 5000
+num_rep = 1000
+</code></pre>
+<h2 id="assessing-time-complexity">Assessing Time Complexity</h2>
+<p>First, let's evaluate the time complexity in relation to the number of simulation runs (replications) (R) in order to estimate the expected costs. The code estimates the execution time for R simulations, where R takes on the values of 1000, 2000, 3000, 4000, and 5000.</p>
+<pre><code class="language-python">import time
+stats = []
+scm.global_logger.disable_logging() # enable logging
+for replications in [1000, 2000, 3000, 4000, 5000]:
+    exp_cost_arr = []
+    start_time = time.time()
+    for rep in range(0, replications):
+        exp_cost_arr.append(single_sim_run(s=2000,S=5000,ini_level=5000,logging=False))
+    exp_cost_arr = np.array(exp_cost_arr)
+    exe_time = time.time() - start_time
+    print(f&quot;R ={replications}, exe_time:{exe_time} sec, mean:{np.mean(exp_cost_arr)}, std:{np.std(exp_cost_arr)}, std_err:{np.std(exp_cost_arr)/np.sqrt(R)}&quot;)
+    stats.append((replications, exe_time, np.mean(exp_cost_arr), np.std(exp_cost_arr), np.std(exp_cost_arr)/np.sqrt(replications)))
+
+</code></pre>
+<pre><code>R =1000, exe_time:22.119476795196533 sec, mean:51.75029532053344, std:23.668711396825312, std_err:0.33472612661285
+R =2000, exe_time:45.451146602630615 sec, mean:51.80183997566808, std:23.633314688276155, std_err:0.33422554155991413
+R =3000, exe_time:68.95947742462158 sec, mean:51.01044921449537, std:23.62288667057547, std_err:0.3340780671193043
+R =4000, exe_time:86.83561849594116 sec, mean:51.584926030610674, std:23.706247962166834, std_err:0.3352569738107588
+R =5000, exe_time:106.06455659866333 sec, mean:52.27106894743466, std:23.863645906143574, std_err:0.3374829168813743
+</code></pre>
+<h2 id="estimating-confidence-interval">Estimating Confidence Interval</h2>
+<p>To ensure the estimation error is reasonable, we estimate the expected costs for the replenishment policy setting <span class="arithmatex">\(S = 5000\)</span> and variable <span class="arithmatex">\(s\)</span> with <span class="arithmatex">\(R = 1000\)</span> simulation runs and plot the confidence intervals.</p>
+<pre><code class="language-python">exp_cost_per_day = run_for_s(s_low=s_low,s_high=s_high,s_step=s_step,capacity=capacity,ini_level=ini_level,num_replications=num_rep)
+exp_cost_per_day = np.array(exp_cost_per_day)
+
+figure(figsize=(25, 10), dpi=60)
+plt.plot(exp_cost_per_day[:,0], exp_cost_per_day[:,1],marker='o', linestyle='-', color='b', label='S=5000')
+plt.fill_between(exp_cost_per_day[:,0], exp_cost_per_day[:,1]-2*exp_cost_per_day[:,3], exp_cost_per_day[:,1]+2*exp_cost_per_day[:,3],alpha=0.2, color='b', label='95% CI')
+plt.xlabel('Reorder Point (s)')
+plt.ylabel('Expected Cost per Day')
+plt.xticks(np.arange(s_low, s_high, 200))
+plt.title('Expected Cost per Day vs Reorder Point (s)')
+plt.legend()
+plt.grid()
+plt.show()
+</code></pre>
+<p><img alt="png" src="../img/case_study_pharma_files/case_study_pharma_4_0.png" /></p>
+<h2 id="running-the-model-with-varying-s-s">Running the Model with Varying (S, s)</h2>
+<p>To determine the optimal values of the parameters <span class="arithmatex">\(S\)</span> and <span class="arithmatex">\(s\)</span>, we run the model with different settings for both parameters. The parameter <span class="arithmatex">\(S\)</span> takes on values of 1000, 2000, 3000, 4000, and 5000. For each value of <span class="arithmatex">\(S\)</span>, the parameter <span class="arithmatex">\(s\)</span> is set to values ranging from 100 up to <span class="arithmatex">\(S\)</span>. The results obtained from these runs are then plotted and compared with the findings reported by the authors. Below, we present both sets of plots for comparison.</p>
+<pre><code class="language-python">exp_cost_per_day = run_for_s(s_low=s_low, s_high=5000, s_step=s_step, capacity=5000, ini_level=5000, num_replications=num_rep)
+exp_cost_per_day = np.array(exp_cost_per_day)
+
+exp_cost_per_day2 = run_for_s(s_low=s_low,s_high=4000,s_step=s_step,capacity=4000,ini_level=4000,num_replications=num_rep)
+exp_cost_per_day2 = np.array(exp_cost_per_day2)
+
+exp_cost_per_day3 = run_for_s(s_low=s_low,s_high=3000,s_step=s_step,capacity=3000,ini_level=3000,num_replications=num_rep)
+exp_cost_per_day3 = np.array(exp_cost_per_day3)
+
+exp_cost_per_day4 = run_for_s(s_low=s_low,s_high=2000,s_step=s_step,capacity=2000,ini_level=2000,num_replications=num_rep)
+exp_cost_per_day4 = np.array(exp_cost_per_day4)
+
+exp_cost_per_day5 = run_for_s(s_low=s_low,s_high=1000,s_step=s_step,capacity=1000,ini_level=1000,num_replications=num_rep)
+exp_cost_per_day5 = np.array(exp_cost_per_day5)
+
+figure(figsize=(25, 10), dpi=60)
+plt.plot(exp_cost_per_day[:,0], exp_cost_per_day[:,1],marker='o', linestyle='-', color='m', label='S=5000')
+plt.plot(exp_cost_per_day2[:,0], exp_cost_per_day2[:,1],marker='o', linestyle='-', color='b', label='S=4000')
+plt.plot(exp_cost_per_day3[:,0], exp_cost_per_day3[:,1],marker='o', linestyle='-', color='g', label='S=3000')
+plt.plot(exp_cost_per_day4[:,0], exp_cost_per_day4[:,1],marker='o', linestyle='-', color='c', label='S=2000')
+plt.plot(exp_cost_per_day5[:,0], exp_cost_per_day5[:,1],marker='o', linestyle='-', color='r', label='S=1000')
+plt.xticks(np.arange(s_low, s_high, 200))
+plt.xlabel('Reorder Point (s)')
+plt.ylabel('Expected Cost per Day')
+plt.title('Expected Cost per Day vs Reorder Point (s)')
+plt.legend()
+plt.grid()
+plt.show()
+</code></pre>
+<p><img alt="optimum S, s" src="../img/case_study_pharma_files/case_study_pharma_6_0.png" /></p>
+<p>The following plot displays the results obtained by the authors.</p>
+<p><img alt="optimum S, s" src="../img/case_study_pharma_files/case_study_pharma_fin.png" /></p>
+<p><small>Image source: <a href="https://informs-sim.org/wsc21papers/232.pdf">link</a>.</small></p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../example-complex/" class="btn btn-neutral float-left" title="Complex Supply Chain"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../api-reference/api-intro/" class="btn btn-neutral float-right" title="Introduction">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../example-complex/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../api-reference/api-intro/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
