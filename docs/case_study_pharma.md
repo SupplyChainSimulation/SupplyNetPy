@@ -1,8 +1,8 @@
 <small>Find the Google Colab notebook for this example <a href="https://colab.research.google.com/drive/1MFIXSqRlrWP5QIQZHiUtqzo6DZFcHA0w?usp=sharing" target="_blank">here</a>.</small>
 
-# Case study 
+# Pharmacy Supply Chain 
 
-This study is from a publication __'Improving Simulation Optimization Run Time When Solving For Periodic Review Inventory Policies in A Pharmacy'__, read it [here](https://informs-sim.org/wsc21papers/232.pdf).
+This study is from a publication __'Improving Simulation Optimization Run Time When Solving For Periodic Review Inventory Policies in A Pharmacy'__, read it [here](https://informs-sim.org/wsc21papers/232.pdf). This study uses the simulation-based optimization (SBO) method to find the optimum values of replenishment policy parameters (s, S) to minimize the overall cost of the pharmacy supply chain.
 
 In this example, we aim to understand the supply chain network system described by the authors and to use SupplyNetPy to implement it and replicate the results. This exercise allows us to evaluate the complexity of reconstructing a specific system with SupplyNetPy and to validate the library.
 
@@ -327,3 +327,5 @@ plt.show()
 The following plot displays the results obtained by the authors.
 
 ![optimum S, s](img/case_study_pharma_files/case_study_pharma_fin.png)
+
+<small>Image source: [link](https://informs-sim.org/wsc21papers/232.pdf).</small>
