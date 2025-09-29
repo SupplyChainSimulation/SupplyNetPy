@@ -2,7 +2,7 @@
 
 # Case study 
 
-This case study is from a publication __'Improving Simulation Optimization Run Time When Solving For Periodic Review Inventory Policies in A Pharmacy'__, read it [here](https://informs-sim.org/wsc21papers/232.pdf).
+This study is from a publication __'Improving Simulation Optimization Run Time When Solving For Periodic Review Inventory Policies in A Pharmacy'__, read it [here](https://informs-sim.org/wsc21papers/232.pdf).
 
 In this example, we aim to understand the supply chain network system described by the authors and to use SupplyNetPy to implement it and replicate the results. This exercise allows us to evaluate the complexity of reconstructing a specific system with SupplyNetPy and to validate the library.
 
