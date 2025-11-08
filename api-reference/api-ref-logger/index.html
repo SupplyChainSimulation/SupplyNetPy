@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/api-reference/api-ref-logger/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Logger - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Logger";
+        var mkdocs_page_input_path = "api-reference/api-ref-logger.md";
+        var mkdocs_page_url = "/SupplyNetPy/api-reference/api-ref-logger/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With Factory</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Logger</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger">GlobalLogger</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.set_log_file">set_log_file</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.get_log_file">get_log_file</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.set_logger">set_logger</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.configure_logger">configure_logger</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.log">log</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.enable_logging">enable_logging</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.disable_logging">disable_logging</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">Logger</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <p>The <code>GlobalLogger</code> class provides a flexible logging system for the SupplyNetPy simulations. It allows logging messages to both the console and a file, and can be easily enabled or disabled during runtime.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="SupplyNetPy.Components.logger" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">SupplyNetPy.Components.logger</span>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="SupplyNetPy.Components.logger.GlobalLogger" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">GlobalLogger</span>
+
+
+</h3>
+<pre class="highlight"><code class="language-python doc-signature">GlobalLogger(logger_name='sim_trace', log_to_file=True, log_file='simulation_trace.log', log_to_screen=True)</code></pre>
+
+    <div class="doc doc-contents ">
+
+
+        <p>A simple logger class that allows logging messages to the screen or to a file.
+Logging can be turned on or off.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>log_to_file</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>True</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Whether to log messages to a file.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_file</code></b>
+                  (<code><span title="str">str</span></code>, default:
+                      <code>&#39;simulation_trace.log&#39;</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>The file to which log messages will be written.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_screen</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>True</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Whether to log messages to the screen.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_file</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Flag indicating whether to log to a file.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_screen</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Flag indicating whether to log to the screen.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p><span class="doc-section-title">Methods:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="set_log_file (SupplyNetPy.Components.logger.GlobalLogger.set_log_file)" href="#SupplyNetPy.Components.logger.GlobalLogger.set_log_file">set_log_file</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Sets the log file to write simulation logs.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="get_log_file (SupplyNetPy.Components.logger.GlobalLogger.get_log_file)" href="#SupplyNetPy.Components.logger.GlobalLogger.get_log_file">get_log_file</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Returns the current log file name (path) in which simulation logs are written.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="set_logger (SupplyNetPy.Components.logger.GlobalLogger.set_logger)" href="#SupplyNetPy.Components.logger.GlobalLogger.set_logger">set_logger</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Sets the logger name to write simulation logs.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="configure_logger (SupplyNetPy.Components.logger.GlobalLogger.configure_logger)" href="#SupplyNetPy.Components.logger.GlobalLogger.configure_logger">configure_logger</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Configures the logger by adding handlers based on user preferences.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="log (SupplyNetPy.Components.logger.GlobalLogger.log)" href="#SupplyNetPy.Components.logger.GlobalLogger.log">log</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Logs a message at the specified level.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="enable_logging (SupplyNetPy.Components.logger.GlobalLogger.enable_logging)" href="#SupplyNetPy.Components.logger.GlobalLogger.enable_logging">enable_logging</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Enables logging by configuring the logger with the appropriate handlers.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="disable_logging (SupplyNetPy.Components.logger.GlobalLogger.disable_logging)" href="#SupplyNetPy.Components.logger.GlobalLogger.disable_logging">disable_logging</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Disables logging by clearing all handlers from the logger.</p>
+                </div>
+              </td>
+            </tr>
+      </tbody>
+    </table>
+
+        <p>Initializes the Logger with options to log to file, log file name, and log to screen.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>log_to_file</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>True</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Whether to log messages to a file. Defaults to False.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_file</code></b>
+                  (<code><span title="str">str</span></code>, default:
+                      <code>&#39;simulation_trace.log&#39;</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>The file to which log messages will be written. Defaults to 'app.log'.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_screen</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>True</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Whether to log messages to the screen. Defaults to True.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_file</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Flag indicating whether to log to a file.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_screen</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Flag indicating whether to log to the screen.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+
+                  <details class="quote">
+                    <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+                    <pre class="highlight"><code class="language-python">def __init__(self, logger_name='sim_trace', log_to_file=True, log_file='simulation_trace.log', log_to_screen=True):
+    """
+    Initializes the Logger with options to log to file, log file name, and log to screen.
+
+    Parameters:
+        log_to_file (bool): Whether to log messages to a file. Defaults to False.
+        log_file (str): The file to which log messages will be written. Defaults to 'app.log'.
+        log_to_screen (bool): Whether to log messages to the screen. Defaults to True.
+
+    Attributes:
+        logger (logging.Logger): The logger instance used for logging messages.
+        log_to_file (bool): Flag indicating whether to log to a file.
+        log_to_screen (bool): Flag indicating whether to log to the screen.
+
+    Returns:
+        None
+    """
+    self.logger = logging.getLogger(logger_name)
+    self.logger.setLevel(logging.DEBUG)
+
+    self.log_to_file = log_to_file
+    self.log_to_screen = log_to_screen
+
+    self.log_file = log_file
+    self.configure_logger()</code></pre>
+                  </details>
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.set_log_file" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">set_log_file</span>
+
+
+</h4>
+<pre class="highlight"><code class="language-python doc-signature">set_log_file(filename)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Sets given log file to write simulation logs</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>filename</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The file to which log messages will be written.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>log_file</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The file to which log messages will be written.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <pre class="highlight"><code class="language-python">def set_log_file(self,filename):
+    """
+    Sets given log file to write simulation logs
+
+    Parameters:
+        filename (str): The file to which log messages will be written.
+
+    Attributes:
+        log_file (str): The file to which log messages will be written.
+
+    Returns:
+        None
+    """
+    self.log_file = filename
+    self.configure_logger()</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.get_log_file" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">get_log_file</span>
+
+
+</h4>
+<pre class="highlight"><code class="language-python doc-signature">get_log_file()</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Returns current log file name (path) in which simulation logs are written</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+<b><code>str</code></b>              –
+              <div class="doc-md-description">
+                <p>The current log file name (path).</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <pre class="highlight"><code class="language-python">def get_log_file(self):
+    """
+    Returns current log file name (path) in which simulation logs are written
+
+    Parameters:
+        None
+
+    Attributes:
+        None
+
+    Returns:
+        str: The current log file name (path).
+    """
+    return self.log_file</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.set_logger" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">set_logger</span>
+
+
+</h4>
+<pre class="highlight"><code class="language-python doc-signature">set_logger(logger_name)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Sets given logger name to write simulation logs</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger_name</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The name of the logger to be used for logging messages.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <pre class="highlight"><code class="language-python">def set_logger(self,logger_name):
+    """
+    Sets given logger name to write simulation logs
+
+    Parameters:
+        logger_name (str): The name of the logger to be used for logging messages.
+
+    Attributes:
+        logger (logging.Logger): The logger instance used for logging messages.
+
+    Returns:
+        None
+    """
+    self.logger = logging.getLogger(logger_name)</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.configure_logger" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">configure_logger</span>
+
+
+</h4>
+<pre class="highlight"><code class="language-python doc-signature">configure_logger()</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Configures the logger by adding handlers based on user preferences.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_file</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Flag indicating whether to log to a file.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_screen</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Flag indicating whether to log to the screen.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <pre class="highlight"><code class="language-python">def configure_logger(self):
+    """
+    Configures the logger by adding handlers based on user preferences.
+
+    Parameters:
+        None
+
+    Attributes:
+        logger (logging.Logger): The logger instance used for logging messages.
+        log_to_file (bool): Flag indicating whether to log to a file.
+        log_to_screen (bool): Flag indicating whether to log to the screen.
+
+    Returns:
+        None
+    """
+    self.logger.handlers = []
+
+    if self.log_to_screen:
+        screen_handler = logging.StreamHandler()
+        screen_handler.setLevel(logging.DEBUG)
+        screen_format = logging.Formatter('%(levelname)s %(name)s - %(message)s')
+        screen_handler.setFormatter(screen_format)
+        self.logger.addHandler(screen_handler)
+
+    if self.log_to_file:
+        file_handler = logging.FileHandler(self.log_file, mode='w')
+        file_handler.setLevel(logging.DEBUG)
+        file_format = logging.Formatter('%(levelname)s %(name)s - %(message)s')
+        file_handler.setFormatter(file_format)
+        self.logger.addHandler(file_handler)</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.log" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">log</span>
+
+
+</h4>
+<pre class="highlight"><code class="language-python doc-signature">log(level, message)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Logs a message at the specified level.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>level</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The level at which to log the message. Can be 'debug', 'info', 'warning', 'error', or 'critical'.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>message</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The message to log.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <pre class="highlight"><code class="language-python">def log(self, level, message):
+    """
+    Logs a message at the specified level.
+
+    Parameters:
+        level (str): The level at which to log the message. Can be 'debug', 'info', 'warning', 'error', or 'critical'.
+        message (str): The message to log.
+
+    Attributes:
+        logger (logging.Logger): The logger instance used for logging messages.
+
+    Returns:
+        None
+    """
+    if self.logger.handlers:
+        if level == 'debug':
+            self.logger.debug(message)
+        elif level == 'info':
+            self.logger.info(message)
+        elif level == 'warning':
+            self.logger.warning(message)
+        elif level == 'error':
+            self.logger.error(message)
+        elif level == 'critical':
+            self.logger.critical(message)</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.enable_logging" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">enable_logging</span>
+
+
+</h4>
+<pre class="highlight"><code class="language-python doc-signature">enable_logging(log_to_file=True, log_to_screen=True)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Enables logging by configuring the logger with the appropriate handlers.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>log_to_file</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>True</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Whether to log messages to a file. Defaults to True.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_screen</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>True</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Whether to log messages to the screen. Defaults to True.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_file</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Flag indicating whether to log to a file.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_screen</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Flag indicating whether to log to the screen.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <pre class="highlight"><code class="language-python">def enable_logging(self,log_to_file=True,log_to_screen=True):
+    """
+    Enables logging by configuring the logger with the appropriate handlers.
+
+    Parameters:
+        log_to_file (bool): Whether to log messages to a file. Defaults to True.
+        log_to_screen (bool): Whether to log messages to the screen. Defaults to True.
+
+    Attributes:
+        logger (logging.Logger): The logger instance used for logging messages.
+        log_to_file (bool): Flag indicating whether to log to a file.
+        log_to_screen (bool): Flag indicating whether to log to the screen.
+
+    Returns:
+        None
+    """
+    logging.disable(logging.NOTSET)
+    self.log_to_file = log_to_file
+    self.log_to_screen = log_to_screen
+    self.configure_logger()</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.disable_logging" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">disable_logging</span>
+
+
+</h4>
+<pre class="highlight"><code class="language-python doc-signature">disable_logging()</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Disables logging by clearing all handlers from the logger.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages. </p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <pre class="highlight"><code class="language-python">def disable_logging(self):
+    """
+    Disables logging by clearing all handlers from the logger.
+
+    Parameters:
+        None
+
+    Attributes:
+        logger (logging.Logger): The logger instance used for logging messages. 
+
+    Returns:
+        None
+    """
+    logging.disable(logging.CRITICAL)
+    self.logger.handlers = []</code></pre>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../api-ref-utilities/" class="btn btn-neutral float-left" title="Utilities"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../../known-issues/" class="btn btn-neutral float-right" title="Known Issues and Planned Work">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../api-ref-utilities/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../../known-issues/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

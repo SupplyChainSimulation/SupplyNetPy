@@ -1,0 +1,8 @@
+h3 {
+  padding: 1em;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  border: 2px solid  #cdcdcd; /* 2px width, solid style, black color */
+  border-radius: 2px;
+  background-color:  #dedede;
+}

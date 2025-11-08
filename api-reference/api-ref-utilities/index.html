@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/api-reference/api-ref-utilities/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Utilities - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Utilities";
+        var mkdocs_page_input_path = "api-reference/api-ref-utilities.md";
+        var mkdocs_page_url = "/SupplyNetPy/api-reference/api-ref-utilities/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With Factory</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Utilities</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#SupplyNetPy.Components.utilities.create_sc_net">create_sc_net</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#SupplyNetPy.Components.utilities.check_duplicate_id">check_duplicate_id</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#SupplyNetPy.Components.utilities.simulate_sc_net">simulate_sc_net</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#SupplyNetPy.Components.utilities.visualize_sc_net">visualize_sc_net</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#SupplyNetPy.Components.utilities.print_node_wise_performance">print_node_wise_performance</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#SupplyNetPy.Components.utilities.get_sc_net_info">get_sc_net_info</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#SupplyNetPy.Components.utilities.process_info_dict">process_info_dict</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">Utilities</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <p>The utility module offers various functions to create, simulate, access information, and visualize the supply chain network more effectively.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="SupplyNetPy.Components.utilities" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">SupplyNetPy.Components.utilities</span>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="SupplyNetPy.Components.utilities.create_sc_net" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">create_sc_net</span>
+
+
+</h3>
+<pre class="highlight"><code class="language-python doc-signature">create_sc_net(nodes: list, links: list, demands: list, env: Environment = None)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>This functions inputs the nodes, links and demand netlists and creates supply chain nodes, links and demand objects. 
+It then creates a supply chain network by putting all the objects in a dictionary.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>nodes</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A netlist of nodes in the supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>links</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A netlist of links between the nodes.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>demand</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A netlist of demand nodes in the supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>env</code></b>
+                  (<code><span title="SupplyNetPy.Components.core.simpy.Environment">Environment</span></code>, default:
+                      <code>None</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>A SimPy Environment object. If not provided, a new environment will be created.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>global_logger</code></b>
+                  (<code><a class="autorefs autorefs-internal" title="GlobalLogger (SupplyNetPy.Components.core.GlobalLogger)" href="../api-ref-logger/#SupplyNetPy.Components.logger.GlobalLogger">GlobalLogger</a></code>)
+              –
+              <div class="doc-md-description">
+                <p>The global logger instance used for logging messages.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>supplychainnet</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A dictionary representing the supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>used_ids</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A list to keep track of used IDs to avoid duplicates.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>num_suppliers</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Counter for the number of suppliers.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>num_manufacturers</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Counter for the number of manufacturers.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>num_distributors</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Counter for the number of distributors.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>num_retailers</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Counter for the number of retailers.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Raises:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If the SimPy Environment object is not provided or if there are duplicate IDs in nodes, links, or demands.</p>
+              </div>
+            </li>
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If an invalid node type is encountered.</p>
+              </div>
+            </li>
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If an invalid source or sink node is specified in a link.</p>
+              </div>
+            </li>
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If an invalid demand node is specified in a demand.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+<b><code>dict</code></b>              –
+              <div class="doc-md-description">
+                <p>A dictionary representing the supply chain network.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/utilities.py</code></summary>
+              <pre class="highlight"><code class="language-python">def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment = None):
+    """
+    This functions inputs the nodes, links and demand netlists and creates supply chain nodes, links and demand objects. 
+    It then creates a supply chain network by putting all the objects in a dictionary.
+
+    Parameters:
+        nodes (list): A netlist of nodes in the supply chain network.
+        links (list): A netlist of links between the nodes.
+        demand (list): A netlist of demand nodes in the supply chain network.
+        env (simpy.Environment, optional): A SimPy Environment object. If not provided, a new environment will be created.
+
+    Attributes:
+        global_logger (GlobalLogger): The global logger instance used for logging messages.
+        supplychainnet (dict): A dictionary representing the supply chain network.
+        used_ids (list): A list to keep track of used IDs to avoid duplicates.
+        num_suppliers (int): Counter for the number of suppliers.
+        num_manufacturers (int): Counter for the number of manufacturers.
+        num_distributors (int): Counter for the number of distributors.
+        num_retailers (int): Counter for the number of retailers.
+
+    Raises:
+        ValueError: If the SimPy Environment object is not provided or if there are duplicate IDs in nodes, links, or demands.
+        ValueError: If an invalid node type is encountered.
+        ValueError: If an invalid source or sink node is specified in a link.
+        ValueError: If an invalid demand node is specified in a demand.
+
+    Returns:
+        dict: A dictionary representing the supply chain network.
+    """
+    if (isinstance(nodes[0],Node) or isinstance(links[0],Link) or isinstance(demands[0],Demand)) and env is None:
+        global_logger.logger.error("Please provide SimPy Environment object env")
+        raise ValueError("A SimPy Environment object is required!")
+    if len(nodes)==0 or len(links)==0 or len(demands)==0:
+        global_logger.logger.error("Nodes, links, and demands cannot be empty")
+        raise ValueError("Nodes, links, and demands cannot be empty")
+    if(env is None):
+        env = simpy.Environment()
+    supplychainnet = {"nodes":{},"links":{},"demands":{}} # create empty supply chain network
+    used_ids = []
+    num_suppliers = 0
+    num_manufacturers = 0
+    num_distributors = 0
+    num_retailers = 0
+    for node in nodes:
+        if isinstance(node, dict):
+            check_duplicate_id(used_ids, node["ID"], "node ID")
+            node_id = node['ID']
+            if node["node_type"].lower() in ["supplier", "infinite_supplier"]:
+                supplychainnet["nodes"][f"{node_id}"] = Supplier(env=env, **node)
+                num_suppliers += 1
+            elif node["node_type"].lower() in ["manufacturer", "factory"]:
+                node_ex = {key: node[key] for key in node if key != 'node_type'} # excluding key 'node_type', Manufacturer do not take it
+                supplychainnet["nodes"][f"{node_id}"] = Manufacturer(env=env, **node_ex)
+                num_manufacturers += 1
+            elif node["node_type"].lower() in ["distributor", "warehouse"]:
+                supplychainnet["nodes"][f"{node_id}"] = InventoryNode(env=env, **node)
+                num_distributors += 1
+            elif node["node_type"].lower() in ["retailer", "store", "shop"]:
+                supplychainnet["nodes"][f"{node_id}"] = InventoryNode(env=env, **node)
+                num_retailers += 1
+            else:
+                used_ids.remove(node["ID"])
+                global_logger.logger.error(f"Invalid node type {node['node_type']}")
+                raise ValueError("Invalid node type")
+        elif isinstance(node, Node):
+            if(node.ID in used_ids):
+                global_logger.logger.error(f"Duplicate node ID {node.ID}")
+                raise ValueError("Duplicate node ID")
+            used_ids.append(node.ID)
+            node_id = node.ID
+            supplychainnet["nodes"][f"{node_id}"] = node
+            if node.node_type.lower() in ["supplier", "infinite_supplier"]:
+                num_suppliers += 1
+            elif node.node_type.lower() in ["manufacturer", "factory"]:
+                num_manufacturers += 1
+            elif node.node_type.lower() in ["distributor", "warehouse"]:
+                num_distributors += 1
+            elif node.node_type.lower() in ["retailer", "store", "shop"]:
+                num_retailers += 1
+            else:
+                used_ids.remove(node.ID)
+                global_logger.logger.error(f"Invalid node type {node.node_type}")
+                raise ValueError("Invalid node type")
+    for link in links:
+        if isinstance(link, dict):
+            check_duplicate_id(used_ids, link["ID"], "link ID")
+            source = None
+            sink = None
+            nodes = supplychainnet["nodes"].keys()
+            if(link["source"] in nodes):
+                source_id = link["source"]
+                source = supplychainnet["nodes"][f"{source_id}"]
+            if(link["sink"] in nodes):
+                sink_id = link["sink"]
+                sink = supplychainnet["nodes"][f"{sink_id}"]
+            if(source is None or sink is None):
+                global_logger.logger.error(f"Invalid source or sink node {link['source']} {link['sink']}")
+                raise ValueError("Invalid source or sink node")
+            exclude_keys = {'source', 'sink'}
+            params = {k: v for k, v in link.items() if k not in exclude_keys}
+            link_id = params['ID']
+            supplychainnet["links"][f"{link_id}"] = Link(env=env,source=source,sink=sink,**params)
+        elif isinstance(link, Link):
+            if(link.ID in used_ids):
+                global_logger.logger.error(f"Duplicate link ID {link.ID}")
+                raise ValueError("Duplicate node ID")
+            used_ids.append(link.ID)
+            supplychainnet["links"][f"{link.ID}"] = link
+    for d in demands:
+        if isinstance(d, dict):
+            check_duplicate_id(used_ids, d["ID"], "demand ID")
+            demand_node = None # check for which node the demand is
+            nodes = supplychainnet["nodes"].keys()
+            if d['demand_node'] in nodes:
+                demand_node_id = d['demand_node']
+                demand_node = supplychainnet["nodes"][f"{demand_node_id}"]
+            if(demand_node is None):
+                global_logger.logger.error(f"Invalid demand node {d['demand_node']}")
+                raise ValueError("Invalid demand node")
+            exclude_keys = {'demand_node','node_type'}
+            params = {k: v for k, v in d.items() if k not in exclude_keys}
+            demand_id = params['ID']
+            supplychainnet["demands"][f"{demand_id}"] = Demand(env=env,demand_node=demand_node,**params)
+        elif isinstance(d, Demand):
+            if(d.ID in used_ids):
+                global_logger.logger.error(f"Duplicate demand ID {d.ID}")
+                raise ValueError("Duplicate demand ID")
+            used_ids.append(d.ID)
+            supplychainnet["demands"][f"{d.ID}"] = d
+
+    supplychainnet["env"] = env
+    supplychainnet["num_of_nodes"] = num_suppliers + num_manufacturers + num_distributors + num_retailers
+    supplychainnet["num_of_links"] = len(links)
+    supplychainnet["num_suppliers"] = num_suppliers
+    supplychainnet["num_manufacturers"] = num_manufacturers
+    supplychainnet["num_distributors"] = num_distributors
+    supplychainnet["num_retailers"] = num_retailers
+    return supplychainnet</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="SupplyNetPy.Components.utilities.check_duplicate_id" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">check_duplicate_id</span>
+
+
+</h3>
+<pre class="highlight"><code class="language-python doc-signature">check_duplicate_id(used_ids, new_id, entity_type='ID')</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Checks if the new_id is already in used_ids. If it is, logs an error and raises a ValueError.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>used_ids</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>List of already used IDs.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>new_id</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The new ID to check.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>entity_type</code></b>
+                  (<code><span title="str">str</span></code>, default:
+                      <code>&#39;ID&#39;</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Type of the entity for which the ID is being checked (e.g., "node ID", "link ID").</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Raises:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If the new_id is already in used_ids.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/utilities.py</code></summary>
+              <pre class="highlight"><code class="language-python">def check_duplicate_id(used_ids, new_id, entity_type="ID"):
+    """
+    Checks if the new_id is already in used_ids. If it is, logs an error and raises a ValueError.
+
+    Parameters:
+        used_ids (list): List of already used IDs.
+        new_id (str): The new ID to check.
+        entity_type (str): Type of the entity for which the ID is being checked (e.g., "node ID", "link ID").
+
+    Attributes:
+        None
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the new_id is already in used_ids.
+    """
+    if new_id in used_ids:
+        global_logger.logger.error(f"Duplicate {entity_type} {new_id}")
+        raise ValueError(f"Duplicate {entity_type}")
+    used_ids.append(new_id)</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="SupplyNetPy.Components.utilities.simulate_sc_net" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">simulate_sc_net</span>
+
+
+</h3>
+<pre class="highlight"><code class="language-python doc-signature">simulate_sc_net(supplychainnet, sim_time, logging=True)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Simulate the supply chain network for a given time period, and calculate performance measures.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>supplychainnet</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>sim_time</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Simulation time.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+<b><code>supplychainnet</code></b>(                  <code><span title="dict">dict</span></code>
+)              –
+              <div class="doc-md-description">
+                <p>Updated dict with listed performance measures.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/utilities.py</code></summary>
+              <pre class="highlight"><code class="language-python">def simulate_sc_net(supplychainnet, sim_time, logging=True):
+    """
+    Simulate the supply chain network for a given time period, and calculate performance measures.
+
+    Parameters:
+        supplychainnet (dict): A supply chain network.
+        sim_time (int): Simulation time.
+
+    Returns:
+        supplychainnet (dict): Updated dict with listed performance measures.
+    """
+    logger = global_logger.logger
+    env = supplychainnet["env"]
+
+
+    if(sim_time&lt;=env.now):
+        logger.warning(f"You have already ran simulation for this network! \n To create a new network use create_sc_net(), or specify the simulation time grater than {env.now} to run it further.")
+        logger.info(f"Performance measures for the supply chain network are calculated and returned.")
+    elif isinstance(logging, tuple) and len(logging) == 2:
+        assert logging[0] &lt; logging[1], "Start logging time should be less than stop logging time"
+        assert logging[0] &gt;= 0, "Start logging time should be greater than or equal to 0"
+        assert logging[1] &lt;= sim_time, "Stop logging time should be less than or equal to simulation time"        
+        log_start = logging[0]
+        log_stop = logging[1]
+        global_logger.disable_logging()
+        env.run(log_start) # Run the simulation
+        global_logger.enable_logging()
+        env.run(log_stop) # Run the simulation
+        global_logger.disable_logging()
+        if(sim_time &gt; log_stop):
+            env.run(sim_time) # Run the simulation
+    elif isinstance(logging, bool) and logging:
+        global_logger.enable_logging()
+        env.run(sim_time) # Run the simulation
+    else:
+        global_logger.disable_logging()
+        env.run(sim_time) # Run the simulation
+
+    # Let's create some variables to store stats
+    total_available_inv = 0
+    avg_available_inv = 0
+    total_inv_carry_cost = 0
+    total_inv_spend = 0
+    total_inv_waste = 0
+    total_transport_cost = 0
+    total_revenue = 0
+    total_cost = 0
+    total_profit = 0
+    total_demand_by_customers = [0, 0] # [orders, products]
+    total_fulfillment_received_by_customers = [0, 0] # [orders, products]
+    total_demand_by_site = [0, 0] # [orders, products]
+    total_fulfillment_received_by_site = [0, 0] # [orders, products]
+    total_demand_placed = [0, 0] # [orders, products]
+    total_fulfillment_received = [0, 0] # [orders, products]
+    total_shortage = [0, 0] # [orders, products]
+    total_backorders = [0, 0] # [orders, products]
+
+    for key, node in supplychainnet["nodes"].items():
+        if("infinite" in node.node_type.lower()): # skip infinite suppliers
+            continue
+        node.stats.update_stats() # update stats for the node
+        total_available_inv += node.inventory.inventory.level
+        if len(node.inventory.instantaneous_levels)&gt;0:
+            avg_available_inv += sum([x[1] for x in node.inventory.instantaneous_levels])/len(node.inventory.instantaneous_levels) 
+        total_inv_carry_cost += node.inventory.carry_cost
+        total_inv_spend += node.stats.inventory_spend_cost
+        total_inv_waste += node.stats.inventory_waste
+        total_transport_cost += node.stats.transportation_cost
+        total_cost += node.stats.node_cost
+        total_revenue += node.stats.revenue
+        total_demand_by_site[0] += node.stats.demand_placed[0]
+        total_demand_by_site[1] += node.stats.demand_placed[1]
+        total_fulfillment_received_by_site[0] += node.stats.fulfillment_received[0]
+        total_fulfillment_received_by_site[1] += node.stats.fulfillment_received[1]
+        total_shortage[0] += node.stats.orders_shortage[0]
+        total_shortage[1] += node.stats.orders_shortage[1]
+        total_backorders[0] += node.stats.backorder[0]
+        total_backorders[1] += node.stats.backorder[1]
+    for key, node in supplychainnet["demands"].items():
+        node.stats.update_stats() # update stats for the node
+        total_transport_cost += node.stats.transportation_cost
+        total_cost += node.stats.node_cost
+        total_revenue += node.stats.revenue
+        total_demand_by_customers[0] += node.stats.demand_placed[0] # orders
+        total_demand_by_customers[1] += node.stats.demand_placed[1] # products
+        total_fulfillment_received_by_customers[0] += node.stats.fulfillment_received[0]
+        total_fulfillment_received_by_customers[1] += node.stats.fulfillment_received[1]
+        total_shortage[0] += node.stats.orders_shortage[0]
+        total_shortage[1] += node.stats.orders_shortage[1]
+        total_backorders[0] += node.stats.backorder[0]
+        total_backorders[1] += node.stats.backorder[1]
+    total_demand_placed[0] = total_demand_by_customers[0] + total_demand_by_site[0]
+    total_demand_placed[1] = total_demand_by_customers[1] + total_demand_by_site[1]
+    total_fulfillment_received[0] = total_fulfillment_received_by_customers[0] + total_fulfillment_received_by_site[0]
+    total_fulfillment_received[1] = total_fulfillment_received_by_customers[1] + total_fulfillment_received_by_site[1]
+    total_profit = total_revenue - total_cost
+    supplychainnet["available_inv"] = total_available_inv
+    supplychainnet["avg_available_inv"] = avg_available_inv
+    supplychainnet["inventory_carry_cost"] = total_inv_carry_cost   
+    supplychainnet["inventory_spend_cost"] = total_inv_spend
+    supplychainnet["inventory_waste"] = total_inv_waste
+    supplychainnet["transportation_cost"] = total_transport_cost
+    supplychainnet["revenue"] = total_revenue
+    supplychainnet["total_cost"] = total_cost
+    supplychainnet["profit"] = total_profit
+    supplychainnet["demand_by_customers"] = total_demand_by_customers
+    supplychainnet["fulfillment_received_by_customers"] = total_fulfillment_received_by_customers
+    supplychainnet["demand_by_site"] = total_demand_by_site
+    supplychainnet["fulfillment_received_by_site"] = total_fulfillment_received_by_site
+    supplychainnet["total_demand"] = total_demand_placed
+    supplychainnet["total_fulfillment_received"] = total_fulfillment_received
+    supplychainnet["shortage"] = total_shortage
+    supplychainnet["backorders"] = total_backorders
+    # Calculate average cost per order and per item
+    if total_demand_placed[0] &gt; 0:
+        supplychainnet["avg_cost_per_order"] = total_cost / total_demand_placed[0]
+    else:
+        supplychainnet["avg_cost_per_order"] = 0
+    if total_demand_placed[1] &gt; 0:
+        supplychainnet["avg_cost_per_item"] = total_cost / total_demand_placed[1]
+    else:
+        supplychainnet["avg_cost_per_item"] = 0
+    if isinstance(logging, tuple):
+        global_logger.enable_logging()
+    max_key_length = max(len(key) for key in supplychainnet.keys()) + 1
+    logger.info(f"Supply chain info:")
+    for key in sorted(supplychainnet.keys()):
+        logger.info(f"{key.ljust(max_key_length)}: {supplychainnet[key]}")
+    return supplychainnet</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="SupplyNetPy.Components.utilities.visualize_sc_net" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">visualize_sc_net</span>
+
+
+</h3>
+<pre class="highlight"><code class="language-python doc-signature">visualize_sc_net(supplychainnet)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Visualize the supply chain network as a graph.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>supplychainnet</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The supply chain network containing nodes and edges.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/utilities.py</code></summary>
+              <pre class="highlight"><code class="language-python">def visualize_sc_net(supplychainnet):
+    """
+    Visualize the supply chain network as a graph.
+
+    Parameters:
+        supplychainnet (dict): The supply chain network containing nodes and edges.
+
+    Attributes:
+        None
+
+    Returns:
+        None
+    """
+    G = nx.Graph()
+    nodes = supplychainnet["nodes"]
+    edges = supplychainnet["links"]
+
+    # Add nodes to the graph
+    for node_id, node in nodes.items():
+        G.add_node(node_id, level=node.node_type)
+
+    # Add edges to the graph
+    for edge_id, edge in edges.items():
+        from_node = edge.source.ID
+        to_node = edge.sink.ID
+        G.add_edge(from_node, to_node, weight=round(edge.lead_time(),2))
+
+    # Generate the layout of the graph
+    pos = nx.spectral_layout(G)
+
+    # Draw the graph
+    nx.draw(G, pos, node_color='#CCCCCC', with_labels=True)
+
+    # Add edge labels
+    labels = nx.get_edge_attributes(G, 'weight')
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
+
+    # Set the title and display the graph
+    plt.title("Supply chain network")
+    plt.show()</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="SupplyNetPy.Components.utilities.print_node_wise_performance" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">print_node_wise_performance</span>
+
+
+</h3>
+<pre class="highlight"><code class="language-python doc-signature">print_node_wise_performance(nodes_object_list)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>This function prints the performance metrics for each supply chain node provided in the nodes_object_list.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>nodes_object_list</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>List of supply chain node objects</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              –
+              <div class="doc-md-description">
+                <p>None</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/utilities.py</code></summary>
+              <pre class="highlight"><code class="language-python">def print_node_wise_performance(nodes_object_list):
+    """
+    This function prints the performance metrics for each supply chain node provided in the nodes_object_list.
+
+    Parameters:
+        nodes_object_list (list): List of supply chain node objects
+
+    Returns: 
+        None
+    """
+
+    if not nodes_object_list:
+        print("No nodes provided.")
+        return
+
+    # Pre-fetch statistics from all nodes
+    stats_per_node = {node.name: node.stats.get_statistics() for node in nodes_object_list}
+    stat_keys = sorted(next(iter(stats_per_node.values())).keys())
+
+    # Determine column widths
+    col_width = 25
+    header = "Performance Metric".ljust(col_width)
+    for name in stats_per_node:
+        header += name.ljust(col_width)
+    print(header)
+
+    # Print row-wise stats
+    for key in stat_keys:
+        row = key.ljust(col_width)
+        for name in stats_per_node:
+            value = stats_per_node[name].get(key, "N/A")
+            row += str(value).ljust(col_width)
+        print(row)</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="SupplyNetPy.Components.utilities.get_sc_net_info" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">get_sc_net_info</span>
+
+
+</h3>
+<pre class="highlight"><code class="language-python doc-signature">get_sc_net_info(supplychainnet)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Get supply chain network information. </p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>supplychainnet</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A dictionary representing the supply chain network.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="SupplyNetPy.Components.logger.logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>sc_info</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A string to accumulate the supply chain network information.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>info_keys</code></b>
+                  (<code><span title="list">list</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A list of keys to extract information from the supply chain network.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>keys</code></b>
+                  (<code><span title="set">set</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A set of keys in the supply chain network regarding performance of the network.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+<b><code>str</code></b>              –
+              <div class="doc-md-description">
+                <p>A string containing the supply chain network information.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/utilities.py</code></summary>
+              <pre class="highlight"><code class="language-python">def get_sc_net_info(supplychainnet):
+    """
+    Get supply chain network information. 
+
+    Parameters: 
+        supplychainnet (dict): A dictionary representing the supply chain network.
+
+    Attributes:
+        logger (logging.Logger): The logger instance used for logging messages.
+        sc_info (str): A string to accumulate the supply chain network information.
+        info_keys (list): A list of keys to extract information from the supply chain network.
+        keys (set): A set of keys in the supply chain network regarding performance of the network.
+
+    Returns:
+        str: A string containing the supply chain network information.
+    """
+    logger = global_logger.logger
+    global_logger.enable_logging(log_to_screen=True)
+    sc_info = "Supply chain configuration: \n"
+    info_keys = ['num_of_nodes', 'num_of_links', 'num_suppliers','num_manufacturers', 'num_distributors', 'num_retailers']
+    for key in info_keys:
+        if key in supplychainnet.keys():
+            sc_info += f"{key}: {supplychainnet[key]}\n"
+            logger.info(f"{key}: {supplychainnet[key]}")
+    logger.info(f"Nodes in the network: {list(supplychainnet['nodes'].keys())}")
+    sc_info += "Nodes in the network:\n"
+    for node_id, node in supplychainnet["nodes"].items():
+        sc_info += process_info_dict(node.get_info(), logger)
+    logger.info(f"Edges in the network: {list(supplychainnet['links'].keys())}")
+    sc_info += "Edges in the network:\n"
+    for edge_id, edge in supplychainnet["links"].items():
+        sc_info += process_info_dict(edge.get_info(), logger)
+    logger.info(f"Demands in the network: {list(supplychainnet['demands'].keys())}")                
+    sc_info += "Demands in the network:\n"
+    for demand_id, demand in supplychainnet["demands"].items():
+        sc_info += process_info_dict(demand.get_info(), logger)    
+    keys = supplychainnet.keys() - {'nodes', 'links', 'demands', 'env', 'num_of_nodes', 'num_of_links', 'num_suppliers','num_manufacturers', 'num_distributors', 'num_retailers'}
+    sc_info += "Supply chain network performance:\n"
+    logger.info("Supply chain network performance:")
+    for key in sorted(keys):
+        sc_info += f"{key}: {supplychainnet[key]}\n"
+        logger.info(f"{key}: {supplychainnet[key]}")
+    return sc_info</code></pre>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="SupplyNetPy.Components.utilities.process_info_dict" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">process_info_dict</span>
+
+
+</h3>
+<pre class="highlight"><code class="language-python doc-signature">process_info_dict(info_dict, logger)</code></pre>
+
+    <div class="doc doc-contents ">
+
+        <p>Processes the dictionary and logs the key-value pairs.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>info_dict</code></b>
+                  (<code><span title="dict">dict</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The information dictionary to process.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="SupplyNetPy.Components.logger.logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The logger instance used for logging messages.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+<b><code>str</code></b>              –
+              <div class="doc-md-description">
+                <p>A string representation of the processed information.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/SupplyNetPy/Components/utilities.py</code></summary>
+              <pre class="highlight"><code class="language-python">def process_info_dict(info_dict, logger):
+    """
+    Processes the dictionary and logs the key-value pairs.
+
+    Parameters:
+        info_dict (dict): The information dictionary to process.
+        logger (logging.Logger): The logger instance used for logging messages.
+
+    Attributes:
+        None
+
+    Returns:
+        str: A string representation of the processed information.
+    """
+    info_string = ""
+    for key, value in info_dict.items():
+        if isinstance(value, object):
+            value = str(value)
+        if callable(value):
+            value = value.__name__
+        info_string += f"{key}: {value}\n"
+        logger.info(f"{key}: {value}")
+    return info_string</code></pre>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../api-ref-core/" class="btn btn-neutral float-left" title="Core Components"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../api-ref-logger/" class="btn btn-neutral float-right" title="Logger">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../api-ref-core/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../api-ref-logger/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
