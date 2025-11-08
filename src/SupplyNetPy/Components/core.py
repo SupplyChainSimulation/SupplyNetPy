@@ -201,7 +201,7 @@ class Statistics(InfoMixin):
             None
         """
         self._info_keys = ["name"]
-        self._stats_keys = ["demand_placed", "fulfillment_received", "demand_received", "demand_fulfilled", "orders_shortage", "backorder", "inventory_level", "inventory_waste", "inventory_carry_cost", "inventory_spend_cost", "transportation_cost", "node_cost", "revenue", "profit"]
+        self._stats_keys = ["name", "demand_placed", "fulfillment_received", "demand_received", "demand_fulfilled", "orders_shortage", "backorder", "inventory_level", "inventory_waste", "inventory_carry_cost", "inventory_spend_cost", "transportation_cost", "node_cost", "revenue", "profit"]
         self.node = node # the node to which this statistics object belongs
         self.name = f"{self.node.ID} statistics"
         self.demand_placed = [0,0] # demand placed by this node [total orders placed, total quantity]
