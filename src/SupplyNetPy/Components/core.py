@@ -1620,6 +1620,11 @@ class Inventory(NamedEntity, InfoMixin):
         if self.inventory.level == float('inf') or amount <=0:
             return
         
+        if amount + self.inventory.level > self.capacity: # adjust amount if it exceeds capacity
+            old_amount = amount
+            amount = self.capacity - self.inventory.level
+            self.node.logger.logger.warning(f"Inventory capacity exceeded. Only {amount} of {old_amount} units added to inventory.")
+
         if self.inv_type == "perishable":
             if manufacturing_date is None:
                 self.node.logger.logger.error("Manufacturing date must be provided for perishable inventory.")
