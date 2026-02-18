@@ -2479,7 +2479,20 @@ class Demand(Node):
         self.stats = Statistics(self, periodic_update=True, period=1) # create a statistics object for the demand node
 
     def _process_delivery(self, order_quantity, customer_id):
-        
+        """
+        Process the delivery of the order, including lead time and delivery cost updates.
+
+        Parameters:
+            order_quantity (float): The quantity of the product ordered.
+            customer_id (int): Customer ID for logging purposes.
+
+        Attributes:
+            order_quantity (float): The quantity of the product ordered.
+            customer_id (int): Customer ID for logging purposes.
+
+        returns:
+            None
+        """
         del_cost = self.delivery_cost()
         validate_non_negative(name="delivery_cost", value=del_cost) # check if delivery_cost is non-negative
         self.stats.update_stats(transportation_cost=del_cost)
