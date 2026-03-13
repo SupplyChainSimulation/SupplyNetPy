@@ -586,8 +586,6 @@ class SSReplenishment(InventoryReplenishment):
         Returns:
             None
         """
-
-
         validate_non_negative("Reorder point (s)", params['s']) # this assertion ensures that the reorder point is positive
         validate_positive("Order-up-to level (S)", params['S']) # this assertion ensures that the order-up-to level is non-negative
         if 's' not in params or 'S' not in params:
@@ -1478,6 +1476,8 @@ class Inventory(NamedEntity, InfoMixin):
         holding_cost (float): Holding cost per unit per time period.
         shelf_life (float): Shelf life for perishable items.
         inv_type (str): Type of the inventory, either "non-perishable" or "perishable".
+        record_inv_levels (bool): Flag to enable recording of inventory levels over time.
+        **kwargs: Additional arguments if passed, will be ignored.
 
     Attributes:
         _info_keys (list): Keys included in the information dictionary.
@@ -1514,7 +1514,9 @@ class Inventory(NamedEntity, InfoMixin):
                  replenishment_policy: InventoryReplenishment,
                  holding_cost: float = 0.0,
                  shelf_life: float = 0,
-                 inv_type: str = "non-perishable") -> None:
+                 inv_type: str = "non-perishable",
+                 record_inv_levels = False, 
+                 **kwargs) -> None:
         """
         Initialize the Inventory object.
         
@@ -1590,7 +1592,8 @@ class Inventory(NamedEntity, InfoMixin):
             self.env.process(self.remove_expired())
 
         self.instantaneous_levels = []
-        self.env.process(self.record_inventory_levels())  # record inventory levels at regular intervals
+        if record_inv_levels:
+            self.env.process(self.record_inventory_levels())  # record inventory levels at regular intervals
 
     def record_inventory_levels(self):
         """
@@ -1617,7 +1620,7 @@ class Inventory(NamedEntity, InfoMixin):
             amount (float): amount to add
             manufacturing_date (float): only required for perishable inventories
         """
-        if self.inventory.level == float('inf') or amount <=0:
+        if self.inventory.level == float('inf') or amount <=0 or self.inventory.level == self.capacity:
             return
         
         if amount + self.inventory.level > self.capacity: # adjust amount if it exceeds capacity
@@ -1779,7 +1782,7 @@ class Supplier(Node):
         if(self.raw_material):
             self.sell_price = self.raw_material.cost # selling price of the raw material
         if(self.node_type!="infinite_supplier"):
-            self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, holding_cost=inventory_holding_cost, replenishment_policy=None)
+            self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, holding_cost=inventory_holding_cost, replenishment_policy=None, **kwargs)
             self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
             self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
             if(self.raw_material):
@@ -1788,7 +1791,7 @@ class Supplier(Node):
                 self.logger.logger.error(f"{self.ID}:Raw material not provided for this supplier. Recreate it with a raw material.")
                 raise ValueError("Raw material not provided.")
         else:
-            self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), node=self, holding_cost=inventory_holding_cost, replenishment_policy=None)
+            self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), node=self, holding_cost=inventory_holding_cost, replenishment_policy=None, **kwargs)
         
         self.stats = Statistics(self)
         setattr(self.stats,"total_raw_materials_mined",0)
@@ -1950,7 +1953,7 @@ class InventoryNode(Node):
             
         self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, 
                                    inv_type=inventory_type, holding_cost=inventory_holding_cost, 
-                                   replenishment_policy=self.replenishment_policy, shelf_life=shelf_life)
+                                   replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **kwargs)
         self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
         self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
         self.manufacture_date = manufacture_date
@@ -2155,7 +2158,7 @@ class Manufacturer(Node):
             self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
             self.env.process(self.replenishment_policy.run())
         
-        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, inv_type=inventory_type, holding_cost=inventory_holding_cost, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life)
+        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, inv_type=inventory_type, holding_cost=inventory_holding_cost, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **kwargs)
         self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
         self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
         self.product = product # product manufactured by the manufacturer
