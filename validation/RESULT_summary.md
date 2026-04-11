@@ -58,4 +58,4 @@ The same collision does not occur within simtime=10 because t = 11 lies outside 
 
 **Why this divergence grows with simulation length:** because the TQ policy always orders exactly Q = 400 per review regardless of current inventory, the replenishment schedule is identical in both tools. The divergence is therefore bounded to the single event at t = 11 within the simtime = 20 window: no further collision within [11, 20] falls in a region where the two tools have non-zero and unequal inventory, so the difference does not compound further in these runs. In longer runs, additional collisions would be expected to accumulate, increasing the magnitude of the divergence approximately in proportion to the number of such events.
 
-Real supply chain models always involve randomness, and results are usually determined through several repetitions, and in such corner cases, do not turn out to be of much significance.
+Real supply chain models always involve randomness, and results are usually determined through several repetitions, and such corner cases do not turn out to be of much significance.
