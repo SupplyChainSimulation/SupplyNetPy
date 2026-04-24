@@ -1,4 +1,8 @@
 import logging
+
+__all__ = ["GlobalLogger"]
+
+
 class GlobalLogger:
     """
     A simple logger class that allows logging messages to the screen or to a file.

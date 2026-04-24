@@ -4,7 +4,77 @@ import copy
 import random
 import numbers
 
+# Public API — names re-exported by Components/__init__.py. Module-level
+# constants ``_rng``, ``_LOGGER_KWARGS`` and ``_NODE_KWARGS`` are internal and
+# intentionally omitted. ``global_logger`` IS exported: the docs advertise
+# ``scm.global_logger.enable_logging() / disable_logging()`` as a bulk
+# logging-control handle, so it is supported surface (even though day-to-day
+# users should prefer per-node ``logging=False`` or ``node.logger.*``).
+# ``set_seed`` is the sanctioned entry point for seeding the default RNG;
+# per-instance RNG injection lives behind the ``rng=`` constructor kwarg.
+__all__ = [
+    "set_seed",
+    "validate_positive",
+    "validate_non_negative",
+    "validate_number",
+    "NamedEntity",
+    "InfoMixin",
+    "Statistics",
+    "RawMaterial",
+    "Product",
+    "InventoryReplenishment",
+    "SSReplenishment",
+    "RQReplenishment",
+    "PeriodicReplenishment",
+    "SupplierSelectionPolicy",
+    "SelectFirst",
+    "SelectAvailable",
+    "SelectCheapest",
+    "SelectFastest",
+    "Node",
+    "Link",
+    "Inventory",
+    "Supplier",
+    "InventoryNode",
+    "Manufacturer",
+    "Demand",
+    "global_logger",
+]
+
 global_logger = GlobalLogger() # create a global logger
+
+# Library-wide default RNG. Nodes and Links fall back to this when no per-instance
+# rng is supplied. Users reproduce a run by calling set_seed(n) before building
+# the network, or by passing their own random.Random() to individual components.
+_rng = random.Random()
+
+def set_seed(seed):
+    """
+    Seed the library-wide default RNG used for probabilistic node/link disruption.
+
+    Components built without an explicit ``rng`` argument draw from this RNG, so
+    seeding it once before constructing the network is enough to make a run
+    reproducible. Components that were passed an explicit ``rng`` are unaffected.
+
+    Parameters:
+        seed: any value accepted by ``random.Random.seed`` (typically ``int``).
+
+    Returns:
+        None
+    """
+    _rng.seed(seed)
+
+# Whitelist of kwargs accepted by GlobalLogger. Node.__init__ forwards only these to
+# the logger, and Node subclasses strip them out before forwarding the rest to
+# Inventory — which has a strict signature (no **kwargs), so unknown keys like
+# typo'd parameter names raise TypeError at the Inventory boundary.
+_LOGGER_KWARGS = {"log_to_file", "log_file", "log_to_screen"}
+
+# Node-level kwargs that Node.__init__ consumes. Node subclasses (Supplier,
+# InventoryNode, Manufacturer, Demand) use **kwargs, so these leak into the
+# subclass's local kwargs even after being forwarded to super(); they must be
+# stripped before that kwargs dict is forwarded onward to Inventory.
+_NODE_KWARGS = {"failure_p", "node_disrupt_time", "node_recovery_time", "logging", "rng", "logger_name"}
 
 def validate_positive(name: str, value):
     """
@@ -202,6 +272,10 @@ class Statistics(InfoMixin):
         """
         self._info_keys = ["name"]
         self._stats_keys = ["name", "demand_placed", "fulfillment_received", "demand_received", "demand_fulfilled", "orders_shortage", "backorder", "inventory_level", "inventory_waste", "inventory_carry_cost", "inventory_spend_cost", "transportation_cost", "node_cost", "revenue", "profit"]
+        # Explicit list of attributes that contribute to `node_cost`. Subclasses should
+        # append their own cost attrs here (see Supplier, Manufacturer). `node_cost`
+        # itself is NOT included — it is the derived sum.
+        self._cost_components = ["inventory_carry_cost", "inventory_spend_cost", "transportation_cost"]
         self.node = node # the node to which this statistics object belongs
         self.name = f"{self.node.ID} statistics"
         self.demand_placed = [0,0] # demand placed by this node [total orders placed, total quantity]
@@ -236,9 +310,9 @@ class Statistics(InfoMixin):
             None
         """
         for key, value in vars(self).items():
+            if key.startswith("_"):  # skip meta-lists like _info_keys, _stats_keys, _cost_components
+                continue
             if isinstance(value, list):
-                if "_keys" in key:
-                    continue
                 setattr(self, key, [0,0])
             elif isinstance(value, (int, float)):
                 setattr(self, key, 0)
@@ -273,17 +347,11 @@ class Statistics(InfoMixin):
                 global_logger.logger.warning(f"{self.node.ID}: (Updaing stats) Attribute {key} not found in Statistics class.")
         if hasattr(self.node, 'inventory'):
             if self.node.inventory.level != float('inf'):
-                self.inventory_level = self.node.inventory.inventory.level if hasattr(self.node, 'inventory') else 0
+                self.inventory_level = self.node.inventory.level if hasattr(self.node, 'inventory') else 0
                 self.node.inventory.update_carry_cost()
                 self.inventory_carry_cost = self.node.inventory.carry_cost
                 self.inventory_waste = self.node.inventory.waste if hasattr(self.node.inventory, 'waste') else 0
-        total_cost = 0
-        for key,value in vars(self).items():
-            if key == "node_cost": # exclude node_cost from the total cost calculation
-                continue
-            if "cost" in key: # consider all cost attributes
-                total_cost += value
-        self.node_cost = total_cost
+        self.node_cost = sum(getattr(self, name) for name in self._cost_components)
         self.revenue = self.demand_fulfilled[1] * self.node.sell_price if hasattr(self.node, 'sell_price') else 0
         self.profit = self.revenue - self.node_cost
 
@@ -627,11 +695,10 @@ class SSReplenishment(InventoryReplenishment):
             yield self.env.timeout(self.first_review_delay)
 
         while True: # run the replenishment process indefinitely
-            self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}, on hand:{self.node.inventory.on_hand}")
+            self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.level}, on hand:{self.node.inventory.on_hand}")
             if (self.node.inventory.on_hand - self.node.stats.backorder[1] <= s):
                 order_quantity = S - (self.node.inventory.on_hand - self.node.stats.backorder[1])  # calculate the order quantity                
                 supplier = self.node.selection_policy.select(order_quantity) # select a supplier based on the supplier selection policy
-                self.node.ongoing_order = True
                 self.env.process(self.node.process_order(supplier, order_quantity))                    
             
             if self.period==0: # if periodic check is OFF
@@ -725,10 +792,9 @@ class RQReplenishment(InventoryReplenishment):
             yield self.env.timeout(self.first_review_delay)
 
         while True:
-            self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels: {self.node.inventory.inventory.level}, on hand: {self.node.inventory.on_hand}")
+            self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels: {self.node.inventory.level}, on hand: {self.node.inventory.on_hand}")
             if (self.node.inventory.on_hand - self.node.stats.backorder[1] <= R):
                 supplier = self.node.selection_policy.select(Q)
-                self.node.ongoing_order = True
                 self.env.process(self.node.process_order(supplier, Q))
 
             if self.period == 0:
@@ -817,12 +883,11 @@ class PeriodicReplenishment(InventoryReplenishment):
             yield self.env.timeout(self.first_review_delay)
 
         while True:
-            self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.inventory.level}, on hand:{self.node.inventory.on_hand}")
+            self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.level}, on hand:{self.node.inventory.on_hand}")
             reorder_quantity = Q
             if (self.node.inventory.level < ss):
                 reorder_quantity +=  ss - self.node.inventory.level
             supplier = self.node.selection_policy.select(reorder_quantity) # select a supplier based on the supplier selection policy
-            self.node.ongoing_order = True
             self.env.process(self.node.process_order(supplier, reorder_quantity))
             yield self.env.timeout(T) # periodic replenishment, wait for the next period
 
@@ -907,6 +972,45 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
             global_logger.logger.error(f"{self.node.ID} must have at least one supplier.")
             raise ValueError(f"{self.node.ID} must have at least one supplier.")
 
+    def _active_suppliers(self):
+        """
+        Return the subset of ``self.node.suppliers`` whose transport link is
+        currently active. If every link is disrupted, fall back to the full
+        supplier list so subclasses always have a non-empty candidate set —
+        the dispatch gate in ``process_order`` will then block the inactive
+        choice and the policy will retry on the next replenishment trigger.
+
+        Returns:
+            list: Active suppliers (``Link`` objects), or all suppliers if none are active.
+        """
+        active = [s for s in self.node.suppliers if s.status == "active"]
+        return active if active else self.node.suppliers
+
+    def _apply_mode(self, selected):
+        """
+        Apply the fixed / dynamic mode semantics to a dynamically chosen supplier.
+
+        In ``"fixed"`` mode the first selection is locked for all subsequent
+        calls, but if the locked supplier's link is currently inactive the
+        policy temporarily routes around it (returning ``selected`` for this
+        call without changing the lock) — "fixed" means *prefer this one*,
+        not *stop shipping if it's down*. The lock is restored as soon as
+        the supplier's link recovers.
+
+        Parameters:
+            selected (Link): The supplier chosen by the subclass's selection logic.
+
+        Returns:
+            Link: ``self.fixed_supplier`` in fixed mode (or ``selected`` if the lock is inactive); ``selected`` in dynamic mode.
+        """
+        if self.mode == "fixed":
+            if self.fixed_supplier is None:
+                self.fixed_supplier = selected
+            if self.fixed_supplier.status == "inactive":
+                return selected
+            return self.fixed_supplier
+        return selected
+
 class SelectFirst(SupplierSelectionPolicy):
     """
     Implements a supplier selection policy that always selects the first supplier in the supplier list.
@@ -950,10 +1054,17 @@ class SelectFirst(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the first supplier in the supplier list.
+        Selects the first supplier whose transport link is currently active.
+
+        Disrupted links are filtered out; if every link is inactive, the policy
+        falls back to the first supplier in the list (the dispatch gate in
+        ``process_order`` then blocks it and the policy retries on the next
+        replenishment trigger).
 
         In dynamic mode, the selection is evaluated for each order.
-        In fixed mode, the first supplier is locked for all subsequent selections.
+        In fixed mode, the first active supplier is locked for all subsequent
+        selections. If the locked link later goes inactive, the policy
+        temporarily routes around it without changing the lock.
 
         Parameters:
             order_quantity (float): The quantity to order.
@@ -962,10 +1073,9 @@ class SelectFirst(SupplierSelectionPolicy):
             object: The selected supplier.
         """
         self.validate_suppliers()
-        selected = self.node.suppliers[0]
-        if self.mode == "fixed" and self.fixed_supplier is None:
-            self.fixed_supplier = selected
-        return self.fixed_supplier if self.mode == "fixed" else selected
+        candidates = self._active_suppliers()
+        selected = candidates[0]
+        return self._apply_mode(selected)
 
 class SelectAvailable(SupplierSelectionPolicy):
     """
@@ -1011,10 +1121,18 @@ class SelectAvailable(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the first supplier with sufficient available inventory.
+        Selects the first active supplier with sufficient available inventory.
 
-        If no supplier can fully meet the requested order quantity, defaults to the first supplier in the list.
-        In fixed mode, the first selected supplier is locked for all subsequent orders.
+        Disrupted links are filtered out first. Among the active candidates the
+        first one whose upstream inventory can cover ``order_quantity`` is
+        chosen; if none can, the policy falls back to the first active
+        candidate (inventory shortage is then recorded by ``process_order`` as
+        a supplier backorder). If every link is inactive, falls back to the
+        first supplier in the list — the dispatch gate will block it.
+
+        In fixed mode, the first selection is locked for all subsequent orders.
+        If the locked link later goes inactive, the policy temporarily routes
+        around it without changing the lock.
 
         Parameters:
             order_quantity (float): The quantity to order.
@@ -1023,13 +1141,10 @@ class SelectAvailable(SupplierSelectionPolicy):
             object: The selected supplier.
         """
         self.validate_suppliers()
-        selected = self.node.suppliers[0]
-        suppliers = [s for s in self.node.suppliers if s.source.inventory.inventory.level >= order_quantity]
-        if suppliers:
-            selected = suppliers[0]
-        if self.mode == "fixed" and self.fixed_supplier is None:
-            self.fixed_supplier = selected
-        return self.fixed_supplier if self.mode == "fixed" else selected
+        candidates = self._active_suppliers()
+        available = [s for s in candidates if s.source.inventory.level >= order_quantity]
+        selected = available[0] if available else candidates[0]
+        return self._apply_mode(selected)
 
 class SelectCheapest(SupplierSelectionPolicy):
     """
@@ -1074,9 +1189,16 @@ class SelectCheapest(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the supplier with the lowest transportation cost.
+        Selects the active supplier with the lowest transportation cost.
 
-        In fixed mode, the first selected supplier is locked for all subsequent orders.
+        Disrupted links are filtered out first; if every link is inactive,
+        the policy falls back to the cheapest among all suppliers (the dispatch
+        gate in ``process_order`` will block it and the policy retries on the
+        next trigger).
+
+        In fixed mode, the first selection is locked for all subsequent orders.
+        If the locked link later goes inactive, the policy temporarily routes
+        around it without changing the lock.
 
         Parameters:
             order_quantity (float): The quantity to order.
@@ -1085,10 +1207,9 @@ class SelectCheapest(SupplierSelectionPolicy):
             object: The selected supplier.
         """
         self.validate_suppliers()
-        selected = min(self.node.suppliers, key=lambda s: s.cost)
-        if self.mode == "fixed" and self.fixed_supplier is None:
-            self.fixed_supplier = selected
-        return self.fixed_supplier if self.mode == "fixed" else selected
+        candidates = self._active_suppliers()
+        selected = min(candidates, key=lambda s: s.cost)
+        return self._apply_mode(selected)
 
 class SelectFastest(SupplierSelectionPolicy):
     """
@@ -1134,9 +1255,16 @@ class SelectFastest(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the supplier with the shortest lead time.
+        Selects the active supplier with the shortest lead time.
 
-        In fixed mode, the first selected supplier is locked for all subsequent orders.
+        Disrupted links are filtered out first; if every link is inactive,
+        the policy falls back to the fastest among all suppliers (the dispatch
+        gate in ``process_order`` will block it and the policy retries on the
+        next trigger).
+
+        In fixed mode, the first selection is locked for all subsequent orders.
+        If the locked link later goes inactive, the policy temporarily routes
+        around it without changing the lock.
 
         Parameters:
             order_quantity (float): The quantity to order.
@@ -1145,10 +1273,9 @@ class SelectFastest(SupplierSelectionPolicy):
             object: The selected supplier.
         """
         self.validate_suppliers()
-        selected = min(self.node.suppliers, key=lambda s: s.lead_time())
-        if self.mode == "fixed" and self.fixed_supplier is None:
-            self.fixed_supplier = selected
-        return self.fixed_supplier if self.mode == "fixed" else selected
+        candidates = self._active_suppliers()
+        selected = min(candidates, key=lambda s: s.lead_time())
+        return self._apply_mode(selected)
 
 class Node(NamedEntity, InfoMixin):
     """
@@ -1196,14 +1323,15 @@ class Node(NamedEntity, InfoMixin):
         __init__: Initializes the node object, validates parameters, and sets up logging and self-disruption if needed.
         disruption: Simulates node disruption and automatic recovery over time.
     """
-    def __init__(self, env: simpy.Environment, 
-                 ID: str, 
-                 name: str, 
-                 node_type: str, 
-                 failure_p:float = 0.0, 
+    def __init__(self, env: simpy.Environment,
+                 ID: str,
+                 name: str,
+                 node_type: str,
+                 failure_p:float = 0.0,
                  node_disrupt_time:callable = None,
                  node_recovery_time:callable = lambda: 1,
                  logging: bool = True,
+                 rng: random.Random = None,
                  **kwargs) -> None:
         """
         Initialize the node object.
@@ -1256,11 +1384,15 @@ class Node(NamedEntity, InfoMixin):
         self.node_status = "active"  # node status (active/inactive)
         self.node_disrupt_time = node_disrupt_time  # callable function to model node disruption time
         self.node_recovery_time = node_recovery_time  # callable function to model node recovery time
+        self.rng = rng if rng is not None else _rng  # RNG for probabilistic disruption; falls back to library default
         
         logger_name = self.ID # default logger name is the node ID
-        if 'logger_name' in kwargs.keys():
-            logger_name = kwargs['logger_name']
-        self.logger = GlobalLogger(logger_name=logger_name, **kwargs)  # create a logger
+        if 'logger_name' in kwargs:
+            logger_name = kwargs.pop('logger_name')
+        # Only forward kwargs that GlobalLogger actually accepts; ignore the rest
+        # so unrelated keys (e.g. record_inv_levels, shelf_life) don't raise TypeError.
+        logger_kwargs = {k: kwargs[k] for k in kwargs if k in _LOGGER_KWARGS}
+        self.logger = GlobalLogger(logger_name=logger_name, **logger_kwargs)  # create a logger
         if not logging:
             self.logger.disable_logging()  # disable logging if logging is False
         else:
@@ -1292,7 +1424,7 @@ class Node(NamedEntity, InfoMixin):
                     yield self.env.timeout(disrupt_time)
                     self.node_status = "inactive" # change the node status to inactive
                     self.logger.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
-                elif(random.random() < self.node_failure_p):
+                elif(self.rng.random() < self.node_failure_p):
                     self.node_status = "inactive"
                     self.logger.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
                     yield self.env.timeout(1)
@@ -1339,15 +1471,16 @@ class Link(NamedEntity, InfoMixin):
         __init__: Initializes the link object and validates parameters.
         disruption: Simulates link disruption and automatic recovery.
     """
-    def __init__(self, env: simpy.Environment, 
-                 ID: str, 
-                 source: Node, 
-                 sink: Node, 
+    def __init__(self, env: simpy.Environment,
+                 ID: str,
+                 source: Node,
+                 sink: Node,
                  cost: float, # transportation cost
                  lead_time: callable,
                  link_failure_p: float = 0.0,
                  link_disrupt_time: callable = None,
-                 link_recovery_time: callable = lambda: 1) -> None:
+                 link_recovery_time: callable = lambda: 1,
+                 rng: random.Random = None) -> None:
         """
         Initialize the Link object representing a transportation connection between two nodes.
 
@@ -1384,11 +1517,12 @@ class Link(NamedEntity, InfoMixin):
             raise ValueError("Invalid environment. Provide a valid SimPy environment.")
         if not isinstance(source, Node) or not isinstance(sink, Node):
             raise ValueError("Invalid source or sink node. Provide valid Node instances.")
-        if not callable(lead_time):
-            lead_time = lambda val=lead_time: val # convert to callable 
-        if(lead_time == None):
+        if lead_time is None:
             global_logger.logger.error("Lead time cannot be None. Provide a function to model stochastic lead time.")
             raise ValueError("Lead time cannot be None. Provide a function to model stochastic lead time.")
+        if not callable(lead_time):
+            lead_time = lambda val=lead_time: val # convert to callable
+        validate_number(name="lead_time", value=lead_time()) # ensure the callable returns a number
         if(source == sink):
             global_logger.logger.error("Source and sink nodes cannot be the same.")
             raise ValueError("Source and sink nodes cannot be the same.")
@@ -1421,6 +1555,7 @@ class Link(NamedEntity, InfoMixin):
         self.status = "active"  # link status (active/inactive)
         self.link_recovery_time = link_recovery_time  # link recovery time
         self.link_disrupt_time = link_disrupt_time  # link disruption time, if provided
+        self.rng = rng if rng is not None else _rng  # RNG for probabilistic disruption; falls back to library default
 
         self.sink.suppliers.append(self)  # add the link as a supplier link to the sink node
         if(self.link_failure_p>0 or self.link_disrupt_time): # disrupt the link if link_failure_p > 0
@@ -1439,7 +1574,11 @@ class Link(NamedEntity, InfoMixin):
         Returns:
             None
         """
-        # TODO: interrupt all ongoing transports by this link on disruption.
+        # Ongoing shipments already dispatched over this link are intentionally
+        # not interrupted when the link goes inactive — only *new* orders are
+        # blocked (see the link-status check in InventoryNode.process_order and
+        # Manufacturer.process_order_raw). Interrupting in-transit shipments
+        # would require tracking them as individual processes; deferred.
         while True:
             if(self.status=="active"):
                 if(self.link_disrupt_time): # if link_disrupt_time is provided, wait for the disruption time
@@ -1448,7 +1587,7 @@ class Link(NamedEntity, InfoMixin):
                     yield self.env.timeout(disrupt_time)
                     self.status = "inactive" # change the link status to inactive
                     global_logger.logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
-                elif(random.random() < self.link_failure_p):
+                elif(self.rng.random() < self.link_failure_p):
                     self.status = "inactive"
                     global_logger.logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
                     yield self.env.timeout(1)
@@ -1477,7 +1616,6 @@ class Inventory(NamedEntity, InfoMixin):
         shelf_life (float): Shelf life for perishable items.
         inv_type (str): Type of the inventory, either "non-perishable" or "perishable".
         record_inv_levels (bool): Flag to enable recording of inventory levels over time.
-        **kwargs: Additional arguments if passed, will be ignored.
 
     Attributes:
         _info_keys (list): Keys included in the information dictionary.
@@ -1515,8 +1653,7 @@ class Inventory(NamedEntity, InfoMixin):
                  holding_cost: float = 0.0,
                  shelf_life: float = 0,
                  inv_type: str = "non-perishable",
-                 record_inv_levels = False, 
-                 **kwargs) -> None:
+                 record_inv_levels = False) -> None:
         """
         Initialize the Inventory object.
         
@@ -1561,8 +1698,8 @@ class Inventory(NamedEntity, InfoMixin):
             raise ValueError("Initial level cannot be greater than capacity.")
         if replenishment_policy is not None:
             if not issubclass(replenishment_policy.__class__, InventoryReplenishment):
-                self.node.logger.logger.error(f"{replenishment_policy.__name__} must inherit from InventoryReplenishment")
-                raise TypeError(f"{replenishment_policy.__name__} must inherit from InventoryReplenishment")
+                self.node.logger.logger.error(f"{type(replenishment_policy).__name__} must inherit from InventoryReplenishment")
+                raise TypeError(f"{type(replenishment_policy).__name__} must inherit from InventoryReplenishment")
         if inv_type not in ["non-perishable", "perishable"]:
             self.node.logger.logger.error(f"Invalid inventory type. {inv_type} is not yet available.")
             raise ValueError(f"Invalid inventory type. {inv_type} is not yet available.")
@@ -1573,15 +1710,13 @@ class Inventory(NamedEntity, InfoMixin):
         self._info_keys = ["capacity", "initial_level", "replenishment_policy", "holding_cost", "shelf_life", "inv_type"]
         self._stats_keys = ["level", "carry_cost", "instantaneous_levels"]
         self.env = env
-        self.capacity = capacity
         self.init_level = initial_level
-        self.level = initial_level
         self.on_hand = initial_level # current inventory level
         self.inv_type = inv_type
         self.holding_cost = holding_cost
         self.carry_cost = 0 # initial carrying cost based on the initial inventory level
         self.replenishment_policy = replenishment_policy
-        self.inventory = simpy.Container(env=self.env, capacity=self.capacity, init=self.init_level) # Inventory container setup
+        self.inventory = simpy.Container(env=self.env, capacity=capacity, init=self.init_level) # Inventory container setup
         self.last_update_t = self.env.now # last time the carrying cost was updated
         
         if self.inv_type == "perishable":
@@ -1594,6 +1729,16 @@ class Inventory(NamedEntity, InfoMixin):
         self.instantaneous_levels = []
         if record_inv_levels:
             self.env.process(self.record_inventory_levels())  # record inventory levels at regular intervals
+
+    @property
+    def level(self):
+        """Current inventory level, delegating to the underlying SimPy container."""
+        return self.inventory.level
+
+    @property
+    def capacity(self):
+        """Inventory capacity, delegating to the underlying SimPy container."""
+        return self.inventory.capacity
 
     def record_inventory_levels(self):
         """
@@ -1619,10 +1764,17 @@ class Inventory(NamedEntity, InfoMixin):
         Parameters:
             amount (float): amount to add
             manufacturing_date (float): only required for perishable inventories
+
+        Returns:
+            float: the amount actually accepted into inventory. May be less than
+                the requested ``amount`` when the inventory is at/near capacity, and
+                0 when the inventory is infinite, already full, or ``amount <= 0``.
+                Callers that track ``on_hand`` must reconcile any shortfall
+                (``requested - accepted``) against their bookkeeping.
         """
-        if self.inventory.level == float('inf') or amount <=0 or self.inventory.level == self.capacity:
-            return
-        
+        if self.inventory.level == float('inf') or amount <= 0 or self.inventory.level == self.capacity:
+            return 0
+
         if amount + self.inventory.level > self.capacity: # adjust amount if it exceeds capacity
             old_amount = amount
             amount = self.capacity - self.inventory.level
@@ -1642,9 +1794,9 @@ class Inventory(NamedEntity, InfoMixin):
                 self.perish_queue.append((manufacturing_date, amount))
         self.update_carry_cost()  # Update carrying cost based on the amount added
         self.inventory.put(amount)
-        self.level = self.inventory.level  # Update the current inventory level
         if(not self.node.inventory_raised.triggered):
             self.node.inventory_raised.succeed()  # signal that inventory has been raised
+        return amount
 
     def get(self, amount: float):
         """
@@ -1674,7 +1826,6 @@ class Inventory(NamedEntity, InfoMixin):
                     x_amount = 0
         self.update_carry_cost()
         get_event = self.inventory.get(amount)
-        self.level = self.inventory.level  # Update the current inventory level
         self.on_hand -= amount  # Update the on-hand inventory level
         if(self.replenishment_policy):
             if(not self.node.inventory_drop.triggered):
@@ -1689,10 +1840,11 @@ class Inventory(NamedEntity, InfoMixin):
             yield self.env.timeout(1)
             while self.perish_queue and self.env.now - self.perish_queue[0][0] >= self.shelf_life:
                 mfg_date, qty = self.perish_queue[0] # get first item in the queue
-                self.node.logger.logger.info(f"{self.env.now:.4f}: {qty} units expired (Mgf date:{mfg_date}).")
-                self.waste += qty
                 if qty > 0:
-                    self.get(qty) # get/remove expired items from the inventory
+                    get_event, _ = self.get(qty) # get/remove expired items from the inventory
+                    yield get_event
+                    self.waste += qty  # update waste statistics
+                    self.node.logger.logger.info(f"{self.env.now:.4f}: {qty} units expired (Mgf date:{mfg_date}).")
                 else:
                     self.perish_queue.pop(0)
 
@@ -1782,7 +1934,8 @@ class Supplier(Node):
         if(self.raw_material):
             self.sell_price = self.raw_material.cost # selling price of the raw material
         if(self.node_type!="infinite_supplier"):
-            self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, holding_cost=inventory_holding_cost, replenishment_policy=None, **kwargs)
+            inventory_kwargs = {k: v for k, v in kwargs.items() if k not in _LOGGER_KWARGS and k not in _NODE_KWARGS}
+            self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, holding_cost=inventory_holding_cost, replenishment_policy=None, **inventory_kwargs)
             self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
             self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
             if(self.raw_material):
@@ -1791,12 +1944,14 @@ class Supplier(Node):
                 self.logger.logger.error(f"{self.ID}:Raw material not provided for this supplier. Recreate it with a raw material.")
                 raise ValueError("Raw material not provided.")
         else:
-            self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), node=self, holding_cost=inventory_holding_cost, replenishment_policy=None, **kwargs)
+            inventory_kwargs = {k: v for k, v in kwargs.items() if k not in _LOGGER_KWARGS and k not in _NODE_KWARGS}
+            self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), node=self, holding_cost=inventory_holding_cost, replenishment_policy=None, **inventory_kwargs)
         
         self.stats = Statistics(self)
         setattr(self.stats,"total_raw_materials_mined",0)
         setattr(self.stats,"total_material_cost",0)
         self.stats._stats_keys.extend(["total_raw_materials_mined", "total_material_cost"])
+        self.stats._cost_components.append("total_material_cost")
         
     def behavior(self):
         """
@@ -1813,17 +1968,17 @@ class Supplier(Node):
             None
         """
         while True:
-            if(self.inventory.inventory.level < self.inventory.inventory.capacity): # check if the inventory is not full
+            if(self.inventory.level < self.inventory.capacity): # check if the inventory is not full
                 mined_quantity = self.raw_material.extraction_quantity
-                if((self.inventory.inventory.level+self.raw_material.extraction_quantity)>self.inventory.inventory.capacity): # check if the inventory can accommodate the extracted quantity
-                    mined_quantity = self.inventory.inventory.capacity - self.inventory.inventory.level # update statistics
+                if((self.inventory.level+self.raw_material.extraction_quantity)>self.inventory.capacity): # check if the inventory can accommodate the extracted quantity
+                    mined_quantity = self.inventory.capacity - self.inventory.level # update statistics
                 self.inventory.put(mined_quantity)
                 self.stats.update_stats(total_raw_materials_mined=mined_quantity, total_material_cost=mined_quantity*self.raw_material.mining_cost)
-                self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Raw material mined/extracted. Inventory level:{self.inventory.inventory.level}")
+                self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Raw material mined/extracted. Inventory level:{self.inventory.level}")
                 yield self.env.timeout(self.raw_material.extraction_time)
             else:
                 yield self.env.timeout(1)
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}: Inventory level:{self.inventory.inventory.level}") # log every day/period inventory level
+            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}: Inventory level:{self.inventory.level}") # log every day/period inventory level
 
 class InventoryNode(Node):
     """
@@ -1867,7 +2022,7 @@ class InventoryNode(Node):
         buy_price (float): Buying price of the product.
         product (Product): Product managed by the node.
         suppliers (list): List of supplier links connected to this node.
-        ongoing_order (bool): Indicates if an order is currently in process.
+        pending_orders (int): Number of replenishment orders currently in flight (dispatched but not yet delivered).
         selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
         stats (Statistics): Statistics tracking object for this node.
 
@@ -1928,7 +2083,7 @@ class InventoryNode(Node):
             buy_price (float): Buying price of the product.
             product (Product): Product managed by the node.
             suppliers (list): List of supplier links connected to this node.
-            ongoing_order (bool): Indicates if an order is currently in process.
+            pending_orders (int): Number of replenishment orders currently in flight (dispatched but not yet delivered).
             selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
             stats (Statistics): Statistics tracking object for this node.
         
@@ -1945,15 +2100,16 @@ class InventoryNode(Node):
         super().__init__(env=env,ID=ID,name=name,node_type=node_type,**kwargs)
         validate_non_negative("Product Sell Price", product_sell_price)
         validate_non_negative("Product Buy Price", product_buy_price)
-        self._info_keys.extend(["sell_price", "buy_price", "ongoing_order", "selection_policy"])
+        self._info_keys.extend(["sell_price", "buy_price", "pending_orders", "selection_policy"])
         self.replenishment_policy = None
         if(replenishment_policy):
             self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
             self.env.process(self.replenishment_policy.run())
             
-        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, 
-                                   inv_type=inventory_type, holding_cost=inventory_holding_cost, 
-                                   replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **kwargs)
+        inventory_kwargs = {k: v for k, v in kwargs.items() if k not in _LOGGER_KWARGS and k not in _NODE_KWARGS}
+        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self,
+                                   inv_type=inventory_type, holding_cost=inventory_holding_cost,
+                                   replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **inventory_kwargs)
         self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
         self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
         self.manufacture_date = manufacture_date
@@ -1964,7 +2120,7 @@ class InventoryNode(Node):
             self.product.sell_price = product_sell_price
             self.product.buy_price = product_buy_price # set the buy price of the product to the product buy price
         self.suppliers = []
-        self.ongoing_order = False # flag to check if the order is placed
+        self.pending_orders = 0 # count of replenishment orders currently in flight (dispatched but not yet delivered)
         self.selection_policy = supplier_selection_policy(self,supplier_selection_mode)
         self.stats = Statistics(self, periodic_update=True, period=1) # create a statistics object for the inventory node
 
@@ -1982,15 +2138,33 @@ class InventoryNode(Node):
         Returns:
             None
         """
-        if(self.inventory.on_hand + reorder_quantity > self.inventory.inventory.capacity): # check if the inventory can accommodate the reordered quantity
-                reorder_quantity = self.inventory.inventory.capacity - self.inventory.on_hand # if not, adjust reorder quantity to order only what can fit
+        # Use the true physical commitment (on_hand - customer backorders) as the
+        # reference for the capacity clamp. `on_hand` is inventory position, not
+        # physical on-hand; customer backorders that still count against on_hand
+        # will leave the shelf as soon as the next delivery lands, so they do not
+        # consume capacity and must be excluded from the clamp.
+        gross = self.inventory.on_hand - self.stats.backorder[1]
+        if(gross + reorder_quantity > self.inventory.capacity): # check if the inventory can accommodate the reordered quantity
+                reorder_quantity = self.inventory.capacity - gross # if not, adjust reorder quantity to order only what can fit
 
         if reorder_quantity <= 0:
-            self.ongoing_order = False
             return  # no need to place an order if reorder quantity is zero
 
-        if supplier.source.inventory.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
-            shortage = reorder_quantity - supplier.source.inventory.inventory.level
+        # A new order cannot be placed while the physical transport link is down.
+        # Ongoing shipments that already cleared this gate are not interrupted —
+        # Link.disruption only blocks *new* dispatches. Guarding here (before the
+        # shortage bookkeeping and before pending_orders increments) means a
+        # blocked order does not count as in-flight or create a phantom
+        # backorder on the supplier. The replenishment policy re-triggers when
+        # inventory drops again or on the next periodic tick.
+        if supplier.status == "inactive":
+            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Order not placed.")
+            return
+
+        self.pending_orders += 1  # count this order as in flight; decremented when delivery completes (or supplier disrupted)
+
+        if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
+            shortage = reorder_quantity - supplier.source.inventory.level
             supplier.source.stats.update_stats(orders_shortage=[1,shortage], backorder=[1,reorder_quantity])
             if(not supplier.source.inventory_drop.triggered):
                 supplier.source.inventory_drop.succeed()  # signal that inventory has been dropped (since backorder is created)
@@ -1998,7 +2172,7 @@ class InventoryNode(Node):
         if(supplier.source.node_status == "active"):
             self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
             supplier.source.stats.update_stats(demand_received=[1,reorder_quantity])
-            
+
             self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
             event, man_date_ls = supplier.source.inventory.get(reorder_quantity)
             self.inventory.on_hand += reorder_quantity
@@ -2008,25 +2182,34 @@ class InventoryNode(Node):
             lead_time = supplier.lead_time() # get the lead time from the supplier
             validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
             yield self.env.timeout(lead_time) # lead time for the order
-            
+
+            accepted = 0
             if(man_date_ls):
                 for ele in man_date_ls: # get manufacturing date from the supplier
-                    self.inventory.put(ele[1],ele[0])
+                    accepted += self.inventory.put(ele[1],ele[0])
             elif(self.inventory.inv_type=="perishable"): # if self inventory is perishable but manufacture date is not provided
                 if(self.manufacture_date): # calculate the manufacturing date using the function if provided
-                    self.inventory.put(reorder_quantity,self.manufacture_date(self.env.now))
+                    accepted = self.inventory.put(reorder_quantity,self.manufacture_date(self.env.now))
                 else: # else put the product in the inventory with current time as manufacturing date
-                    self.inventory.put(reorder_quantity,self.env.now)
+                    accepted = self.inventory.put(reorder_quantity,self.env.now)
             else:
-                self.inventory.put(reorder_quantity)
+                accepted = self.inventory.put(reorder_quantity)
 
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, Inventory levels:{self.inventory.inventory.level}")
+            # Reconcile on_hand with what put() actually accepted: the pre-increment
+            # at line ~2014 assumed the full reorder_quantity would land, but put() may
+            # clamp at capacity or refuse at capacity/inf/non-positive. Without this,
+            # on_hand drifts permanently higher than the physical+in-transit total.
+            shortfall = reorder_quantity - accepted
+            if shortfall > 0:
+                self.inventory.on_hand -= shortfall
+
+            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, Inventory levels:{self.inventory.level}")
 
             self.stats.update_stats(fulfillment_received=[1,reorder_quantity],inventory_spend_cost=reorder_quantity*self.buy_price)
             supplier.source.stats.update_stats(demand_fulfilled=[1,reorder_quantity])
         else:
             self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted. Order not placed.")
-        self.ongoing_order = False
+        self.pending_orders -= 1
 
 class Manufacturer(Node):
     """
@@ -2067,7 +2250,7 @@ class Manufacturer(Node):
         production_cycle (bool): Indicates whether the production cycle is currently active.
         raw_inventory_counts (dict): Inventory levels of raw materials by raw material ID.
         ongoing_order_raw (dict): Indicates whether a raw material order is currently in progress.
-        ongoing_order (bool): Indicates whether a product order is currently in progress.
+        pending_orders (int): Number of raw-material orders currently in flight (dispatched but not yet delivered).
         selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
         stats (Statistics): Statistics tracking object for the manufacturer.
 
@@ -2138,7 +2321,7 @@ class Manufacturer(Node):
             production_cycle (bool): Indicates whether the production cycle is currently active.
             raw_inventory_counts (dict): Inventory levels of raw materials by raw material ID.
             ongoing_order_raw (dict): Indicates whether a raw material order is currently in progress.
-            ongoing_order (bool): Indicates whether a product order is currently in progress.
+            pending_orders (int): Number of raw-material orders currently in flight (dispatched but not yet delivered).
             selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
             stats (Statistics): Statistics tracking object for the manufacturer.
 
@@ -2158,7 +2341,8 @@ class Manufacturer(Node):
             self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
             self.env.process(self.replenishment_policy.run())
         
-        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, inv_type=inventory_type, holding_cost=inventory_holding_cost, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **kwargs)
+        inventory_kwargs = {k: v for k, v in kwargs.items() if k not in _LOGGER_KWARGS and k not in _NODE_KWARGS}
+        self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, inv_type=inventory_type, holding_cost=inventory_holding_cost, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **inventory_kwargs)
         self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
         self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
         self.product = product # product manufactured by the manufacturer
@@ -2169,7 +2353,7 @@ class Manufacturer(Node):
         self.production_cycle = False # production cycle status
         self.raw_inventory_counts = {} # dictionary to store inventory counts for raw products inventory
         self.ongoing_order_raw = {} # dictionary to store order status
-        self.ongoing_order = False # order status for the product        
+        self.pending_orders = 0 # count of raw-material orders currently in flight (dispatched but not yet delivered)
 
         if(self.product.buy_price <= 0): # if the product buy price is not given, calculate it
             self.product.buy_price = self.product.manufacturing_cost 
@@ -2183,6 +2367,7 @@ class Manufacturer(Node):
         setattr(self.stats,"total_products_manufactured",0) # adding specific statistics for the manufacturer
         setattr(self.stats,"total_manufacturing_cost",0) # adding specific statistics for the manufacturer
         self.stats._stats_keys.extend(["total_products_manufactured", "total_manufacturing_cost"])
+        self.stats._cost_components.append("total_manufacturing_cost")
 
     def manufacture_product(self):
         """
@@ -2204,19 +2389,28 @@ class Manufacturer(Node):
             required_amount = raw_material[1]
             current_raw_material_level = self.raw_inventory_counts[raw_mat_id]
             max_producible_units = min(max_producible_units,int(current_raw_material_level/required_amount))
-        if((self.inventory.inventory.level + max_producible_units)>self.inventory.inventory.capacity): # check if the inventory can accommodate the maximum producible units
-            max_producible_units = self.inventory.inventory.capacity - self.inventory.inventory.level
+        if((self.inventory.level + max_producible_units)>self.inventory.capacity): # check if the inventory can accommodate the maximum producible units
+            max_producible_units = self.inventory.capacity - self.inventory.level
+        # Don't produce more than what's been committed via process_order.
+        # on_hand already accounts for pending production (§3.11); producing
+        # beyond (on_hand - level) would grow level past on_hand, breaking
+        # the invariant level <= on_hand and masking true inventory position.
+        pending = self.inventory.on_hand - self.inventory.level
+        if pending < max_producible_units:
+            max_producible_units = max(pending, 0)
         if(max_producible_units>0):
-            self.inventory.on_hand += max_producible_units # update the on-hand inventory level
             self.production_cycle = True # produce the product
             for raw_material in self.product.raw_materials: # consume raw materials
                 raw_mat_id = raw_material[0].ID
                 required_amount = raw_material[1]
                 self.raw_inventory_counts[raw_mat_id] -= raw_material[1]*max_producible_units
-            yield self.env.timeout(self.product.manufacturing_time) # take manufacturing time to produce the product            
-            self.inventory.put(max_producible_units, manufacturing_date=self.env.now)
+            yield self.env.timeout(self.product.manufacturing_time) # take manufacturing time to produce the product
+            accepted = self.inventory.put(max_producible_units, manufacturing_date=self.env.now)
+            shortfall = max_producible_units - accepted
+            if shortfall > 0:
+                self.inventory.on_hand -= shortfall
             self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}: {max_producible_units} units manufactured.")
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}: Product inventory levels:{self.inventory.inventory.level}")
+            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}: Product inventory levels:{self.inventory.level}")
             self.stats.update_stats(total_products_manufactured=max_producible_units, total_manufacturing_cost=max_producible_units*self.product.manufacturing_cost) # update statistics
             self.production_cycle = False
 
@@ -2270,34 +2464,45 @@ class Manufacturer(Node):
         Returns:    
             None
         """
-        if supplier.source.inventory.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
-            shortage = reorder_quantity - supplier.source.inventory.inventory.level
+        # Link-disruption gate: mirrors the one in InventoryNode.process_order.
+        # A disrupted physical link blocks new raw-material dispatches; ongoing
+        # shipments already past this point keep flowing. We clear ongoing_order_raw
+        # so the per-material flag does not stick and the manufacturer can retry
+        # the order on the next replenishment tick, once the link recovers.
+        if supplier.status == "inactive":
+            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Raw-material order not placed.")
+            self.ongoing_order_raw[raw_mat_id] = False
+            yield self.env.timeout(1) # wait a tick before the policy retries
+            return
+
+        if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
+            shortage = reorder_quantity - supplier.source.inventory.level
             supplier.source.stats.update_stats(orders_shortage=[1,shortage], backorder=[1,reorder_quantity])
 
         if(supplier.source.node_status == "active"): # check if the supplier is active and has enough inventory
             if(self.raw_inventory_counts[raw_mat_id]>= reorder_quantity): # dont order if enough inventory is available (reorder_quantity depends on the number of product units that needs to be manufactured, there is no capcacity defined for raw material inventory)
                 self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Sufficient raw material inventory for {supplier.source.raw_material.name}, no order placed. Current inventory level: {self.raw_inventory_counts}.")
                 self.ongoing_order_raw[raw_mat_id] = False
-                self.ongoing_order = False # set the order status to False
                 return
 
+            self.pending_orders += 1  # count this raw-material order as in flight
             self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
             event, man_date_ls = supplier.source.inventory.get(reorder_quantity)
             supplier.source.stats.update_stats(demand_received=[1,reorder_quantity]) # update the supplier statistics for demand received
             yield event
-            
+
             self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")                
+            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
             lead_time = supplier.lead_time() # get the lead time from the supplier
             validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
             yield self.env.timeout(lead_time) # lead time for the order
-            
+
             self.stats.update_stats(fulfillment_received=[1,reorder_quantity],inventory_spend_cost=reorder_quantity*supplier.source.sell_price)
             supplier.source.stats.update_stats(demand_fulfilled=[1,reorder_quantity]) # update the supplier statistics for demand fulfilled
             self.ongoing_order_raw[raw_mat_id] = False
-            self.raw_inventory_counts[raw_mat_id] += reorder_quantity     
+            self.raw_inventory_counts[raw_mat_id] += reorder_quantity
             self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
-            self.ongoing_order = False # set the order status to False
+            self.pending_orders -= 1
         else:
             self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted.")
             yield self.env.timeout(1) # wait for 1 time unit before checking again
@@ -2318,12 +2523,22 @@ class Manufacturer(Node):
         Returns:
             None
         """
-        self.ongoing_order = True # set the order status to True
-        if(self.inventory.on_hand + reorder_quantity > self.inventory.inventory.capacity): # check if the inventory can accommodate the reordered quantity
-                reorder_quantity = self.inventory.inventory.capacity - self.inventory.on_hand # if not, adjust reorder quantity to order only what can fit
+        # Exclude customer backorders from the capacity clamp — they still count
+        # against on_hand but will leave the shelf on the next delivery, so they
+        # do not consume product-inventory capacity. See §3.10 for details.
+        gross = self.inventory.on_hand - self.stats.backorder[1]
+        if(gross + reorder_quantity > self.inventory.capacity): # check if the inventory can accommodate the reordered quantity
+                reorder_quantity = self.inventory.capacity - gross # if not, adjust reorder quantity to order only what can fit
         if reorder_quantity <= 0:
-            self.ongoing_order = False
             return # no need to place an order if reorder quantity is zero
+
+        # Commit the intended production up-front on on_hand (mirroring
+        # InventoryNode.process_order). Without this commit, the replenishment
+        # policy can re-trigger between dispatch here and the next
+        # manufacture_product run, see a stale on_hand, and place a duplicate
+        # raw-material order for the same product units. See §3.11.
+        self.inventory.on_hand += reorder_quantity
+
         for raw_mat in self.product.raw_materials: # place order for all raw materials required to produce the product
             raw_mat_id = raw_mat[0].ID
             raw_mat_reorder_sz = raw_mat[1]*reorder_quantity
@@ -2446,6 +2661,7 @@ class Demand(Node):
         Returns:
             None
         """
+        super().__init__(env=env,ID=ID,name=name,node_type="demand",**kwargs)
         if order_arrival_model is None or order_quantity_model is None:
             raise ValueError("Order arrival and quantity models cannot be None.")
         if not callable(order_arrival_model):
@@ -2461,14 +2677,13 @@ class Demand(Node):
         validate_non_negative("Customer tolerance", tolerance)
         validate_positive("Order Min Split Ratio", order_min_split_ratio)
         if order_min_split_ratio > 1:
-            self.logger.logger.error("Order Min Split Ratio is greater than 1. It will be set to 1.")
-            raise ValueError("Order Min Split Ratio must be in the range [0, 1].")
+            self.logger.logger.error("Order Min Split Ratio must be in the range (0, 1].")
+            raise ValueError("Order Min Split Ratio must be in the range (0, 1].")
         validate_number(name="order_time", value=order_arrival_model())
         validate_number(name="order_quantity", value=order_quantity_model())
         validate_number(name="delivery_cost", value=delivery_cost()) # check if delivery_cost is a number
         validate_number(name="lead_time", value=lead_time()) # check if lead_time is a number
 
-        super().__init__(env=env,ID=ID,name=name,node_type="demand",**kwargs)
         self._info_keys.extend(["order_arrival_model", "order_quantity_model", "demand_node", "customer_tolerance", "delivery_cost", "lead_time"])
         self.order_arrival_model = order_arrival_model
         self.order_quantity_model = order_quantity_model
@@ -2541,7 +2756,7 @@ class Demand(Node):
         available = 0
         while order_quantity>0 and waited<=self.customer_tolerance:
             waiting_time = self.env.now
-            available = self.demand_node.inventory.inventory.level
+            available = self.demand_node.inventory.level
             if order_quantity <= available: # check if remaining order quantity is available 
                 self.env.process(self._process_delivery(order_quantity, customer_id))
                 self.demand_node.stats.update_stats(backorder=[-1,-order_quantity])
@@ -2549,7 +2764,11 @@ class Demand(Node):
                 break
             elif available >= partial: # or else at least min required 'partial' is available
                 self.env.process(self._process_delivery(available, customer_id))
-                self.demand_node.stats.update_stats(backorder=[0,-available])
+                # Partial shipment: backorder count stays 1 (one outstanding customer order)
+                # while its quantity ticks down. fulfillment_received and demand_fulfilled
+                # each get a compensating -1 on the count so the single eventual completion
+                # is counted exactly once — matching the backorder accounting convention.
+                self.demand_node.stats.update_stats(backorder=[0,-available], demand_fulfilled=[-1,0])
                 self.stats.update_stats(fulfillment_received=[-1,0])
                 order_quantity -= available # update order quantity
             else: 
@@ -2576,7 +2795,7 @@ class Demand(Node):
         Returns:
             None
         """
-        available = self.demand_node.inventory.inventory.level
+        available = self.demand_node.inventory.level
         self.stats.update_stats(demand_placed=[1,order_quantity]) # update the demand placed statistics
         if order_quantity <= available:
             self.demand_node.stats.update_stats(demand_received=[1,order_quantity])
@@ -2589,7 +2808,7 @@ class Demand(Node):
             self.demand_node.stats.update_stats(demand_received=[1,order_quantity],orders_shortage=[1,order_quantity-available]) # update the orders shortage statistics
             self.env.process(self.wait_for_order(customer_id, order_quantity))
         else: # No tolerance, leave without placing an order (backorder policy = not allowed)
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.inventory.level}. No tolerance! Shortage:{order_quantity-available}.")
+            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.level}. No tolerance! Shortage:{order_quantity-available}.")
             self.demand_node.stats.update_stats(orders_shortage=[1,order_quantity-available]) # update the orders shortage statistics
     
     def behavior(self):

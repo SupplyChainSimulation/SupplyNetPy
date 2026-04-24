@@ -1,7 +1,28 @@
 import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
-from SupplyNetPy.Components.core import *
+# Named imports only — no wildcards. ``global_logger`` is internal plumbing and
+# is deliberately pulled in by name here rather than re-exported.
+from SupplyNetPy.Components.core import (
+    Node,
+    Link,
+    Supplier,
+    InventoryNode,
+    Manufacturer,
+    Demand,
+    global_logger,
+)
+
+__all__ = [
+    "check_duplicate_id",
+    "process_info_dict",
+    "visualize_sc_net",
+    "get_sc_net_info",
+    "create_sc_net",
+    "simulate_sc_net",
+    "print_node_wise_performance",
+]
+
 
 def check_duplicate_id(used_ids, new_id, entity_type="ID"):
     """
@@ -223,11 +244,11 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
             check_duplicate_id(used_ids, link["ID"], "link ID")
             source = None
             sink = None
-            nodes = supplychainnet["nodes"].keys()
-            if(link["source"] in nodes):
+            node_ids = supplychainnet["nodes"].keys()
+            if(link["source"] in node_ids):
                 source_id = link["source"]
                 source = supplychainnet["nodes"][f"{source_id}"]
-            if(link["sink"] in nodes):
+            if(link["sink"] in node_ids):
                 sink_id = link["sink"]
                 sink = supplychainnet["nodes"][f"{sink_id}"]
             if(source is None or sink is None):
@@ -247,8 +268,8 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
         if isinstance(d, dict):
             check_duplicate_id(used_ids, d["ID"], "demand ID")
             demand_node = None # check for which node the demand is
-            nodes = supplychainnet["nodes"].keys()
-            if d['demand_node'] in nodes:
+            node_ids = supplychainnet["nodes"].keys()
+            if d['demand_node'] in node_ids:
                 demand_node_id = d['demand_node']
                 demand_node = supplychainnet["nodes"][f"{demand_node_id}"]
             if(demand_node is None):
@@ -335,7 +356,7 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True):
         if("infinite" in node.node_type.lower()): # skip infinite suppliers
             continue
         node.stats.update_stats() # update stats for the node
-        total_available_inv += node.inventory.inventory.level
+        total_available_inv += node.inventory.level
         if len(node.inventory.instantaneous_levels)>0:
             avg_available_inv += sum([x[1] for x in node.inventory.instantaneous_levels])/len(node.inventory.instantaneous_levels) 
         total_inv_carry_cost += node.inventory.carry_cost

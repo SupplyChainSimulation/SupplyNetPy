@@ -211,3 +211,119 @@ def test_print_node_wise_performance_empty(capsys):
     utilities.print_node_wise_performance([])
     out = capsys.readouterr().out
     assert "No nodes provided." in out
+
+
+# ---------------------------------------------------------------------------
+# Integration tests using real components (not DummyNode mocks).
+#
+# The tests above rely on DummyNode / DummyLink / DummyDemand, which are not
+# subclasses of the real Node / Link / Demand. create_sc_net's `isinstance`
+# branches silently skip them, so those tests verify shape only — they do not
+# catch regressions in the wiring logic.  The tests below exercise create_sc_net
+# end-to-end with real components so the full construct-and-simulate path is
+# covered by automation.
+# ---------------------------------------------------------------------------
+
+
+import SupplyNetPy.Components as scm
+
+
+def _intro_simple_netlist():
+    return (
+        [{"ID": "S1", "name": "Supplier1", "node_type": "infinite_supplier"},
+         {"ID": "D1", "name": "Distributor1", "node_type": "distributor",
+          "capacity": 150, "initial_level": 50, "inventory_holding_cost": 0.2,
+          "replenishment_policy": scm.SSReplenishment,
+          "policy_param": {"s": 100, "S": 150},
+          "product_buy_price": 100, "product_sell_price": 105}],
+        [{"ID": "L1", "source": "S1", "sink": "D1", "cost": 5, "lead_time": lambda: 2}],
+        [{"ID": "d1", "name": "Demand1", "order_arrival_model": lambda: 1,
+          "order_quantity_model": lambda: 10, "demand_node": "D1"}],
+    )
+
+
+def test_create_sc_net_real_dicts_wires_real_objects():
+    nodes, links, demands = _intro_simple_netlist()
+    sc = utilities.create_sc_net(nodes, links, demands)
+    # Real components, not mocks:
+    assert isinstance(sc["nodes"]["S1"], scm.Supplier)
+    assert isinstance(sc["nodes"]["D1"], scm.InventoryNode)
+    assert isinstance(sc["links"]["L1"], scm.Link)
+    assert isinstance(sc["demands"]["d1"], scm.Demand)
+    # Counts are populated:
+    assert sc["num_suppliers"] == 1
+    assert sc["num_distributors"] == 1
+    assert sc["num_of_nodes"] == 2
+    assert sc["num_of_links"] == 1
+    # Link is registered on the sink's suppliers list (Link.__init__ side-effect):
+    assert sc["links"]["L1"] in sc["nodes"]["D1"].suppliers
+
+
+def test_create_sc_net_objects_style_round_trip():
+    env = simpy.Environment()
+    s = scm.Supplier(env=env, ID="Sx", name="Sx", node_type="infinite_supplier", logging=False)
+    d = scm.InventoryNode(env=env, ID="Dx", name="Dx", node_type="distributor",
+                          capacity=150, initial_level=50, inventory_holding_cost=0.2,
+                          replenishment_policy=scm.SSReplenishment,
+                          policy_param={"s": 100, "S": 150},
+                          product_buy_price=100, product_sell_price=105, logging=False)
+    l = scm.Link(env=env, ID="Lx", source=s, sink=d, cost=5, lead_time=lambda: 2)
+    dem = scm.Demand(env=env, ID="dx", name="dx", order_arrival_model=lambda: 1,
+                     order_quantity_model=lambda: 10, demand_node=d, logging=False)
+    sc = utilities.create_sc_net(nodes=[s, d], links=[l], demands=[dem], env=env)
+    assert sc["nodes"]["Sx"] is s
+    assert sc["nodes"]["Dx"] is d
+    assert sc["links"]["Lx"] is l
+    assert sc["demands"]["dx"] is dem
+
+
+def test_create_sc_net_requires_env_for_objects():
+    env = simpy.Environment()
+    s = scm.Supplier(env=env, ID="Sy", name="Sy", node_type="infinite_supplier", logging=False)
+    # When nodes[0] is a real Node instance and env is omitted, must raise.
+    with pytest.raises(ValueError):
+        utilities.create_sc_net(nodes=[s], links=[], demands=[])
+
+
+def test_simulate_sc_net_returns_canonical_intro_simple_numbers():
+    nodes, links, demands = _intro_simple_netlist()
+    sc = utilities.create_sc_net(nodes, links, demands)
+    result = utilities.simulate_sc_net(sc, sim_time=20, logging=False)
+    # Locks the canonical intro_simple.py scenario output at the network level:
+    assert result["profit"] == -4435.0
+    assert result["revenue"] == 21000
+    assert result["total_cost"] == 25435.0
+    assert result["transportation_cost"] == 25
+    assert result["shortage"] == [0, 0]
+    assert result["backorders"] == [0, 0]
+    assert result["num_of_nodes"] == 2
+    assert result["num_of_links"] == 1
+
+
+def test_create_sc_net_duplicate_link_id_raises():
+    env = simpy.Environment()
+    nodes = [{"ID": "S1", "name": "S", "node_type": "infinite_supplier"},
+             {"ID": "D1", "name": "D", "node_type": "distributor",
+              "capacity": 100, "initial_level": 50, "inventory_holding_cost": 0.1,
+              "replenishment_policy": None, "policy_param": None,
+              "product_sell_price": 5, "product_buy_price": 2}]
+    links = [{"ID": "L1", "source": "S1", "sink": "D1", "cost": 1, "lead_time": lambda: 1},
+             {"ID": "L1", "source": "S1", "sink": "D1", "cost": 1, "lead_time": lambda: 1}]
+    demands = [{"ID": "d1", "name": "d", "order_arrival_model": lambda: 1,
+                "order_quantity_model": lambda: 5, "demand_node": "D1"}]
+    with pytest.raises(ValueError):
+        utilities.create_sc_net(nodes, links, demands, env=env)
+
+
+def test_create_sc_net_invalid_link_endpoint_raises():
+    nodes = [{"ID": "S1", "name": "S", "node_type": "infinite_supplier"},
+             {"ID": "D1", "name": "D", "node_type": "distributor",
+              "capacity": 100, "initial_level": 50, "inventory_holding_cost": 0.1,
+              "replenishment_policy": None, "policy_param": None,
+              "product_sell_price": 5, "product_buy_price": 2}]
+    # "GHOST" isn't defined in nodes — must raise.
+    links = [{"ID": "L1", "source": "GHOST", "sink": "D1", "cost": 1, "lead_time": lambda: 1}]
+    demands = [{"ID": "d1", "name": "d", "order_arrival_model": lambda: 1,
+                "order_quantity_model": lambda: 5, "demand_node": "D1"}]
+    with pytest.raises(ValueError):
+        utilities.create_sc_net(nodes, links, demands)

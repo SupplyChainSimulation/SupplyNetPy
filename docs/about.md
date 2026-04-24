@@ -46,11 +46,11 @@ SupplyNetPy provides core components for supply chain modeling:
     - **RQReplenishment**: fixed quantity reorder when stock drops below a threshold.
     - **PeriodicReplenishment**: replenish at regular time intervals.
 
-- **SupplierSelectionPolicy**: Abstract base for implementing supplier selection strategies:
-    - **SelectFirst**: Selects the first supplier.
-    - **SelectAvailable**: Selects the first available supplier.
-    - **SelectCheapest**: Selects the supplier with the lowest transportation cost.
-    - **SelectFastest**: Selects the supplier with the shortest lead time.
+- **SupplierSelectionPolicy**: Abstract base for implementing supplier selection strategies. All built-in policies filter out disrupted links by default; if every link is down they still return a supplier and the dispatch gate handles the block.
+    - **SelectFirst**: Selects the first supplier (skipping disrupted links).
+    - **SelectAvailable**: Selects the first supplier with sufficient inventory, preferring active links.
+    - **SelectCheapest**: Selects the active supplier with the lowest transportation cost.
+    - **SelectFastest**: Selects the active supplier with the shortest lead time.
 - **Statistics and InfoMixin**: Provide built-in tools for summarizing and reporting system behavior and object-specific metrics.
 
 ---

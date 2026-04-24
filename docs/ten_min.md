@@ -55,17 +55,17 @@ When creating a manufacturer, distributor, wholesaler, or retailer, we must spec
 The SupplyNetPy Components module includes an `InventoryReplenishment` class that can be customized to define specific replenishment policies. Currently, SupplyNetPy supports the following replenishment policies:
 
 
-- <p> [Reorder-level (s,S)](api-reference/api-ref-core.md#ssreplenish) — continuously monitor inventory and replenish up to S when the level drops below s. Parameters: {s, S} &nbsp;&nbsp; (class `SSReplenishment`) </p>
+- <p> [Reorder-level (s,S)](api-reference/api-ref-core.md#SupplyNetPy.Components.core.SSReplenishment) — continuously monitor inventory and replenish up to S when the level drops below s. Parameters: {s, S} &nbsp;&nbsp; (class `SSReplenishment`) </p>
 
-- <p> [Reorder-level (s,S) with Safety Stock](api-reference/api-ref-core.md#ssreplenish) — reorder-level replenishment that factors in a safety stock buffer. Parameters: {s, S, safety_stock} (`SSReplenishment`) </p>
+- <p> [Reorder-level (s,S) with Safety Stock](api-reference/api-ref-core.md#SupplyNetPy.Components.core.SSReplenishment) — reorder-level replenishment that factors in a safety stock buffer. Parameters: {s, S, safety_stock} (`SSReplenishment`) </p>
 
-- <p> [Replenish Quantity (RQ)](api-reference/api-ref-core.md#rqreplenish) — reorder a fixed quantity Q when placing an order. Parameters: {R, Q} (`RQReplenishment`) </p>
+- <p> [Replenish Quantity (RQ)](api-reference/api-ref-core.md#SupplyNetPy.Components.core.RQReplenishment) — reorder a fixed quantity Q when placing an order. Parameters: {R, Q} (`RQReplenishment`) </p>
 
-- <p> [Replenish Quantity (RQ) with safety stock](api-reference/api-ref-core.md#rqreplenish) — reorder a fixed quantity Q when placing an order. Parameters: {R, Q, safety_stock} (`RQReplenishment`) </p>
+- <p> [Replenish Quantity (RQ) with safety stock](api-reference/api-ref-core.md#SupplyNetPy.Components.core.RQReplenishment) — reorder a fixed quantity Q when placing an order. Parameters: {R, Q, safety_stock} (`RQReplenishment`) </p>
 
-- <p> [Periodic (T,Q)](api-reference/api-ref-core.md#periodicreplenish) — replenish inventory every T days with Q units. Parameters: {T, Q} (`PeriodicReplenishment`) </p>
+- <p> [Periodic (T,Q)](api-reference/api-ref-core.md#SupplyNetPy.Components.core.PeriodicReplenishment) — replenish inventory every T days with Q units. Parameters: {T, Q} (`PeriodicReplenishment`) </p>
 
-- <p> [Periodic (T,Q) with safety stock](api-reference/api-ref-core.md#periodicreplenish) — replenish inventory every T days with Q units. If safety stock is specified, then when the safety stock level is violated, order Q units in addition to the quantity needed to maintain safety stock levels. Parameters: {T, Q, safety_stock} (`PeriodicReplenishment`) </p>
+- <p> [Periodic (T,Q) with safety stock](api-reference/api-ref-core.md#SupplyNetPy.Components.core.PeriodicReplenishment) — replenish inventory every T days with Q units. If safety stock is specified, then when the safety stock level is violated, order Q units in addition to the quantity needed to maintain safety stock levels. Parameters: {T, Q, safety_stock} (`PeriodicReplenishment`) </p>
 
 ### Create a Link
 
@@ -105,7 +105,9 @@ To create and simulate the supply chain, use the `create_sc_net` function to ins
 
 ### Review Results
 
-After the simulation, inspect `supplychainnet` to view performance metrics for the supply chain nodes. By default, the simulation log is displayed in the console and saved to a local file named `simulation_trace.log`, which is located in the same directory as the Python script. Each node in the simulation has its own logger, and logging can be enabled or disabled by providing an additional parameter: `logging=True` or `logging=False` while creating the node. SupplyNetPy uses a global logger referred to as `global_logger`, which allows to show or hide all logs by calling `scm.global_logger.enable_logging()` or `scm.global_logger.disable_logging()`.
+After the simulation, inspect `supplychainnet` to view performance metrics for the supply chain nodes. By default, the simulation log is displayed in the console and saved to a local file named `simulation_trace.log`, which is located in the same directory as the Python script. Each node in the simulation has its own logger, and logging can be enabled or disabled by providing an additional parameter: `logging=True` or `logging=False` while creating the node. SupplyNetPy also exposes a package-level handle `scm.global_logger` for bulk toggling all simulation logs at once: call `scm.global_logger.enable_logging()` or `scm.global_logger.disable_logging()`.
+
+> **Reproducibility.** Probabilistic disruption (`failure_p`, `node_disrupt_time`, link disruption, etc.) draws from a library-wide default RNG. Call `scm.set_seed(n)` before building the network to make a run reproducible, or pass your own `random.Random()` via the `rng=` constructor argument on any `Node` or `Link` to isolate its RNG from the global one.
 
 Below is an example of a simulation log generated by this program. At the end of the log, supply chain-level performance metrics are calculated and printed. These performance measures are computed for each node in the supply chain and include:
 
