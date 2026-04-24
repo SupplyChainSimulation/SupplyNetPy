@@ -87,6 +87,9 @@ target/
 # VSCode stuff
 .vscode
 
+# Claude Code local settings
+.claude/
+
 # IPython
 profile_default/
 ipython_config.py
