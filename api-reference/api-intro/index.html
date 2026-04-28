@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/api-reference/api-intro/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Introduction - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Introduction";
+        var mkdocs_page_input_path = "api-reference/api-intro.md";
+        var mkdocs_page_url = "/SupplyNetPy/api-reference/api-intro/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With Factory</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Introduction</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#writing-a-custom-replenishment-policy">Writing a custom replenishment policy</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#supplynetpy-library-hierarchy">SupplyNetPy Library Hierarchy</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">Introduction</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h2 id="supplynetpy-api-reference">SupplyNetPy API Reference</h2>
+<p><strong>SupplyNetPy</strong> includes a sub-module called <strong>Components</strong>, which facilitates the creation of supply chain networks by providing essential components such as nodes, links, and demand, and assembling them into a network. The <strong>Components</strong> module contains three sub-modules: <strong>core</strong>, <strong>logger</strong>, and <strong>utilities</strong>.</p>
+<p>The <strong>core</strong> module is responsible for creating supply chain components. It includes classes such as <em>RawMaterial</em>, <em>Product</em>, <em>Inventory</em>, <em>Node</em>, <em>Link</em>, <em>Supplier</em>, <em>Manufacturer</em>, <em>InventoryNode</em>, and <em>Demand</em>, the replenishment policies (<em>SSReplenishment</em>, <em>RQReplenishment</em>, <em>PeriodicReplenishment</em>), and the supplier-selection policies (<em>SelectFirst</em>, <em>SelectAvailable</em>, <em>SelectCheapest</em>, <em>SelectFastest</em>). Any new node created using these classes will be instantiated within a SimPy environment. The <em>Inventory</em> class is responsible for monitoring inventories. By default, the classes in the core module support single-product inventories. The <em>Inventory</em> class wraps a SimPy <em>Container</em> to implement the basic behavior of an inventory, including routines to record inventory level changes. If users wish to create a different inventory type with custom behavior, they can do so by extending either <em>Inventory</em> or SimPy <em>Container</em>. The core module also exports <code>set_seed(seed)</code> for seeding the library-wide default RNG used for probabilistic disruption, so runs can be made reproducible.</p>
+<p>The <code>node_type</code> argument on <code>Node</code> / <code>Supplier</code> / <code>InventoryNode</code> / <code>Demand</code> is validated against the <code>NodeType</code> str-enum (also exported from the core module). Accepted values are <code>infinite_supplier</code>, <code>supplier</code>, <code>manufacturer</code>, <code>factory</code>, <code>warehouse</code>, <code>distributor</code>, <code>retailer</code>, <code>store</code>, <code>shop</code>, and <code>demand</code>. You can pass either a string (case-insensitive) or the enum member for IDE autocomplete:</p>
+<pre><code class="language-python">scm.Supplier(env=env, ID=&quot;S1&quot;, name=&quot;S1&quot;, node_type=&quot;supplier&quot;)
+scm.Supplier(env=env, ID=&quot;S1&quot;, name=&quot;S1&quot;, node_type=scm.NodeType.SUPPLIER)
+</code></pre>
+<h4 id="writing-a-custom-replenishment-policy">Writing a custom replenishment policy</h4>
+<p>The built-in replenishment policies (<em>SSReplenishment</em>, <em>RQReplenishment</em>, <em>PeriodicReplenishment</em>) talk to their owning node through a small contract on <em>Node</em>, rather than reaching into its internal attributes. A user-defined <code>InventoryReplenishment</code> subclass should use the same contract so it stays decoupled from the node's layout:</p>
+<ul>
+<li><code>node.position()</code> — current backorder-aware inventory position (<code>on_hand - stats.backorder[1]</code>). Use this in place of reading <code>node.inventory.on_hand</code> and <code>node.stats.backorder[1]</code> separately.</li>
+<li><code>node.place_order(quantity)</code> — picks a supplier via the node's supplier-selection policy and spawns the dispatch process. Use this in place of <code>selection_policy.select(...)</code> + <code>env.process(process_order(...))</code>.</li>
+<li><code>node.wait_for_drop()</code> — generator that blocks until the inventory drops and rotates the drop event atomically. Use <code>yield from node.wait_for_drop()</code> in the policy's <code>run()</code> loop.</li>
+</ul>
+<p>On the supplier-selection side, <em>Link</em> exposes <code>link.available_quantity()</code> (returns <code>source.inventory.level</code>), so a custom <code>SupplierSelectionPolicy</code> subclass can compare candidate suppliers without reaching past the link.</p>
+<p>The <strong>logger</strong> module is designed to maintain simulation logs. It includes the <em>GlobalLogger</em> class, which serves as a common logger for all components within the environment. Users can configure this logger to save logs to a specific file or print them to the console. A package-level <code>global_logger</code> instance is also exported so users can call <code>scm.global_logger.disable_logging()</code> / <code>scm.global_logger.enable_logging()</code> to toggle all simulation logs at once.</p>
+<p>The <strong>utilities</strong> module provides useful Python routines to reduce manual work. It contains functions for creating supply chains (<code>create_sc_net</code>), running simulations (<code>simulate_sc_net</code>), and inspecting / visualizing the resulting network (<code>get_sc_net_info</code>, <code>print_node_wise_performance</code>, <code>visualize_sc_net</code>).</p>
+<p>Note that <code>create_sc_net</code> accepts two interchangeable construction styles — plain <code>dict</code> netlists, or pre-built <code>Node</code> / <code>Link</code> / <code>Demand</code> objects — but each of its <code>nodes</code>, <code>links</code>, and <code>demands</code> arguments must be homogeneous: a list mixing dicts and pre-built objects is rejected up-front (the mixed case would cause dicts and objects to run against two different <code>simpy.Environment</code> instances). When any list contains pre-built objects you must also pass <code>env</code> explicitly, and each object's own <code>env</code> must match it.</p>
+<p>The public API of each sub-module is declared via an explicit <code>__all__</code> list, and <code>SupplyNetPy.Components</code> re-exports these names explicitly — no wildcard imports. Module-level imports (SimPy, NumPy, NetworkX, Matplotlib, etc.) and internal constants are deliberately not reachable as <code>scm.&lt;name&gt;</code>.</p>
+<h4 id="supplynetpy-library-hierarchy">SupplyNetPy Library Hierarchy</h4>
+<pre><code>SupplyNetPy
+├── Components
+│   ├── core.py
+│   ├── logger.py
+│   ├── utilities.py
+</code></pre>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../../case_study_pharma/" class="btn btn-neutral float-left" title="Pharmacy Supply Chain"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../api-ref-core/" class="btn btn-neutral float-right" title="Core Components">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../../case_study_pharma/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../api-ref-core/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
