@@ -86,7 +86,7 @@ It is a simple three-node supply chain with one supplier, a newsvendor (retailer
 
 - An *infinite\_supplier* is used to ensure unlimited supply to the newsvendor.
 - The focus of the simulation is on the newsvendor node `newsvendor1`, which:
-    - Maintains perishable inventory with a shelf life of 1 day. (Shelf life is set to value 1.00001 to avoid expiration before daily consumption.)
+    - Maintains perishable inventory with a shelf life of 1 day.
     - Uses a periodic replenishment policy, ordering every day.
 - The link between the supplier and the newsvendor has a lead time of 0, meaning orders are delivered immediately each day.
 - Demand is modeled as a normal distribution. The `normal_quantity()` function samples order sizes from this distribution.

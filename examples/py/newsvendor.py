@@ -16,7 +16,7 @@ def normal_quantity():
     sample = random.gauss(mean, std_dev)
     while(sample<0):
         sample = random.gauss(mean, std_dev)
-    return sample
+    return int(sample)
 
 cost = 2 # newspaper buy price
 sell_price = 5 # newspaper sell price
@@ -36,13 +36,13 @@ for order_quantity in range(10, 200, 10):
     newsvendor1 = scm.InventoryNode(env=env, ID="D1", name="News Vendor", node_type="distributor",
                                     capacity=float('inf'), initial_level=order_quantity, 
                                     inventory_holding_cost=0.1, inventory_type="perishable", 
-                                    shelf_life=1.00001, replenishment_policy=scm.PeriodicReplenishment,
+                                    shelf_life=1, replenishment_policy=scm.PeriodicReplenishment,
                                     policy_param={"T": 1, "Q": order_quantity}, 
                                     product_sell_price=sell_price, product_buy_price=cost)
 
     link1 = scm.Link(env=env,ID="l1", source=supplier1, sink=newsvendor1, cost=10, lead_time=lambda: 0)
     
-    demand1 = scm.Demand(env=env,ID="d1", name="demand_d1", 
+    demand1 = scm.Demand(env=env,ID="d1", name="demand_d1",
                         order_arrival_model=lambda: 1, consume_available=True,
                         order_quantity_model=normal_quantity, demand_node=newsvendor1)
 
