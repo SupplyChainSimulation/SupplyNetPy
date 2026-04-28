@@ -1,1 +1,4 @@
-SimPy >= 3.0.11
+simpy>=3.0.11
+networkx
+matplotlib
+pytest
