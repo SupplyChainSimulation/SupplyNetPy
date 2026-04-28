@@ -26,5 +26,7 @@ jobs:
           pip install -r docs/requirements.txt
 
       - name: Run tests
-        run: |
-          pytest || echo "No tests found, skipping."
+        # ``pytest`` exits non-zero on test failure or collection error; the
+        # previous ``|| echo "No tests found, skipping."`` swallowed both,
+        # so a red test still produced a green CI run (§7).
+        run: pytest

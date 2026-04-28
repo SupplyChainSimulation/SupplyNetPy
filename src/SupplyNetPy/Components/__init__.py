@@ -18,6 +18,8 @@ from SupplyNetPy.Components.core import (
     validate_positive,
     validate_non_negative,
     validate_number,
+    ensure_numeric_callable,
+    NodeType,
     NamedEntity,
     InfoMixin,
     Statistics,
@@ -49,7 +51,10 @@ from SupplyNetPy.Components.utilities import (
     get_sc_net_info,
     create_sc_net,
     simulate_sc_net,
+    get_node_wise_performance,
+    format_node_wise_performance,
     print_node_wise_performance,
+    Network,
 )
 
 __all__ = [
@@ -59,6 +64,9 @@ __all__ = [
     "validate_positive",
     "validate_non_negative",
     "validate_number",
+    "ensure_numeric_callable",
+    # core — node-type enum
+    "NodeType",
     # core — mixins
     "NamedEntity",
     "InfoMixin",
@@ -97,5 +105,8 @@ __all__ = [
     "get_sc_net_info",
     "create_sc_net",
     "simulate_sc_net",
+    "get_node_wise_performance",
+    "format_node_wise_performance",
     "print_node_wise_performance",
+    "Network",
 ]

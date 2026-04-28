@@ -41,7 +41,7 @@ print(stats) # print
 'fulfillment_received': [4, 250], 
 'demand_received': [20, 200], 
 'demand_fulfilled': [20, 200], 
-'orders_shortage': [0, 0], 
+'shortage': [0, 0],
 'backorder': [0, 0], 
 'inventory_level': 100, 
 'inventory_waste': 0, 

@@ -1,8 +1,11 @@
 from SupplyNetPy.Components.logger import GlobalLogger
+import enum
+import heapq
 import simpy
 import copy
 import random
 import numbers
+from typing import Callable
 
 # Public API — names re-exported by Components/__init__.py. Module-level
 # constants ``_rng``, ``_LOGGER_KWARGS`` and ``_NODE_KWARGS`` are internal and
@@ -17,6 +20,8 @@ __all__ = [
     "validate_positive",
     "validate_non_negative",
     "validate_number",
+    "ensure_numeric_callable",
+    "NodeType",
     "NamedEntity",
     "InfoMixin",
     "Statistics",
@@ -74,7 +79,50 @@ _LOGGER_KWARGS = {"log_to_file", "log_file", "log_to_screen"}
 # InventoryNode, Manufacturer, Demand) use **kwargs, so these leak into the
 # subclass's local kwargs even after being forwarded to super(); they must be
 # stripped before that kwargs dict is forwarded onward to Inventory.
-_NODE_KWARGS = {"failure_p", "node_disrupt_time", "node_recovery_time", "logging", "rng", "logger_name"}
+_NODE_KWARGS = {"failure_p", "node_disrupt_time", "node_recovery_time", "logging", "rng", "logger_name", "stats_period", "periodic_stats"}
+
+
+class NodeType(str, enum.Enum):
+    """
+    Canonical node types accepted by :class:`Node` and :func:`create_sc_net`.
+
+    ``NodeType`` is a ``str`` subclass, so every existing comparison against a
+    literal string (``node.node_type == "demand"``, ``"supplier" in node.node_type``,
+    ``node.node_type.lower()``) continues to work unchanged. Users can pass
+    either a plain string (case-insensitive, via :meth:`_missing_`) or a
+    :class:`NodeType` member:
+
+    .. code-block:: python
+
+        scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier")
+        scm.Supplier(env=env, ID="S1", name="S1", node_type=scm.NodeType.SUPPLIER)
+
+    :func:`create_sc_net` dispatches via a :class:`NodeType`-keyed table
+    (``_NODE_DISPATCH`` in ``utilities.py``), replacing the duplicated
+    hard-coded ``node["node_type"].lower() in [...]`` ladders. Adding a new
+    node type is a single-site change on this enum plus an entry in the
+    dispatch table — no more editing two hard-coded string lists.
+    """
+    INFINITE_SUPPLIER = "infinite_supplier"
+    SUPPLIER = "supplier"
+    MANUFACTURER = "manufacturer"
+    FACTORY = "factory"
+    WAREHOUSE = "warehouse"
+    DISTRIBUTOR = "distributor"
+    RETAILER = "retailer"
+    STORE = "store"
+    SHOP = "shop"
+    DEMAND = "demand"
+
+    @classmethod
+    def _missing_(cls, value):
+        """Case-insensitive lookup so ``NodeType("SUPPLIER")`` resolves correctly."""
+        if isinstance(value, str):
+            lowered = value.lower()
+            for member in cls:
+                if member.value == lowered:
+                    return member
+        return None
 
 def validate_positive(name: str, value):
     """
@@ -88,7 +136,7 @@ def validate_positive(name: str, value):
         ValueError: if value is not positive
     """
     if value <= 0:
-        global_logger.logger.error(f"{name} must be positive.")
+        global_logger.error(f"{name} must be positive.")
         raise ValueError(f"{name} must be positive.")
 
 def validate_non_negative(name: str, value):
@@ -103,7 +151,7 @@ def validate_non_negative(name: str, value):
         ValueError: if value is negative
     """
     if value < 0:
-        global_logger.logger.error(f"{name} cannot be negative.")
+        global_logger.error(f"{name} cannot be negative.")
         raise ValueError(f"{name} cannot be negative.")
 
 def validate_number(name: str, value) -> None:
@@ -118,8 +166,70 @@ def validate_number(name: str, value) -> None:
         ValueError: if value is not a number
     """
     if not isinstance(value, numbers.Number):
-        global_logger.logger.error(f"function {name}() must return a number (an int or a float).")
+        global_logger.error(f"function {name}() must return a number (an int or a float).")
         raise ValueError(f"function {name}() must be a number (an int or a float).")
+
+
+def ensure_numeric_callable(name: str, value):
+    """
+    Normalise a scalar-or-callable parameter to a zero-arg numeric callable.
+
+    Many constructors accept either a number or a zero-arg callable (lead
+    times, arrival intervals, recovery times). The previous auto-wrap was
+
+    .. code-block:: python
+
+        if not callable(value):
+            value = lambda val=value: val
+
+    which silently accepted any callable — including a class like ``int`` or
+    a generator function — turning the eventual ``value()`` call into a
+    runtime explosion deep inside a SimPy process (§6.4). This helper fixes
+    that by invoking the callable once at validation time and asserting the
+    result is a real number; non-numeric returns surface immediately at
+    construction with a clear error message naming the offending parameter.
+
+    Parameters:
+        name (str): Parameter name used in error messages.
+        value: A number or a zero-arg callable returning a number.
+
+    Returns:
+        callable: A zero-arg callable. If ``value`` was a scalar it is wrapped;
+            if it was already callable the original is returned unchanged.
+
+    Raises:
+        TypeError: If ``value`` is callable but invoking it raises (the
+            original exception is chained).
+        ValueError: If the (wrapped) callable returns a non-numeric value.
+
+    Note:
+        The validation invocation samples the callable once at construction
+        time. For stateful generators or iterators (rather than pure
+        functions) this advances state before the simulation starts; if
+        that matters, wrap the iterator in a closure that materialises the
+        first sample lazily, or pass a numeric scalar instead.
+    """
+    if not callable(value):
+        scalar = value
+        value = lambda val=scalar: val
+    try:
+        sample = value()
+    except Exception as e:
+        global_logger.error(f"{name}: callable raised {type(e).__name__} on validation call: {e}")
+        raise TypeError(
+            f"{name} must be a number or a zero-arg callable returning a number; "
+            f"calling it raised {type(e).__name__}: {e}"
+        ) from e
+    if not isinstance(sample, numbers.Number):
+        global_logger.error(
+            f"{name} must be a number or a zero-arg callable returning a number; "
+            f"got {type(sample).__name__} ({sample!r})."
+        )
+        raise ValueError(
+            f"{name} must be a number or a zero-arg callable returning a number; "
+            f"got {type(sample).__name__}."
+        )
+    return value
         
 class NamedEntity:
     """
@@ -202,10 +312,18 @@ class InfoMixin:
 
 class Statistics(InfoMixin):
     """
-    The `Statistics` class tracks and summarizes key performance indicators for each node in the supply chain. 
-    It monitors essential metrics such as demand, inventory levels, shortages, backorders, costs, revenue, and profit. 
-    The class supports both automatic periodic updates and manual updates through the `update_stats` method, 
+    The `Statistics` class tracks and summarizes key performance indicators for each node in the supply chain.
+    It monitors essential metrics such as demand, inventory levels, shortages, backorders, costs, revenue, and profit.
+    The class supports both automatic periodic updates and manual updates through the `update_stats` method,
     which can be called at any point in the simulation to immediately record changes.
+
+    The ``_info_keys`` / ``_stats_keys`` / ``_cost_components`` declarations are
+    class-level, making the tracked set of KPIs declaratively discoverable in
+    one place. ``Statistics.__init__`` copies the ``_stats_keys`` and
+    ``_cost_components`` lists to the instance before any per-node extension
+    runs (``Supplier.__init__`` and ``Manufacturer.__init__`` append their own
+    subclass-specific KPIs), so those appends never leak into the class-level
+    list and cross-contaminate other Statistics instances.
 
     Parameters:
         node (object): The node for which statistics are tracked.
@@ -219,7 +337,7 @@ class Statistics(InfoMixin):
         fulfillment_received (list): Orders and quantities received by this node.
         demand_received (list): Orders and quantities demanded at this node.
         demand_fulfilled (list): Orders and quantities fulfilled by this node.
-        orders_shortage (list): Orders and quantities that faced shortage.
+        shortage (list): Orders and quantities that faced shortage. ``orders_shortage`` is kept as a back-compat alias (§6.6).
         backorder (list): Backorders at this node.
         inventory_level (float): Current inventory level.
         inventory_waste (float): Inventory waste.
@@ -238,6 +356,23 @@ class Statistics(InfoMixin):
         update_stats: Updates statistics based on provided values.
         update_stats_periodically: Periodically updates statistics during simulation.
     """
+    # Declarative KPI surface. Subclasses / node subclasses that need extra
+    # stats append to ``self.stats._stats_keys`` / ``self.stats._cost_components``
+    # after constructing Statistics; the ``__init__`` below copies these lists
+    # to the instance so those appends never mutate the class-level lists.
+    _info_keys = ["name"]
+    _stats_keys = [
+        "name",
+        "demand_placed", "fulfillment_received", "demand_received", "demand_fulfilled",
+        "shortage", "backorder",
+        "inventory_level", "inventory_waste",
+        "inventory_carry_cost", "inventory_spend_cost", "transportation_cost",
+        "node_cost", "revenue", "profit",
+    ]
+    # Attributes that contribute to ``node_cost``. ``node_cost`` itself is NOT
+    # listed — it is the derived sum (see ``update_stats``).
+    _cost_components = ["inventory_carry_cost", "inventory_spend_cost", "transportation_cost"]
+
     def __init__(self, node:object, periodic_update:bool=False, period:float=1):
         """
         Initialize the statistics object.
@@ -254,7 +389,7 @@ class Statistics(InfoMixin):
             fulfillment_received (list): Orders and quantities received by this node.
             demand_received (list): Orders and quantities demanded at this node.
             demand_fulfilled (list): Orders and quantities fulfilled by this node.
-            orders_shortage (list): Orders and quantities that faced shortage.
+            shortage (list): Orders and quantities that faced shortage. ``orders_shortage`` is kept as a back-compat alias (§6.6).
             backorder (list): Backorders at this node.
             inventory_level (float): Current inventory level.
             inventory_waste (float): Inventory waste.
@@ -270,19 +405,23 @@ class Statistics(InfoMixin):
         Returns:
             None
         """
-        self._info_keys = ["name"]
-        self._stats_keys = ["name", "demand_placed", "fulfillment_received", "demand_received", "demand_fulfilled", "orders_shortage", "backorder", "inventory_level", "inventory_waste", "inventory_carry_cost", "inventory_spend_cost", "transportation_cost", "node_cost", "revenue", "profit"]
-        # Explicit list of attributes that contribute to `node_cost`. Subclasses should
-        # append their own cost attrs here (see Supplier, Manufacturer). `node_cost`
-        # itself is NOT included — it is the derived sum.
-        self._cost_components = ["inventory_carry_cost", "inventory_spend_cost", "transportation_cost"]
+        # Clone the class-level declarative lists onto the instance so that
+        # per-node extensions (e.g. ``Supplier`` appending "total_material_cost"
+        # to its own ``self.stats._stats_keys``) do not leak into the shared
+        # class attribute and pollute other Statistics instances.
+        self._stats_keys = list(type(self)._stats_keys)
+        self._cost_components = list(type(self)._cost_components)
         self.node = node # the node to which this statistics object belongs
         self.name = f"{self.node.ID} statistics"
         self.demand_placed = [0,0] # demand placed by this node [total orders placed, total quantity]
         self.fulfillment_received = [0,0] # fulfillment received by this node
         self.demand_received = [0,0] # demand received by this node (demand at this node)
         self.demand_fulfilled = [0,0] # demand fulfilled by this node (demand that was served by this node)
-        self.orders_shortage = [0,0] # shortage of products at this node 
+        # ``shortage`` (was ``orders_shortage`` before §6.6) — renamed to
+        # match ``supplychainnet["shortage"]`` so the same vocabulary applies
+        # at both the node and network level. ``orders_shortage`` is kept as
+        # a read-only alias / accepted ``update_stats`` kwarg for back-compat.
+        self.shortage = [0,0] # shortage of products at this node
         self.backorder = [0,0] # any backorders at this node
         self.inventory_level = 0 # current inventory level at this node
         self.inventory_waste = 0 # inventory waste at this node
@@ -297,35 +436,66 @@ class Statistics(InfoMixin):
             self.node.env.process(self.update_stats_periodically(period=period))
     
     def reset(self):
-        """ 
+        """
         Reset the statistics to their initial values.
 
-        Parameters:
-            None
+        Drives the reset off ``_stats_keys`` so any KPI registered on a
+        Statistics instance (including subclass-specific ones added by
+        ``Supplier`` / ``Manufacturer``) is zeroed without the caller having
+        to remember to extend ``reset``. The legacy ``vars(self)`` scan is
+        kept as a fallback for instance attributes that aren't in
+        ``_stats_keys`` (e.g. user-injected scratch fields).
 
-        Attributes:
+        Parameters:
             None
 
         Returns:
             None
         """
+        # Pass 1 — zero everything declared on _stats_keys (the source of
+        # truth for tracked KPIs).
+        for key in self._stats_keys:
+            if not hasattr(self, key) or key == "name":
+                continue
+            current = getattr(self, key)
+            if isinstance(current, list):
+                setattr(self, key, [0, 0])
+            elif isinstance(current, (int, float)):
+                setattr(self, key, 0)
+        # Pass 2 — back-stop for any non-tracked instance attribute that
+        # used to be reset by the historical ``vars(self)`` sweep.
         for key, value in vars(self).items():
-            if key.startswith("_"):  # skip meta-lists like _info_keys, _stats_keys, _cost_components
+            if key.startswith("_") or key in self._stats_keys:
                 continue
             if isinstance(value, list):
-                setattr(self, key, [0,0])
+                setattr(self, key, [0, 0])
             elif isinstance(value, (int, float)):
                 setattr(self, key, 0)
+        # Inventory-side counters live on Inventory, not on Statistics, so
+        # they need an explicit reset here. Adding a new metric on Inventory
+        # that should reset means appending to this guarded block (or
+        # promoting the metric to Statistics via _stats_keys).
         if hasattr(self.node, 'inventory'):
             self.node.inventory.carry_cost = 0
             self.node.inventory.waste = 0
+
+    @property
+    def orders_shortage(self):
+        """Back-compat alias for :attr:`shortage`. Returns the same list (mutating it mutates ``shortage``)."""
+        return self.shortage
+
+    @orders_shortage.setter
+    def orders_shortage(self, value):
+        self.shortage = value
 
     def update_stats(self,**kwargs):
         """
         Update the statistics with the given keyword arguments.
 
         Parameters:
-            **kwargs: keyword arguments containing the statistics to update
+            **kwargs: keyword arguments containing the statistics to update.
+                ``orders_shortage=`` is accepted as a back-compat alias for
+                ``shortage=`` (§6.6 renamed the attribute).
 
         Attributes:
             None
@@ -333,6 +503,14 @@ class Statistics(InfoMixin):
         Returns:
             None
         """
+        # Back-compat: ``orders_shortage`` was renamed to ``shortage`` in §6.6.
+        # External code (and historical examples) still pass the old kwarg —
+        # fold it onto the new key here so both spellings drive the same
+        # bookkeeping. If a caller passes both, the new spelling wins.
+        if "orders_shortage" in kwargs and "shortage" not in kwargs:
+            kwargs["shortage"] = kwargs.pop("orders_shortage")
+        elif "orders_shortage" in kwargs:
+            kwargs.pop("orders_shortage")
         for key, value in kwargs.items():
             if hasattr(self, key):
                 attr = getattr(self, key)
@@ -344,7 +522,7 @@ class Statistics(InfoMixin):
                     attr += value
                     setattr(self, key, attr) # update the attribute with the new value
             else:
-                global_logger.logger.warning(f"{self.node.ID}: (Updaing stats) Attribute {key} not found in Statistics class.")
+                global_logger.warning(f"{self.node.ID}: (Updaing stats) Attribute {key} not found in Statistics class.")
         if hasattr(self.node, 'inventory'):
             if self.node.inventory.level != float('inf'):
                 self.inventory_level = self.node.inventory.level if hasattr(self.node, 'inventory') else 0
@@ -399,11 +577,14 @@ class RawMaterial(NamedEntity, InfoMixin):
     Functions:
         __init__: Initializes the raw material object.
     """
-    def __init__(self, 
-                 ID: str, 
-                 name: str, 
-                 extraction_quantity: float, 
-                 extraction_time: float, 
+    _info_keys = ["ID", "name", "extraction_quantity", "extraction_time", "mining_cost", "cost"]
+    _stats_keys = []
+
+    def __init__(self,
+                 ID: str,
+                 name: str,
+                 extraction_quantity: float,
+                 extraction_time: float,
                  mining_cost: float,
                  cost: float) -> None:
         """
@@ -434,8 +615,6 @@ class RawMaterial(NamedEntity, InfoMixin):
         validate_non_negative("Extraction time", extraction_time)
         validate_non_negative("Mining Cost", mining_cost)
         validate_positive("Cost", cost)
-        self._info_keys = ["ID", "name", "extraction_quantity", "extraction_time", "mining_cost", "cost"]
-        self._stats_keys = []        
         self.ID = ID # ID of the raw material (alphanumeric)
         self.name = name # name of the raw material
         self.extraction_quantity = extraction_quantity # quantity of the raw material that is extracted in extraction_time
@@ -476,14 +655,17 @@ class Product(NamedEntity, InfoMixin):
     Functions:
         __init__: Initializes the product object.
     """
-    def __init__(self, 
-                 ID: str, 
-                 name: str, 
-                 manufacturing_cost: float, 
-                 manufacturing_time: float, 
-                 sell_price: float, 
-                 raw_materials: list, 
-                 batch_size: int, 
+    _info_keys = ["ID", "name", "manufacturing_cost", "manufacturing_time", "sell_price", "buy_price", "raw_materials", "batch_size"]
+    _stats_keys = []
+
+    def __init__(self,
+                 ID: str,
+                 name: str,
+                 manufacturing_cost: float,
+                 manufacturing_time: float,
+                 sell_price: float,
+                 raw_materials: list,
+                 batch_size: int,
                  buy_price: float = 0) -> None:
         """
         Initialize the product object.
@@ -524,16 +706,14 @@ class Product(NamedEntity, InfoMixin):
         validate_non_negative("Buy price", buy_price)
         validate_positive("Units per cycle", batch_size)
         if raw_materials is None or len(raw_materials) == 0:
-            global_logger.logger.error("Raw materials cannot be empty.")
+            global_logger.error("Raw materials cannot be empty.")
             raise ValueError("Raw materials cannot be empty.")
         for raw_mat in raw_materials:
             if not isinstance(raw_mat[0], RawMaterial):
                 raise ValueError("Invalid raw material.")
             if raw_mat[1] <= 0:
                 raise ValueError("Invalid quantity for raw material.")
-            
-        self._info_keys = ["ID", "name", "manufacturing_cost", "manufacturing_time", "sell_price", "buy_price", "raw_materials", "batch_size"]
-        self._stats_keys = []
+
         self.ID = ID # ID of the product (alphanumeric)
         self.name = name # name of the product
         self.manufacturing_cost = manufacturing_cost # manufacturing cost of the product (per unit)
@@ -545,16 +725,30 @@ class Product(NamedEntity, InfoMixin):
 
 class InventoryReplenishment(InfoMixin, NamedEntity):
     """
-    
-    The `InventoryReplenishment` class defines the abstract structure for inventory replenishment policies within 
+
+    The `InventoryReplenishment` class defines the abstract structure for inventory replenishment policies within
     SupplyNetPy. It provides a common interface for managing how nodes place replenishment orders during the simulation.
 
-    This class is not intended for direct use. It must be subclassed to implement specific replenishment strategies, 
+    This class is not intended for direct use. It must be subclassed to implement specific replenishment strategies,
     such as min-max (s, S), reorder point, quantity (RQ), or periodic review (TQ) policies.
 
-    The `run` method should be overridden to define the replenishment logic for the policy. The class integrates with 
-    the SimPy environment to support time-driven inventory management. The `inventory_drop` event is used to signal stock 
+    The `run` method should be overridden to define the replenishment logic for the policy. The class integrates with
+    the SimPy environment to support time-driven inventory management. The `inventory_drop` event is used to signal stock
     depletion, enabling the replenishment process to respond to changes in inventory levels in real time.
+
+    **Node contract for custom subclasses.** A policy should speak to its owning node through four helpers rather than
+    reaching into node internals:
+
+    - `self.node.position()` — backorder-aware inventory position (`on_hand - stats.backorder[1]`).
+    - `self.node.place_order(quantity)` — selects a supplier via the node's selection policy and spawns the dispatch
+      process. Replaces the `selection_policy.select(...)` + `env.process(process_order(...))` pair.
+    - `self.node.wait_for_drop()` — generator used as `yield from self.node.wait_for_drop()` to block until the
+      inventory drops; rotates the `inventory_drop` event atomically on wake-up.
+    - `Link.available_quantity()` — for any supplier-selection policy, compares upstream stock without reading
+      `link.source.inventory.level` directly.
+
+    Staying inside this contract keeps a policy subclass independent of the concrete node layout and makes it
+    compatible with any future `Node` subclass that provides the same methods.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
@@ -571,9 +765,11 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
         __init__: Initializes the base replenishment policy object.
         run: Placeholder method to be overridden by subclasses.
     """
-    def __init__(self, 
-                 env: simpy.Environment, 
-                 node: object, 
+    _info_keys = ["node", "params"]
+
+    def __init__(self,
+                 env: simpy.Environment,
+                 node: object,
                  params: dict) -> None:
         """
         Initialize the replenishment policy object.
@@ -594,7 +790,6 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
         """
         if not isinstance(env, simpy.Environment):
             raise ValueError("Invalid environment. Provide a valid SimPy environment.")
-        self._info_keys = ["node", "params"]
         self.env = env  # simulation environment
         self.node = node  # node to which this policy applies
         self.params = params  # parameters for the replenishment policy
@@ -633,6 +828,8 @@ class SSReplenishment(InventoryReplenishment):
         __init__: Initializes the replenishment policy object.
         run: Monitors inventory and places orders based on the (s, S) policy.
     """
+    _info_keys = InventoryReplenishment._info_keys + ["name", "first_review_delay", "period"]
+
     def __init__(self, env, node, params):
         """ 
         Initialize the replenishment policy object.
@@ -661,7 +858,6 @@ class SSReplenishment(InventoryReplenishment):
         if params['s'] > params['S']:
             raise ValueError("Reorder point (s) must be less than or equal to order-up-to level (S).")
         super().__init__(env, node, params)
-        self._info_keys.extend(["name","first_review_delay","period"])
         self.name = "min-max replenishment (s, S)"
         self.first_review_delay = params.get('first_review_delay', 0)
         self.period = params.get('period',0)
@@ -681,9 +877,8 @@ class SSReplenishment(InventoryReplenishment):
             None    
         """
         s, S = self.params['s'], self.params['S']  # get the reorder point and order-up-to level
-        if s > S:
-            self.node.logger.logger.error("Reorder point (s) must be less than or equal to order-up-to level (S).")
-            raise ValueError("Reorder point (s) must be less than or equal to order-up-to level (S).")
+        # ``s > S`` validation already runs in __init__ (line ~751); the
+        # duplicate guard here was §8's "duplicate s>S check" nit. Removed.
 
         if 'safety_stock' in self.params: # check if safety_stock is specified
             validate_positive("Safety stock", self.params['safety_stock'])
@@ -695,16 +890,14 @@ class SSReplenishment(InventoryReplenishment):
             yield self.env.timeout(self.first_review_delay)
 
         while True: # run the replenishment process indefinitely
-            self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.level}, on hand:{self.node.inventory.on_hand}")
-            if (self.node.inventory.on_hand - self.node.stats.backorder[1] <= s):
-                order_quantity = S - (self.node.inventory.on_hand - self.node.stats.backorder[1])  # calculate the order quantity                
-                supplier = self.node.selection_policy.select(order_quantity) # select a supplier based on the supplier selection policy
-                self.env.process(self.node.process_order(supplier, order_quantity))                    
-            
-            if self.period==0: # if periodic check is OFF
-                yield self.node.inventory_drop  # wait for the inventory to be dropped
-                self.node.inventory_drop = self.env.event()  # reset the event for the next iteration
-            elif(self.period): # if periodic check is ON
+            self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.level}, on hand:{self.node.inventory.on_hand}")
+            position = self.node.position()
+            if position <= s:
+                self.node.place_order(S - position)
+
+            if self.period == 0: # if periodic check is OFF
+                yield from self.node.wait_for_drop()  # wait for the inventory to be dropped
+            elif self.period: # if periodic check is ON
                 yield self.env.timeout(self.period)
 
 class RQReplenishment(InventoryReplenishment):
@@ -739,6 +932,8 @@ class RQReplenishment(InventoryReplenishment):
         __init__: Initializes the RQ replenishment policy object.
         run: Continuously monitors inventory and places replenishment orders when the reorder point is reached.
     """
+    _info_keys = InventoryReplenishment._info_keys + ["name", "first_review_delay", "period"]
+
     def __init__(self, env, node, params):
         """ 
         Initialize the RQ replenishment policy object.
@@ -763,7 +958,6 @@ class RQReplenishment(InventoryReplenishment):
         validate_non_negative("Reorder point (R)", params['R']) # this assertion ensures that the reorder point is non-negative
         validate_positive("Order quantity (Q)", params['Q'])  # this assertion ensures that the order quantity is positive
         super().__init__(env, node, params)
-        self._info_keys.extend(["name", "first_review_delay", "period"])  # add the keys to the info dictionary
         self.name = "RQ replenishment (R, Q)"
         self.first_review_delay = params.get('first_review_delay', 0)
         self.period = params.get('period', 0)
@@ -792,14 +986,12 @@ class RQReplenishment(InventoryReplenishment):
             yield self.env.timeout(self.first_review_delay)
 
         while True:
-            self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels: {self.node.inventory.level}, on hand: {self.node.inventory.on_hand}")
-            if (self.node.inventory.on_hand - self.node.stats.backorder[1] <= R):
-                supplier = self.node.selection_policy.select(Q)
-                self.env.process(self.node.process_order(supplier, Q))
+            self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels: {self.node.inventory.level}, on hand: {self.node.inventory.on_hand}")
+            if self.node.position() <= R:
+                self.node.place_order(Q)
 
             if self.period == 0:
-                yield self.node.inventory_drop
-                self.node.inventory_drop = self.env.event()
+                yield from self.node.wait_for_drop()
             else:
                 yield self.env.timeout(self.period)
 
@@ -831,6 +1023,8 @@ class PeriodicReplenishment(InventoryReplenishment):
         __init__: Initializes the replenishment policy object.
         run: Continuously manages periodic replenishment by placing orders of size Q every T time units.
     """
+    _info_keys = InventoryReplenishment._info_keys + ["name", "first_review_delay"]
+
     def __init__(self, env, node, params):
         """ 
         Initialize the replenishment policy object.
@@ -854,7 +1048,6 @@ class PeriodicReplenishment(InventoryReplenishment):
         validate_positive("Replenishment period (T)", params['T'])  # this assertion ensures that the replenishment period is positive
         validate_positive("Replenishment quantity (Q)", params['Q'])  # this assertion ensures that the replenishment quantity is positive
         super().__init__(env, node, params)
-        self._info_keys.extend(["name", "first_review_delay"])  # add the keys to the info dictionary
         self.name = "Periodic replenishment (T, Q)"
         self.first_review_delay = params.get('first_review_delay', 0)
 
@@ -883,12 +1076,11 @@ class PeriodicReplenishment(InventoryReplenishment):
             yield self.env.timeout(self.first_review_delay)
 
         while True:
-            self.node.logger.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.level}, on hand:{self.node.inventory.on_hand}")
+            self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.level}, on hand:{self.node.inventory.on_hand}")
             reorder_quantity = Q
-            if (self.node.inventory.level < ss):
-                reorder_quantity +=  ss - self.node.inventory.level
-            supplier = self.node.selection_policy.select(reorder_quantity) # select a supplier based on the supplier selection policy
-            self.env.process(self.node.process_order(supplier, reorder_quantity))
+            if self.node.inventory.level < ss:
+                reorder_quantity += ss - self.node.inventory.level
+            self.node.place_order(reorder_quantity)
             yield self.env.timeout(T) # periodic replenishment, wait for the next period
 
 class SupplierSelectionPolicy(InfoMixin, NamedEntity):
@@ -917,6 +1109,8 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
         select: Supplier selection logic to be implemented by subclasses.
         validate_suppliers: Validates that the node has at least one connected supplier.
     """
+    _info_keys = ["node", "mode"]
+
     def __init__(self, node, mode="dynamic"):
         """
         Initialize the supplier selection policy object.
@@ -939,12 +1133,11 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
             TypeError: If the node is not an instance of Node class.
         """
         if mode not in ["dynamic", "fixed"]:
-            global_logger.logger.error(f"Invalid mode: {mode}. Mode must be either 'dynamic' or 'fixed'.")
+            global_logger.error(f"Invalid mode: {mode}. Mode must be either 'dynamic' or 'fixed'.")
             raise ValueError("Mode must be either 'dynamic' or 'fixed'.")
         if not isinstance(node, Node):
-            global_logger.logger.error("Node must be an instance of Node class.")
+            global_logger.error("Node must be an instance of Node class.")
             raise TypeError("Node must be an instance of Node class.")
-        self._info_keys = ["node", "mode"]
         self.node = node
         self.mode = mode
         self.fixed_supplier = None
@@ -969,7 +1162,7 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
             None
         """
         if not self.node.suppliers:
-            global_logger.logger.error(f"{self.node.ID} must have at least one supplier.")
+            global_logger.error(f"{self.node.ID} must have at least one supplier.")
             raise ValueError(f"{self.node.ID} must have at least one supplier.")
 
     def _active_suppliers(self):
@@ -1033,6 +1226,8 @@ class SelectFirst(SupplierSelectionPolicy):
         __init__: Initializes the selection policy with node and mode.
         select: Selects the first supplier, either dynamically or as a fixed supplier.
     """
+    _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
+
     def __init__(self, node, mode="fixed"):
         """
         Initialize the supplier selection policy object.
@@ -1050,7 +1245,6 @@ class SelectFirst(SupplierSelectionPolicy):
         """
         super().__init__(node, mode)
         self.name = "First fixed supplier"
-        self._info_keys.extend(["name"])
 
     def select(self, order_quantity):
         """
@@ -1100,6 +1294,8 @@ class SelectAvailable(SupplierSelectionPolicy):
         select: Selects the first available supplier with sufficient inventory.
 
     """
+    _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
+
     def __init__(self, node, mode="dynamic"):
         """
         Initialize the supplier selection policy object.
@@ -1117,7 +1313,6 @@ class SelectAvailable(SupplierSelectionPolicy):
         """
         super().__init__(node, mode)
         self.name = "First available supplier"
-        self._info_keys.extend(["name"])
 
     def select(self, order_quantity):
         """
@@ -1142,7 +1337,7 @@ class SelectAvailable(SupplierSelectionPolicy):
         """
         self.validate_suppliers()
         candidates = self._active_suppliers()
-        available = [s for s in candidates if s.source.inventory.level >= order_quantity]
+        available = [s for s in candidates if s.available_quantity() >= order_quantity]
         selected = available[0] if available else candidates[0]
         return self._apply_mode(selected)
 
@@ -1168,6 +1363,8 @@ class SelectCheapest(SupplierSelectionPolicy):
         __init__: Initializes the supplier selection policy.
         select: Selects the supplier with the lowest transportation cost.
     """
+    _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
+
     def __init__(self, node, mode="dynamic"):
         """
         Initialize the supplier selection policy object.
@@ -1175,7 +1372,7 @@ class SelectCheapest(SupplierSelectionPolicy):
         Parameters:
             node (object): Node to which this supplier selection policy applies.
             mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "dynamic").
-        
+
         Attributes:
             name (str): Name of the selection policy.
             _info_keys (list): List of keys to include in the info dictionary.
@@ -1185,7 +1382,6 @@ class SelectCheapest(SupplierSelectionPolicy):
         """
         super().__init__(node, mode)
         self.name = "Cheapest supplier (Transportation cost)"
-        self._info_keys.extend(["name"])
 
     def select(self, order_quantity):
         """
@@ -1234,6 +1430,8 @@ class SelectFastest(SupplierSelectionPolicy):
         __init__: Initializes the supplier selection policy and sets the selection mode.
         select: Selects the supplier with the shortest lead time based on the configured mode.
     """
+    _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
+
     def __init__(self, node, mode="dynamic"):
         """
         Initialize the supplier selection policy object.
@@ -1251,7 +1449,6 @@ class SelectFastest(SupplierSelectionPolicy):
         """
         super().__init__(node, mode)
         self.name = "Fastest supplier (Lead time)"
-        self._info_keys.extend(["name"])
 
     def select(self, order_quantity):
         """
@@ -1308,7 +1505,7 @@ class Node(NamedEntity, InfoMixin):
         **kwargs: Additional arguments for the logger.
 
     Attributes:
-        _info_keys (list): List of keys to include in the info dictionary.  
+        _info_keys (list): List of keys to include in the info dictionary.
         env (simpy.Environment): simulation environment
         ID (str): ID of the node (alphanumeric)
         name (str): name of the node
@@ -1318,18 +1515,25 @@ class Node(NamedEntity, InfoMixin):
         node_disrupt_time (callable): function to model node disruption time
         node_recovery_time (callable): function to model node recovery time
         logger (GlobalLogger): logger object
+        suppliers (list): inbound ``Link`` objects whose ``sink`` is this node; populated by ``Link.__init__`` via ``add_supplier_link``.
 
     Functions:
         __init__: Initializes the node object, validates parameters, and sets up logging and self-disruption if needed.
         disruption: Simulates node disruption and automatic recovery over time.
+        add_supplier_link: Register an inbound Link with this node (called by Link.__init__).
+        position: Backorder-aware inventory position used by replenishment policies.
+        place_order: Pick a supplier via the selection policy and spawn the dispatch process.
+        wait_for_drop: Generator; block on ``inventory_drop`` and rotate the event.
     """
+    _info_keys = ["ID", "name", "node_type", "failure_p", "node_status", "logging"]
+
     def __init__(self, env: simpy.Environment,
                  ID: str,
                  name: str,
                  node_type: str,
                  failure_p:float = 0.0,
-                 node_disrupt_time:callable = None,
-                 node_recovery_time:callable = lambda: 1,
+                 node_disrupt_time: Callable = None,
+                 node_recovery_time: Callable = lambda: 1,
                  logging: bool = True,
                  rng: random.Random = None,
                  **kwargs) -> None:
@@ -1364,18 +1568,24 @@ class Node(NamedEntity, InfoMixin):
         """
         if not isinstance(env, simpy.Environment):
             raise ValueError("Invalid environment. Provide a valid SimPy environment.")
-        if(node_type.lower() not in ["infinite_supplier","supplier", "manufacturer", "factory", "warehouse", "distributor", "retailer", "store", "demand"]):
-            global_logger.logger.error(f"Invalid node type. Node type: {node_type}")
-            raise ValueError("Invalid node type.")
-        if not callable(node_recovery_time):
-            node_recovery_time = lambda val=node_recovery_time: val # convert to a callable function
+        # Validate node_type via the NodeType enum — single source of truth
+        # shared with create_sc_net. Accepts either a string (case-insensitive)
+        # or a NodeType member. Stored as the normalized lowercase string so
+        # every existing equality check against a literal (``== "demand"``,
+        # ``"supplier" in node.node_type``) continues to work.
+        try:
+            node_type = NodeType(node_type).value
+        except ValueError:
+            global_logger.error(f"Invalid node type. Node type: {node_type}")
+            raise ValueError(f"Invalid node type: {node_type}.")
+        # ``ensure_numeric_callable`` does the auto-wrap and validates the
+        # returned value is numeric on a single test invocation. This catches
+        # the §6.4 footgun where ``not callable(x)`` would skip the wrap for
+        # any callable — including a class like ``int`` or a generator
+        # function — leaving ``x()`` to crash deep inside a SimPy process.
+        node_recovery_time = ensure_numeric_callable("node_recovery_time", node_recovery_time)
         if node_disrupt_time is not None:
-            if not callable(node_disrupt_time):
-                node_disrupt_time = lambda val=node_disrupt_time: val # convert to a callable function
-            validate_number(name="node_disrupt_time", value=node_disrupt_time()) # check if disrupt_time is a number
-        if node_recovery_time is not None:
-            validate_number(name="node_recovery_time", value=node_recovery_time()) # check if disrupt_time is a number
-        self._info_keys = ["ID", "name", "node_type", "failure_p", "node_status", "logging"]
+            node_disrupt_time = ensure_numeric_callable("node_disrupt_time", node_disrupt_time)
         self.env = env  # simulation environment
         self.ID = ID  # ID of the node (alphanumeric)
         self.name = name  # name of the node
@@ -1385,18 +1595,30 @@ class Node(NamedEntity, InfoMixin):
         self.node_disrupt_time = node_disrupt_time  # callable function to model node disruption time
         self.node_recovery_time = node_recovery_time  # callable function to model node recovery time
         self.rng = rng if rng is not None else _rng  # RNG for probabilistic disruption; falls back to library default
-        
+        self.suppliers = []  # inbound Link registry; populated by Link.__init__ via Node.add_supplier_link
+
         logger_name = self.ID # default logger name is the node ID
         if 'logger_name' in kwargs:
             logger_name = kwargs.pop('logger_name')
+        # Per-node loggers live as children of the library root ``"sim_trace"``
+        # so their records propagate up to the single set of handlers configured
+        # on ``global_logger``. This avoids each Node opening its own
+        # FileHandler on ``simulation_trace.log`` (which used to truncate the
+        # file once per node at construction). Users who pass a custom
+        # ``logger_name`` get the prefix added automatically; if they already
+        # supplied the prefix we don't double it.
+        if not logger_name.startswith("sim_trace."):
+            logger_name = f"sim_trace.{logger_name}"
         # Only forward kwargs that GlobalLogger actually accepts; ignore the rest
         # so unrelated keys (e.g. record_inv_levels, shelf_life) don't raise TypeError.
         logger_kwargs = {k: kwargs[k] for k in kwargs if k in _LOGGER_KWARGS}
         self.logger = GlobalLogger(logger_name=logger_name, **logger_kwargs)  # create a logger
+        # Do NOT call enable_logging() here — the per-node logger inherits its
+        # handlers from ``global_logger`` via propagation. The historical call
+        # site re-attached a FileHandler in mode='w' on every Node, which
+        # truncated the trace file N times during network construction (§4.8).
         if not logging:
-            self.logger.disable_logging()  # disable logging if logging is False
-        else:
-            self.logger.enable_logging()
+            self.logger.disable_logging()  # mute this node specifically
 
         if(self.node_failure_p>0 or self.node_disrupt_time): # start self disruption if failure probability > 0
             self.env.process(self.disruption()) 
@@ -1423,17 +1645,117 @@ class Node(NamedEntity, InfoMixin):
                     validate_positive(name="node_disrupt_time", value=disrupt_time) # check if disrupt_time is positive
                     yield self.env.timeout(disrupt_time)
                     self.node_status = "inactive" # change the node status to inactive
-                    self.logger.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
+                    self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
                 elif(self.rng.random() < self.node_failure_p):
                     self.node_status = "inactive"
-                    self.logger.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
+                    self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
                     yield self.env.timeout(1)
             else:
                 recovery_time = self.node_recovery_time() # get the recovery time
                 validate_positive(name="node_recovery_time", value=recovery_time) # check if disrupt_time is positive
                 yield self.env.timeout(recovery_time)
                 self.node_status = "active"
-                self.logger.logger.info(f"{self.env.now}:{self.ID}: Node recovered from disruption.")
+                self.logger.info(f"{self.env.now}:{self.ID}: Node recovered from disruption.")
+
+    def add_supplier_link(self, link) -> None:
+        """
+        Register an inbound transport link whose ``sink`` is this node.
+
+        This is the one supported entry point for attaching a Link to a Node.
+        Supplier-selection policies iterate over ``node.suppliers`` to choose
+        where to dispatch a replenishment order, so a Link must be registered
+        here for the node to route orders over it.
+
+        ``Link.__init__`` calls this automatically for its ``sink`` — users of
+        the direct-instantiation API do not need to call it themselves.
+        It is also safe to call explicitly if a Link is constructed separately
+        from its sink and then attached later.
+
+        Parameters:
+            link (Link): The Link object whose ``sink`` is this node.
+
+        Raises:
+            TypeError: If ``link`` is not a Link instance.
+            ValueError: If ``link.sink`` is not this node.
+
+        Returns:
+            None
+        """
+        if not isinstance(link, Link):
+            global_logger.error("add_supplier_link expects a Link instance.")
+            raise TypeError("add_supplier_link expects a Link instance.")
+        if link.sink is not self:
+            global_logger.error(
+                f"{self.ID}: add_supplier_link called with a link whose sink is "
+                f"{link.sink.ID}, not {self.ID}."
+            )
+            raise ValueError("link.sink must match the node add_supplier_link is called on.")
+        self.suppliers.append(link)
+
+    # ---- Replenishment-policy contract -------------------------------------
+    # The three methods below form the public contract that replenishment
+    # policies (SSReplenishment, RQReplenishment, PeriodicReplenishment, and
+    # any user-defined subclass of InventoryReplenishment) are expected to
+    # speak in terms of. They hide the `inventory.on_hand`, `stats.backorder`,
+    # `selection_policy`, `process_order`, and `inventory_drop` internals so a
+    # policy does not need privileged knowledge of the node's layout. Only
+    # nodes that own replenishment plumbing (currently ``InventoryNode`` and
+    # ``Manufacturer``) are expected to call ``place_order`` and
+    # ``wait_for_drop``; ``position`` additionally works on ``Supplier`` since
+    # it has both ``inventory`` and ``stats``.
+    def position(self) -> float:
+        """
+        Backorder-aware inventory position used by replenishment policies.
+
+        Returns ``inventory.on_hand - stats.backorder[1]`` — i.e. the current
+        physical plus in-transit stock, minus units already committed to
+        customer backorders. Replenishment policies use this single value in
+        place of reaching into ``node.inventory.on_hand`` and
+        ``node.stats.backorder[1]`` independently, so the arithmetic stays in
+        one place.
+
+        Returns:
+            float: The backorder-aware inventory position.
+        """
+        return self.inventory.on_hand - self.stats.backorder[1]
+
+    def place_order(self, quantity) -> None:
+        """
+        Pick a supplier via this node's selection policy and spawn ``process_order``.
+
+        Wraps the "choose supplier, then ``env.process(process_order(...))``"
+        idiom so replenishment policies can express a dispatch as a single
+        call instead of reaching into ``selection_policy.select`` and
+        ``process_order`` independently. The spawned SimPy process handles
+        the capacity clamp, link-disruption gate, and supplier-side
+        bookkeeping; this method does not yield.
+
+        Parameters:
+            quantity (float): Quantity to order (pre-clamp; the downstream
+                ``process_order`` may still reduce it to fit capacity or
+                skip the dispatch if the link is disrupted).
+
+        Returns:
+            None
+        """
+        supplier = self.selection_policy.select(quantity)
+        self.env.process(self.process_order(supplier, quantity))
+
+    def wait_for_drop(self):
+        """
+        Generator: block until the inventory-drop event fires, then rotate it.
+
+        Replenishment policies use ``yield from node.wait_for_drop()`` in
+        place of manually yielding on ``self.node.inventory_drop`` and
+        reassigning a fresh event afterwards. Rotating the event inside this
+        helper keeps the "yield then reset" pattern in exactly one place.
+
+        Yields:
+            simpy.Event: The current ``inventory_drop`` event; on wake-up the
+            slot is replaced with a fresh ``env.event()``.
+        """
+        yield self.inventory_drop
+        self.inventory_drop = self.env.event()
 
 class Link(NamedEntity, InfoMixin):
     """
@@ -1471,15 +1793,18 @@ class Link(NamedEntity, InfoMixin):
         __init__: Initializes the link object and validates parameters.
         disruption: Simulates link disruption and automatic recovery.
     """
+    _info_keys = ["ID", "source", "sink", "cost", "lead_time", "link_failure_p"]
+    _stats_keys = ["status"]
+
     def __init__(self, env: simpy.Environment,
                  ID: str,
                  source: Node,
                  sink: Node,
                  cost: float, # transportation cost
-                 lead_time: callable,
+                 lead_time: Callable,
                  link_failure_p: float = 0.0,
-                 link_disrupt_time: callable = None,
-                 link_recovery_time: callable = lambda: 1,
+                 link_disrupt_time: Callable = None,
+                 link_recovery_time: Callable = lambda: 1,
                  rng: random.Random = None) -> None:
         """
         Initialize the Link object representing a transportation connection between two nodes.
@@ -1511,38 +1836,34 @@ class Link(NamedEntity, InfoMixin):
         Returns:
             None
         """
-        self._info_keys = ["ID", "source", "sink", "cost", "lead_time", "link_failure_p"]
-        self._stats_keys = ["status"]
         if not isinstance(env, simpy.Environment):
             raise ValueError("Invalid environment. Provide a valid SimPy environment.")
         if not isinstance(source, Node) or not isinstance(sink, Node):
             raise ValueError("Invalid source or sink node. Provide valid Node instances.")
         if lead_time is None:
-            global_logger.logger.error("Lead time cannot be None. Provide a function to model stochastic lead time.")
+            global_logger.error("Lead time cannot be None. Provide a function to model stochastic lead time.")
             raise ValueError("Lead time cannot be None. Provide a function to model stochastic lead time.")
-        if not callable(lead_time):
-            lead_time = lambda val=lead_time: val # convert to callable
-        validate_number(name="lead_time", value=lead_time()) # ensure the callable returns a number
+        lead_time = ensure_numeric_callable("lead_time", lead_time)
         if(source == sink):
-            global_logger.logger.error("Source and sink nodes cannot be the same.")
+            global_logger.error("Source and sink nodes cannot be the same.")
             raise ValueError("Source and sink nodes cannot be the same.")
         if(source.node_type == "demand"):
-            global_logger.logger.error("Demand node cannot be a source node.")
+            global_logger.error("Demand node cannot be a source node.")
             raise ValueError("Demand node cannot be a source node.")
         if("supplier" in sink.node_type):
-            global_logger.logger.error("Supplier node cannot be a sink node.")
+            global_logger.error("Supplier node cannot be a sink node.")
             raise ValueError("Supplier node cannot be a sink node.")
         if("supplier" in source.node_type and "supplier" in sink.node_type):
-            global_logger.logger.error("Supplier nodes cannot be connected.")
+            global_logger.error("Supplier nodes cannot be connected.")
             raise ValueError("Supplier nodes cannot be connected.")
         if("supplier" in source.node_type and sink.node_type == "demand"):
-            global_logger.logger.error("Supplier node cannot be connected to a demand node.")
+            global_logger.error("Supplier node cannot be connected to a demand node.")
             raise ValueError("Supplier node cannot be connected to a demand node.")
         validate_non_negative("Cost", cost)
         if (link_disrupt_time is not None):
-            validate_number(name="link_disrupt_time", value=link_disrupt_time()) # check if disrupt_time is a number
+            link_disrupt_time = ensure_numeric_callable("link_disrupt_time", link_disrupt_time)
         if (link_recovery_time is not None):
-            validate_number(name="link_recovery_time", value=link_recovery_time()) # check if disrupt_time is a number
+            link_recovery_time = ensure_numeric_callable("link_recovery_time", link_recovery_time)
 
         self.env = env  # simulation environment
         self.ID = ID  # ID of the link (alphanumeric)
@@ -1557,7 +1878,12 @@ class Link(NamedEntity, InfoMixin):
         self.link_disrupt_time = link_disrupt_time  # link disruption time, if provided
         self.rng = rng if rng is not None else _rng  # RNG for probabilistic disruption; falls back to library default
 
-        self.sink.suppliers.append(self)  # add the link as a supplier link to the sink node
+        # Auto-register with the sink via the public method instead of mutating
+        # sink.suppliers directly. Every Node initialises ``suppliers = []`` in
+        # its __init__, so this works for any valid sink — including a plain
+        # Node or a Demand — rather than depending on the sink having its own
+        # suppliers-list setup.
+        self.sink.add_supplier_link(self)
         if(self.link_failure_p>0 or self.link_disrupt_time): # disrupt the link if link_failure_p > 0
             self.env.process(self.disruption())
     
@@ -1586,17 +1912,29 @@ class Link(NamedEntity, InfoMixin):
                     validate_positive(name="link_disrupt_time", value=disrupt_time) # check if disrupt_time is positive
                     yield self.env.timeout(disrupt_time)
                     self.status = "inactive" # change the link status to inactive
-                    global_logger.logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
+                    global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
                 elif(self.rng.random() < self.link_failure_p):
                     self.status = "inactive"
-                    global_logger.logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
+                    global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
                     yield self.env.timeout(1)
             else:
                 recovery_time = self.link_recovery_time() # get the recovery time
                 validate_positive(name="link_recovery_time", value=recovery_time) # check if disrupt_time is positive
                 yield self.env.timeout(recovery_time)
                 self.status = "active"
-                global_logger.logger.info(f"{self.env.now}:{self.ID}: Link recovered from disruption.")
+                global_logger.info(f"{self.env.now}:{self.ID}: Link recovered from disruption.")
+
+    def available_quantity(self) -> float:
+        """
+        Amount of the upstream source's inventory currently available over this link.
+
+        Exposed so supplier-selection policies (e.g. ``SelectAvailable``) can
+        compare candidate links without reaching into ``link.source.inventory.level``.
+
+        Returns:
+            float: The source node's current inventory level.
+        """
+        return self.source.inventory.level
 
 class Inventory(NamedEntity, InfoMixin):
     """
@@ -1632,7 +1970,8 @@ class Inventory(NamedEntity, InfoMixin):
         inventory (simpy.Container): SimPy container managing inventory levels.
         last_update_t (float): Last timestamp when carrying cost was updated.
         shelf_life (float): Shelf life of perishable items (if applicable).
-        perish_queue (list): Queue managing perishable items as (manufacturing_date, quantity).
+        perish_queue (list): ``heapq`` min-heap of perishable batches as ``(manufacturing_date, quantity)`` tuples. Index 0 is always the oldest batch (earliest to expire); ``put`` uses ``heapq.heappush`` and ``get`` / ``remove_expired`` use ``heapq.heappop``.
+        perish_changed (simpy.Event): Wake-up signal for the ``remove_expired`` daemon. ``put`` succeeds it when an inserted batch displaces the heap head (or arrives into an empty queue), so the daemon recomputes the next expiry instead of polling. Rotated on each wake-up.
         waste (float): Total quantity of expired items.
         instantaneous_levels (list): Recorded inventory levels over time.
 
@@ -1644,7 +1983,10 @@ class Inventory(NamedEntity, InfoMixin):
         remove_expired: Automatically removes expired items from perishable inventory.
         update_carry_cost: Updates carrying cost based on inventory level and holding time.
     """
-    def __init__(self, 
+    _info_keys = ["capacity", "initial_level", "replenishment_policy", "holding_cost", "shelf_life", "inv_type"]
+    _stats_keys = ["level", "carry_cost", "instantaneous_levels"]
+
+    def __init__(self,
                  env: simpy.Environment, 
                  capacity: float, 
                  initial_level: float, 
@@ -1682,7 +2024,7 @@ class Inventory(NamedEntity, InfoMixin):
             inventory (simpy.Container): SimPy container managing inventory levels.
             last_update_t (float): Last timestamp when carrying cost was updated.
             shelf_life (float): Shelf life of perishable items (if applicable).
-            perish_queue (list): Queue managing perishable items as (manufacturing_date, quantity).
+            perish_queue (list): ``heapq`` min-heap of perishable batches as ``(manufacturing_date, quantity)`` tuples. Index 0 is always the oldest batch (earliest to expire); ``put`` uses ``heapq.heappush`` and ``get`` / ``remove_expired`` use ``heapq.heappop``.
             waste (float): Total quantity of expired items.
             instantaneous_levels (list): Recorded inventory levels over time.
 
@@ -1690,25 +2032,23 @@ class Inventory(NamedEntity, InfoMixin):
             None
         """
         if not isinstance(node, Node):
-            global_logger.logger.error("Node must be an instance of Node class.")
+            global_logger.error("Node must be an instance of Node class.")
             raise TypeError("Node must be an instance of Node class.")
         self.node = node # node to which this inventory belongs
         if initial_level > capacity:
-            self.node.logger.logger.error("Initial level cannot be greater than capacity.")
+            self.node.logger.error("Initial level cannot be greater than capacity.")
             raise ValueError("Initial level cannot be greater than capacity.")
         if replenishment_policy is not None:
             if not issubclass(replenishment_policy.__class__, InventoryReplenishment):
-                self.node.logger.logger.error(f"{type(replenishment_policy).__name__} must inherit from InventoryReplenishment")
+                self.node.logger.error(f"{type(replenishment_policy).__name__} must inherit from InventoryReplenishment")
                 raise TypeError(f"{type(replenishment_policy).__name__} must inherit from InventoryReplenishment")
         if inv_type not in ["non-perishable", "perishable"]:
-            self.node.logger.logger.error(f"Invalid inventory type. {inv_type} is not yet available.")
+            self.node.logger.error(f"Invalid inventory type. {inv_type} is not yet available.")
             raise ValueError(f"Invalid inventory type. {inv_type} is not yet available.")
         validate_positive("Capacity", capacity)
         validate_non_negative("Initial level", initial_level)
         validate_non_negative("Inventory holding cost",holding_cost)
         validate_non_negative("Shelf life", shelf_life)
-        self._info_keys = ["capacity", "initial_level", "replenishment_policy", "holding_cost", "shelf_life", "inv_type"]
-        self._stats_keys = ["level", "carry_cost", "instantaneous_levels"]
         self.env = env
         self.init_level = initial_level
         self.on_hand = initial_level # current inventory level
@@ -1724,6 +2064,11 @@ class Inventory(NamedEntity, InfoMixin):
             self.shelf_life = shelf_life
             self.perish_queue = [(0, initial_level)]
             self.waste = 0
+            # Event-driven wake-up for ``remove_expired``. ``put`` succeeds this
+            # event when an inserted batch displaces the heap head (so the next
+            # expiry moves earlier), and the daemon rotates a fresh event in on
+            # wake-up — same idiom as ``Node.wait_for_drop``.
+            self.perish_changed = self.env.event()
             self.env.process(self.remove_expired())
 
         self.instantaneous_levels = []
@@ -1778,20 +2123,24 @@ class Inventory(NamedEntity, InfoMixin):
         if amount + self.inventory.level > self.capacity: # adjust amount if it exceeds capacity
             old_amount = amount
             amount = self.capacity - self.inventory.level
-            self.node.logger.logger.warning(f"Inventory capacity exceeded. Only {amount} of {old_amount} units added to inventory.")
+            self.node.logger.warning(f"Inventory capacity exceeded. Only {amount} of {old_amount} units added to inventory.")
 
         if self.inv_type == "perishable":
             if manufacturing_date is None:
-                self.node.logger.logger.error("Manufacturing date must be provided for perishable inventory.")
+                self.node.logger.error("Manufacturing date must be provided for perishable inventory.")
                 raise ValueError("Manufacturing date must be provided for perishable inventory.")
-            inserted = False
-            for i in range(len(self.perish_queue)):
-                if self.perish_queue[i][0] > manufacturing_date:
-                    self.perish_queue.insert(i, (manufacturing_date, amount))
-                    inserted = True
-                    break
-            if not inserted:
-                self.perish_queue.append((manufacturing_date, amount))
+            # ``perish_queue`` is a min-heap keyed by manufacturing date — the
+            # oldest (earliest-to-expire) batch is always at index 0. heappush
+            # is O(log n); the previous manual sorted-insert was O(n).
+            new_batch = (manufacturing_date, amount)
+            heapq.heappush(self.perish_queue, new_batch)
+            # Wake the ``remove_expired`` daemon only when this push moves the
+            # head — i.e. an empty→non-empty transition or an older batch that
+            # displaces the prior head. With monotonic mfg_dates (the common
+            # case) the head changes only on the empty→non-empty transition,
+            # so the daemon is undisturbed for routine restocks.
+            if self.perish_queue[0] is new_batch and not self.perish_changed.triggered:
+                self.perish_changed.succeed()
         self.update_carry_cost()  # Update carrying cost based on the amount added
         self.inventory.put(amount)
         if(not self.node.inventory_raised.triggered):
@@ -1812,16 +2161,20 @@ class Inventory(NamedEntity, InfoMixin):
             return self.inventory.get(amount), []
 
         man_date_ls = []
-        if self.inv_type == "perishable":    
+        if self.inv_type == "perishable":
             x_amount = amount
             while x_amount > 0 and self.perish_queue:
-                mfg_date, qty = self.perish_queue[0]
+                mfg_date, qty = self.perish_queue[0]  # peek at the oldest batch
                 if qty <= x_amount:
                     man_date_ls.append((mfg_date, qty))
                     x_amount -= qty
-                    self.perish_queue.pop(0)
+                    heapq.heappop(self.perish_queue)  # O(log n) — was pop(0): O(n)
                 else:
                     man_date_ls.append((mfg_date, x_amount))
+                    # Partial consumption: replace the head with the same
+                    # mfg_date and a smaller qty. Heap invariant is preserved
+                    # because (mfg_date, qty - x_amount) <= (mfg_date, qty),
+                    # which was already the smallest tuple in the heap.
                     self.perish_queue[0] = (mfg_date, qty - x_amount)
                     x_amount = 0
         self.update_carry_cost()
@@ -1835,18 +2188,50 @@ class Inventory(NamedEntity, InfoMixin):
     def remove_expired(self):
         """
         Remove expired items from perishable inventory.
+
+        Event-driven: sleeps until the head batch's expiry rather than polling
+        every simulation tick. Wakes early via ``perish_changed`` when ``put``
+        inserts a batch that displaces the heap head (or arrives into an empty
+        queue), so a fresher head with an earlier expiry is honoured without
+        waiting for the previous timer to elapse. The rotation-event idiom
+        (``self.perish_changed = self.env.event()`` after each wake) mirrors
+        ``Node.wait_for_drop`` and avoids re-firing on a stale event.
         """
         while True:
-            yield self.env.timeout(1)
+            if not self.perish_queue:
+                # Nothing to expire — block until the next put signals a head.
+                yield self.perish_changed
+                self.perish_changed = self.env.event()
+                continue
+            # ``perish_queue`` is a min-heap by mfg_date: the oldest batch is
+            # at index 0, so a single peek is enough to compute the next
+            # expiry deadline. ``max(0, ...)`` guards against stale batches
+            # whose deadline has already passed (e.g. backdated mfg_date).
+            next_expiry = self.perish_queue[0][0] + self.shelf_life
+            sleep_dt = max(0, next_expiry - self.env.now)
+            timer = self.env.timeout(sleep_dt)
+            result = yield timer | self.perish_changed
+            if self.perish_changed in result:
+                # The head moved earlier (older batch arrived, or queue went
+                # empty→non-empty). Rotate the event and recompute from the
+                # new head — even if the timer also fired, the next iteration
+                # will see sleep_dt == 0 and drain on the spot.
+                self.perish_changed = self.env.event()
+                continue
+            # Timer fired — drain everything now expired. ``self.get(qty)``
+            # does the heappop on the consumed batch (or the partial-
+            # consumption update on the head), so the explicit heappop here
+            # only handles the rare qty == 0 sentinel left over from prior
+            # partial consumption.
             while self.perish_queue and self.env.now - self.perish_queue[0][0] >= self.shelf_life:
-                mfg_date, qty = self.perish_queue[0] # get first item in the queue
+                mfg_date, qty = self.perish_queue[0]  # peek at oldest batch
                 if qty > 0:
                     get_event, _ = self.get(qty) # get/remove expired items from the inventory
                     yield get_event
                     self.waste += qty  # update waste statistics
-                    self.node.logger.logger.info(f"{self.env.now:.4f}: {qty} units expired (Mgf date:{mfg_date}).")
+                    self.node.logger.info(f"{self.env.now:.4f}: {qty} units expired (Mgf date:{mfg_date}).")
                 else:
-                    self.perish_queue.pop(0)
+                    heapq.heappop(self.perish_queue)
 
     def update_carry_cost(self):
         """
@@ -1890,16 +2275,17 @@ class Supplier(Node):
         __init__: Initializes the supplier object.
         behavior: Simulates the continuous raw material extraction process.
     """
+    _info_keys = Node._info_keys + ["raw_material", "sell_price"]
 
-    def __init__(self, 
-                 env: simpy.Environment, 
-                 ID: str, 
-                 name: str, 
+    def __init__(self,
+                 env: simpy.Environment,
+                 ID: str,
+                 name: str,
                  node_type: str = "supplier",
-                 capacity: float = 0.0, 
-                 initial_level: float = 0.0, 
-                 inventory_holding_cost:float = 0.0, 
-                 raw_material: RawMaterial = None, 
+                 capacity: float = 0.0,
+                 initial_level: float = 0.0,
+                 inventory_holding_cost:float = 0.0,
+                 raw_material: RawMaterial = None,
                  **kwargs) -> None:
         """
         Initialize the supplier object.
@@ -1927,8 +2313,16 @@ class Supplier(Node):
         Returns:
             None
         """
+        # Pull periodic-stats kwargs out before forwarding to Node — Statistics
+        # owns this knob, but exposing it as a node-level kwarg lets users tune
+        # the periodic update cadence without subclassing. Suppliers default to
+        # no periodic update (current behavior); if the user opts in, the
+        # cadence is configurable.
+        periodic_stats = kwargs.pop('periodic_stats', False)
+        stats_period = kwargs.pop('stats_period', 1)
+        if periodic_stats:
+            validate_positive(name="stats_period", value=stats_period)
         super().__init__(env=env,ID=ID,name=name,node_type=node_type,**kwargs)
-        self._info_keys.extend(["raw_material", "sell_price"])
         self.raw_material = raw_material # raw material supplied by the supplier
         self.sell_price = 0
         if(self.raw_material):
@@ -1941,13 +2335,13 @@ class Supplier(Node):
             if(self.raw_material):
                 self.env.process(self.behavior()) # start the behavior process
             else:
-                self.logger.logger.error(f"{self.ID}:Raw material not provided for this supplier. Recreate it with a raw material.")
+                self.logger.error(f"{self.ID}:Raw material not provided for this supplier. Recreate it with a raw material.")
                 raise ValueError("Raw material not provided.")
         else:
             inventory_kwargs = {k: v for k, v in kwargs.items() if k not in _LOGGER_KWARGS and k not in _NODE_KWARGS}
             self.inventory = Inventory(env=self.env, capacity=float('inf'), initial_level=float('inf'), node=self, holding_cost=inventory_holding_cost, replenishment_policy=None, **inventory_kwargs)
         
-        self.stats = Statistics(self)
+        self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period)
         setattr(self.stats,"total_raw_materials_mined",0)
         setattr(self.stats,"total_material_cost",0)
         self.stats._stats_keys.extend(["total_raw_materials_mined", "total_material_cost"])
@@ -1974,11 +2368,13 @@ class Supplier(Node):
                     mined_quantity = self.inventory.capacity - self.inventory.level # update statistics
                 self.inventory.put(mined_quantity)
                 self.stats.update_stats(total_raw_materials_mined=mined_quantity, total_material_cost=mined_quantity*self.raw_material.mining_cost)
-                self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Raw material mined/extracted. Inventory level:{self.inventory.level}")
+                self.logger.info(f"{self.env.now:.4f}:{self.ID}:Raw material mined/extracted. Inventory level:{self.inventory.level}")
                 yield self.env.timeout(self.raw_material.extraction_time)
             else:
-                yield self.env.timeout(1)
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}: Inventory level:{self.inventory.level}") # log every day/period inventory level
+                # Inventory is full — wait for a downstream draw (Inventory.get
+                # succeeds inventory_drop) instead of polling every tick.
+                yield from self.wait_for_drop()
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}: Inventory level:{self.inventory.level}") # log on each event-driven wake-up
 
 class InventoryNode(Node):
     """
@@ -2030,21 +2426,23 @@ class InventoryNode(Node):
         __init__: Initializes the InventoryNode object.
         process_order: Places an order with the selected supplier and updates inventory upon delivery.
     """
+    _info_keys = Node._info_keys + ["sell_price", "buy_price", "pending_orders", "selection_policy"]
+
     def __init__(self,
-                 env: simpy.Environment, 
-                 ID: str, 
-                 name: str, 
-                 node_type: str, 
-                 capacity: float, 
-                 initial_level: float, 
+                 env: simpy.Environment,
+                 ID: str,
+                 name: str,
+                 node_type: str,
+                 capacity: float,
+                 initial_level: float,
                  inventory_holding_cost:float,
-                 replenishment_policy:InventoryReplenishment, 
+                 replenishment_policy:InventoryReplenishment,
                  policy_param: dict,
                  product_sell_price: float,
                  product_buy_price: float,
                  inventory_type:str = "non-perishable", 
                  shelf_life:float = 0.0,
-                 manufacture_date:callable = None,
+                 manufacture_date: Callable = None,
                  product:Product = None,
                  supplier_selection_policy: SupplierSelectionPolicy = SelectFirst,
                  supplier_selection_mode: str = "fixed",
@@ -2097,10 +2495,15 @@ class InventoryNode(Node):
             The product buy and sell prices are set during initialization. The inventory node is expected to sell the product at 
             a higher price than the buy price, but this is user-configured.
         """
+        # Pull periodic-stats kwargs out before forwarding to Node — exposes
+        # the ``Statistics`` periodic update cadence as a node-level kwarg.
+        periodic_stats = kwargs.pop('periodic_stats', False)
+        stats_period = kwargs.pop('stats_period', 1)
+        if periodic_stats:
+            validate_positive(name="stats_period", value=stats_period)
         super().__init__(env=env,ID=ID,name=name,node_type=node_type,**kwargs)
         validate_non_negative("Product Sell Price", product_sell_price)
         validate_non_negative("Product Buy Price", product_buy_price)
-        self._info_keys.extend(["sell_price", "buy_price", "pending_orders", "selection_policy"])
         self.replenishment_policy = None
         if(replenishment_policy):
             self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
@@ -2116,13 +2519,19 @@ class InventoryNode(Node):
         self.sell_price = product_sell_price # set the sell price of the product
         self.buy_price = product_buy_price # set the buy price of the product
         if product is not None:
-            self.product = copy.deepcopy(product) # product that the inventory node sells
+            # Deep-copy so each InventoryNode that "sells" the same Product
+            # can override sell_price / buy_price independently without
+            # mutating the original (or every other node's copy). Without
+            # this, two nodes sharing a Product reference would clobber each
+            # other's prices via the assignments below.
+            self.product = copy.deepcopy(product)
             self.product.sell_price = product_sell_price
             self.product.buy_price = product_buy_price # set the buy price of the product to the product buy price
-        self.suppliers = []
+        # self.suppliers is already initialised to [] in Node.__init__; inbound
+        # Links register themselves via Node.add_supplier_link.
         self.pending_orders = 0 # count of replenishment orders currently in flight (dispatched but not yet delivered)
         self.selection_policy = supplier_selection_policy(self,supplier_selection_mode)
-        self.stats = Statistics(self, periodic_update=True, period=1) # create a statistics object for the inventory node
+        self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the inventory node
 
     def process_order(self, supplier, reorder_quantity):
         """
@@ -2158,14 +2567,14 @@ class InventoryNode(Node):
         # backorder on the supplier. The replenishment policy re-triggers when
         # inventory drops again or on the next periodic tick.
         if supplier.status == "inactive":
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Order not placed.")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Order not placed.")
             return
 
         self.pending_orders += 1  # count this order as in flight; decremented when delivery completes (or supplier disrupted)
 
         if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
             shortage = reorder_quantity - supplier.source.inventory.level
-            supplier.source.stats.update_stats(orders_shortage=[1,shortage], backorder=[1,reorder_quantity])
+            supplier.source.stats.update_stats(shortage=[1,shortage], backorder=[1,reorder_quantity])
             if(not supplier.source.inventory_drop.triggered):
                 supplier.source.inventory_drop.succeed()  # signal that inventory has been dropped (since backorder is created)
 
@@ -2173,12 +2582,12 @@ class InventoryNode(Node):
             self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
             supplier.source.stats.update_stats(demand_received=[1,reorder_quantity])
 
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
             event, man_date_ls = supplier.source.inventory.get(reorder_quantity)
             self.inventory.on_hand += reorder_quantity
             yield event
 
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
             lead_time = supplier.lead_time() # get the lead time from the supplier
             validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
             yield self.env.timeout(lead_time) # lead time for the order
@@ -2203,12 +2612,12 @@ class InventoryNode(Node):
             if shortfall > 0:
                 self.inventory.on_hand -= shortfall
 
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, Inventory levels:{self.inventory.level}")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, Inventory levels:{self.inventory.level}")
 
             self.stats.update_stats(fulfillment_received=[1,reorder_quantity],inventory_spend_cost=reorder_quantity*self.buy_price)
             supplier.source.stats.update_stats(demand_fulfilled=[1,reorder_quantity])
         else:
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted. Order not placed.")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted. Order not placed.")
         self.pending_orders -= 1
 
 class Manufacturer(Node):
@@ -2273,11 +2682,13 @@ class Manufacturer(Node):
         Raw material inventories are replenished based on product inventory requirements.
         The raw material inventory is initially empty.
     """
+    _info_keys = Node._info_keys + ["replenishment_policy", "product_sell_price"]
+
     def __init__(self,
-                 env: simpy.Environment, 
-                 ID: str, 
-                 name: str, 
-                 capacity: float, 
+                 env: simpy.Environment,
+                 ID: str,
+                 name: str,
+                 capacity: float,
                  initial_level: float, 
                  inventory_holding_cost: float, 
                  product_sell_price: float, 
@@ -2328,14 +2739,19 @@ class Manufacturer(Node):
         Returns:
             None
         """
+        # Pull periodic-stats kwargs out before forwarding to Node — exposes
+        # the ``Statistics`` periodic update cadence as a node-level kwarg.
+        periodic_stats = kwargs.pop('periodic_stats', False)
+        stats_period = kwargs.pop('stats_period', 1)
+        if periodic_stats:
+            validate_positive(name="stats_period", value=stats_period)
         super().__init__(env=env,ID=ID,name=name,node_type="manufacturer",**kwargs)
         if product == None:
-            global_logger.logger.error("Product not provided for the manufacturer.")
+            global_logger.error("Product not provided for the manufacturer.")
             raise ValueError("Product not provided for the manufacturer.")
         elif not isinstance(product, Product):
             raise ValueError("Invalid product type. Expected a Product instance.")
         validate_positive("Product Sell Price", product_sell_price)
-        self._info_keys.extend(["replenishment_policy", "product_sell_price"])
         self.replenishment_policy = None
         if(replenishment_policy):
             self.replenishment_policy = replenishment_policy(env = self.env, node = self, params = policy_param)
@@ -2345,8 +2761,12 @@ class Manufacturer(Node):
         self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, inv_type=inventory_type, holding_cost=inventory_holding_cost, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **inventory_kwargs)
         self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
         self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
+        # Event-driven trigger for the production loop: succeeds whenever
+        # ``process_order_raw`` deposits raw material into ``raw_inventory_counts``.
+        # ``behavior`` waits on it instead of polling every simulation tick.
+        self.raw_material_arrived = self.env.event()
         self.product = product # product manufactured by the manufacturer
-        self.suppliers = []
+        # self.suppliers is already initialised to [] in Node.__init__.
         self.product.sell_price = product_sell_price
         self.sell_price = product_sell_price # set the sell price of the product
         
@@ -2363,7 +2783,7 @@ class Manufacturer(Node):
         self.env.process(self.behavior()) # start the behavior process
         self.selection_policy = supplier_selection_policy(self,supplier_selection_mode)
         
-        self.stats = Statistics(self, periodic_update=True, period=1) # create a statistics object for the manufacturer
+        self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the manufacturer
         setattr(self.stats,"total_products_manufactured",0) # adding specific statistics for the manufacturer
         setattr(self.stats,"total_manufacturing_cost",0) # adding specific statistics for the manufacturer
         self.stats._stats_keys.extend(["total_products_manufactured", "total_manufacturing_cost"])
@@ -2409,8 +2829,8 @@ class Manufacturer(Node):
             shortfall = max_producible_units - accepted
             if shortfall > 0:
                 self.inventory.on_hand -= shortfall
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}: {max_producible_units} units manufactured.")
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}: Product inventory levels:{self.inventory.level}")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}: {max_producible_units} units manufactured.")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}: Product inventory levels:{self.inventory.level}")
             self.stats.update_stats(total_products_manufactured=max_producible_units, total_manufacturing_cost=max_producible_units*self.product.manufacturing_cost) # update statistics
             self.production_cycle = False
 
@@ -2430,25 +2850,29 @@ class Manufacturer(Node):
             None
         """
         if(len(self.suppliers)==0):
-            self.logger.logger.error("No suppliers connected to the manufacturer.")
+            self.logger.error("No suppliers connected to the manufacturer.")
             raise ValueError("No suppliers connected to the manufacturer.")
 
         if(len(self.suppliers)>0): # create an inventory for storing raw materials as a dictionary. Key: raw material ID, Value: inventory level
             for supplier in self.suppliers: # iterate over supplier links
                 if(supplier.source.raw_material is None): # check if the supplier has a raw material
-                    self.logger.logger.error(f"{self.ID}:Supplier {supplier.source.ID} does not have a raw material. Please provide a raw material for the supplier.")
+                    self.logger.error(f"{self.ID}:Supplier {supplier.source.ID} does not have a raw material. Please provide a raw material for the supplier.")
                     raise ValueError(f"Supplier {supplier.source.ID} does not have a raw material.")
                 self.raw_inventory_counts[supplier.source.raw_material.ID] = 0 # store initial levels
                 self.ongoing_order_raw[supplier.source.raw_material.ID] = False # store order status
                 
         if(len(self.suppliers)<len(self.product.raw_materials)):
-            self.logger.logger.warning(f"{self.ID}: {self.name}: The number of suppliers are less than the number of raw materials required to manufacture the product! This leads to no products being manufactured.")
+            self.logger.warning(f"{self.ID}: {self.name}: The number of suppliers are less than the number of raw materials required to manufacture the product! This leads to no products being manufactured.")
 
-        while True: # behavior of the manufacturer: consume raw materials, produce the product, and put the product in the inventory
-            if(len(self.suppliers)>=len(self.product.raw_materials)): # check if required number of suppliers are connected
-                if(not self.production_cycle):
-                    self.env.process(self.manufacture_product()) # produce the product
-            yield self.env.timeout(1)
+        # Event-driven production loop: produce whenever raw material arrives,
+        # then block on ``raw_material_arrived`` until the next delivery. The
+        # ``production_cycle`` re-entry guard from the polling version is no
+        # longer needed because we await ``manufacture_product`` directly, so
+        # at most one production cycle is in flight at any time.
+        while len(self.suppliers) >= len(self.product.raw_materials): # check if required number of suppliers are connected
+            yield self.env.process(self.manufacture_product()) # produce the product (no-op if max_producible == 0)
+            yield self.raw_material_arrived
+            self.raw_material_arrived = self.env.event() # rotate for the next arrival
 
     def process_order_raw(self, raw_mat_id, supplier, reorder_quantity):
         """
@@ -2470,29 +2894,29 @@ class Manufacturer(Node):
         # so the per-material flag does not stick and the manufacturer can retry
         # the order on the next replenishment tick, once the link recovers.
         if supplier.status == "inactive":
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Raw-material order not placed.")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Raw-material order not placed.")
             self.ongoing_order_raw[raw_mat_id] = False
             yield self.env.timeout(1) # wait a tick before the policy retries
             return
 
         if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
             shortage = reorder_quantity - supplier.source.inventory.level
-            supplier.source.stats.update_stats(orders_shortage=[1,shortage], backorder=[1,reorder_quantity])
+            supplier.source.stats.update_stats(shortage=[1,shortage], backorder=[1,reorder_quantity])
 
         if(supplier.source.node_status == "active"): # check if the supplier is active and has enough inventory
             if(self.raw_inventory_counts[raw_mat_id]>= reorder_quantity): # dont order if enough inventory is available (reorder_quantity depends on the number of product units that needs to be manufactured, there is no capcacity defined for raw material inventory)
-                self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Sufficient raw material inventory for {supplier.source.raw_material.name}, no order placed. Current inventory level: {self.raw_inventory_counts}.")
+                self.logger.info(f"{self.env.now:.4f}:{self.ID}:Sufficient raw material inventory for {supplier.source.raw_material.name}, no order placed. Current inventory level: {self.raw_inventory_counts}.")
                 self.ongoing_order_raw[raw_mat_id] = False
                 return
 
             self.pending_orders += 1  # count this raw-material order as in flight
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
             event, man_date_ls = supplier.source.inventory.get(reorder_quantity)
             supplier.source.stats.update_stats(demand_received=[1,reorder_quantity]) # update the supplier statistics for demand received
             yield event
 
             self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
             lead_time = supplier.lead_time() # get the lead time from the supplier
             validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
             yield self.env.timeout(lead_time) # lead time for the order
@@ -2501,10 +2925,13 @@ class Manufacturer(Node):
             supplier.source.stats.update_stats(demand_fulfilled=[1,reorder_quantity]) # update the supplier statistics for demand fulfilled
             self.ongoing_order_raw[raw_mat_id] = False
             self.raw_inventory_counts[raw_mat_id] += reorder_quantity
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
             self.pending_orders -= 1
+            # Wake the production loop — raw material just landed.
+            if not self.raw_material_arrived.triggered:
+                self.raw_material_arrived.succeed()
         else:
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted.")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted.")
             yield self.env.timeout(1) # wait for 1 time unit before checking again
 
         self.ongoing_order_raw[raw_mat_id] = False
@@ -2546,7 +2973,13 @@ class Manufacturer(Node):
                 if(supplier.source.raw_material.ID == raw_mat_id and self.ongoing_order_raw[raw_mat_id] == False): # check if the supplier has the raw material and order is not already placed
                     self.ongoing_order_raw[raw_mat_id] = True # set the order status to True
                     self.env.process(self.process_order_raw(raw_mat_id, supplier, raw_mat_reorder_sz)) # place the order for the raw material
-        yield self.env.timeout(1) # wait for the order to be placed
+        # Zero-duration yield: this method is called via ``env.process`` so it
+        # has to be a generator, but it has no real wait — every raw-material
+        # dispatch is itself spawned as a sibling process and not awaited
+        # here (the production loop wakes via ``raw_material_arrived``). The
+        # historical ``timeout(1)`` was an arbitrary one-tick stall called
+        # out as §8's "process_order trailing tick" nit.
+        yield self.env.timeout(0)
 
 class Demand(Node):
     """
@@ -2616,17 +3049,22 @@ class Demand(Node):
         - Delivery cost and lead time are sampled dynamically for each order (if specified).
         - The connected upstream node must not be a supplier; it should typically be a retailer or distributor node.
     """
+    _info_keys = Node._info_keys + [
+        "order_arrival_model", "order_quantity_model", "demand_node",
+        "customer_tolerance", "delivery_cost", "lead_time",
+    ]
+
     def __init__(self,
-                 env: simpy.Environment, 
-                 ID: str, 
-                 name: str, 
-                 order_arrival_model: callable, 
-                 order_quantity_model: callable, 
+                 env: simpy.Environment,
+                 ID: str,
+                 name: str,
+                 order_arrival_model: Callable,
+                 order_quantity_model: Callable,
                  demand_node: Node,
                  tolerance: float = 0.0,
                  order_min_split_ratio: float = 1.0,
-                 delivery_cost: callable = lambda: 0,
-                 lead_time: callable = lambda: 0,
+                 delivery_cost: Callable = lambda: 0,
+                 lead_time: Callable = lambda: 0,
                  consume_available: bool = False,
                  **kwargs) -> None:
         """
@@ -2661,30 +3099,33 @@ class Demand(Node):
         Returns:
             None
         """
+        # Pull periodic-stats kwargs out before forwarding to Node — exposes
+        # the ``Statistics`` periodic update cadence as a node-level kwarg.
+        periodic_stats = kwargs.pop('periodic_stats', False)
+        stats_period = kwargs.pop('stats_period', 1)
+        if periodic_stats:
+            validate_positive(name="stats_period", value=stats_period)
         super().__init__(env=env,ID=ID,name=name,node_type="demand",**kwargs)
         if order_arrival_model is None or order_quantity_model is None:
             raise ValueError("Order arrival and quantity models cannot be None.")
-        if not callable(order_arrival_model):
-            order_arrival_model = lambda val=order_arrival_model: val # convert into callable
-        if not callable(order_quantity_model):
-            order_quantity_model = lambda val=order_quantity_model: val # convert into callable
-        if not callable(delivery_cost):
-            delivery_cost = lambda val=delivery_cost: val # convert into callable
-        if not callable(lead_time):
-            lead_time = lambda val=lead_time: val # convert into callable
+        # Auto-wrap + numeric-validate every Demand callable in one place;
+        # see ``ensure_numeric_callable`` for the §6.4 rationale.
+        order_arrival_model = ensure_numeric_callable("order_arrival_model", order_arrival_model)
+        order_quantity_model = ensure_numeric_callable("order_quantity_model", order_quantity_model)
+        delivery_cost = ensure_numeric_callable("delivery_cost", delivery_cost)
+        lead_time = ensure_numeric_callable("lead_time", lead_time)
         if demand_node is None or "supplier" in demand_node.node_type:
             raise ValueError("Demand node must be a valid non-supplier node.")
         validate_non_negative("Customer tolerance", tolerance)
         validate_positive("Order Min Split Ratio", order_min_split_ratio)
         if order_min_split_ratio > 1:
-            self.logger.logger.error("Order Min Split Ratio must be in the range (0, 1].")
+            self.logger.error("Order Min Split Ratio must be in the range (0, 1].")
             raise ValueError("Order Min Split Ratio must be in the range (0, 1].")
         validate_number(name="order_time", value=order_arrival_model())
         validate_number(name="order_quantity", value=order_quantity_model())
         validate_number(name="delivery_cost", value=delivery_cost()) # check if delivery_cost is a number
         validate_number(name="lead_time", value=lead_time()) # check if lead_time is a number
 
-        self._info_keys.extend(["order_arrival_model", "order_quantity_model", "demand_node", "customer_tolerance", "delivery_cost", "lead_time"])
         self.order_arrival_model = order_arrival_model
         self.order_quantity_model = order_quantity_model
         self.demand_node = demand_node
@@ -2694,7 +3135,7 @@ class Demand(Node):
         self.min_split = order_min_split_ratio
         self.consume_available = consume_available # if True, the demand node consumes available inventory immediately and leaves
         self.env.process(self.behavior())
-        self.stats = Statistics(self, periodic_update=True, period=1) # create a statistics object for the demand node
+        self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the demand node
 
     def _process_delivery(self, order_quantity, customer_id):
         """
@@ -2717,12 +3158,12 @@ class Demand(Node):
         
         get_event, _ = self.demand_node.inventory.get(order_quantity)
         yield get_event
-        self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity}, available.")
+        self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity}, available.")
 
         lead_time = self.lead_time() # get the lead time from the demand node
         validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
         yield self.env.timeout(lead_time) # wait for the delivery of the order
-        #self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity} received.")
+        #self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity} received.")
 
         self.stats.update_stats(fulfillment_received=[1,order_quantity])
         self.demand_node.stats.update_stats(demand_fulfilled=[1,order_quantity]) 
@@ -2744,7 +3185,7 @@ class Demand(Node):
         Returns:
             None
         """
-        self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity} not available! Order will be split if split ratio is provided.")
+        self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity} not available! Order will be split if split ratio is provided.")
         self.demand_node.stats.update_stats(backorder=[1,order_quantity])
         if(not self.demand_node.inventory_drop.triggered):
             self.demand_node.inventory_drop.succeed()  # signal that inventory has been dropped (since backorder is created)
@@ -2772,23 +3213,83 @@ class Demand(Node):
                 self.stats.update_stats(fulfillment_received=[-1,0])
                 order_quantity -= available # update order quantity
             else: 
-                self.demand_node.stats.update_stats(orders_shortage=[1,order_quantity-available])
+                self.demand_node.stats.update_stats(shortage=[1,order_quantity-available])
             yield self.demand_node.inventory_raised # wait until inventory is replenished
             self.demand_node.inventory_raised = self.env.event()  # reset the event for the next iteration
             waited += self.env.now - waiting_time # update the waited time
         
         if order_quantity > 0: # if the order quantity is still greater than 0, it means the order was not fulfilled
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available!")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available!")
 
-    def customer(self,customer_id,order_quantity):
+    # ---- Customer-fulfilment helpers (§6.5) -------------------------------
+    # ``customer`` used to inline four different fulfilment paths with
+    # different yield idioms (``yield from`` vs ``env.process`` vs no yield
+    # at all) and stats updates baked into each branch. Factoring them into
+    # named helpers makes the intent of each branch explicit and keeps
+    # ``customer`` itself a one-glance dispatcher. Each helper is a SimPy
+    # generator returning ``None`` so the dispatcher can use a uniform
+    # ``yield from`` form; ``_serve_no_tolerance`` is a degenerate generator
+    # (``return; yield``) so the call site does not need a special case.
+    # The third helper deliberately spawns ``wait_for_order`` as its own
+    # process — preserving the historical fire-and-forget semantics so the
+    # customer's enclosing ``customer`` call returns promptly even when the
+    # tolerance window is large; KPIs accrue inside ``wait_for_order`` no
+    # matter when the parent process exits.
+
+    def _serve_in_full(self, order_quantity, customer_id):
+        """Inventory has the full requested quantity — record demand and deliver."""
+        self.demand_node.stats.update_stats(demand_received=[1, order_quantity])
+        yield from self._process_delivery(order_quantity, customer_id)
+
+    def _serve_partial_consume(self, order_quantity, available, customer_id):
+        """``consume_available`` path — ship what's on hand, record the rest as shortage."""
+        self.logger.info(
+            f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:"
+            f"{order_quantity} not available, inventory level:{available}. Consuming available inventory."
+        )
+        self.demand_node.stats.update_stats(
+            demand_received=[1, available],
+            shortage=[1, order_quantity - available],
+        )
+        yield from self._process_delivery(available, customer_id)
+
+    def _enqueue_for_tolerance(self, order_quantity, available, customer_id):
+        """Backorder-allowed path — record shortage and let ``wait_for_order`` poll until tolerance."""
+        self.demand_node.stats.update_stats(
+            demand_received=[1, order_quantity],
+            shortage=[1, order_quantity - available],
+        )
+        # Fire-and-forget: ``wait_for_order`` runs as a sibling process so
+        # the parent ``customer`` call returns promptly even when the
+        # tolerance window is large. Backorder/shortage bookkeeping inside
+        # ``wait_for_order`` is independent of the parent's lifecycle.
+        self.env.process(self.wait_for_order(customer_id, order_quantity))
+        return
+        yield  # pragma: no cover — keeps this a generator so the dispatcher can ``yield from`` uniformly.
+
+    def _serve_no_tolerance(self, order_quantity, available, customer_id):
+        """Zero-tolerance path — log shortage and leave without a wait."""
+        self.logger.info(
+            f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:"
+            f"{order_quantity} not available, inventory level:"
+            f"{self.demand_node.inventory.level}. No tolerance! Shortage:{order_quantity - available}."
+        )
+        self.demand_node.stats.update_stats(shortage=[1, order_quantity - available])
+        return
+        yield  # pragma: no cover — keeps this a generator (see _enqueue_for_tolerance).
+
+    def customer(self, customer_id, order_quantity):
         """
-        Simulate the customer behavior, ordering products from demand node, consume and return.
+        Dispatcher: route a single customer order to the right fulfilment helper.
+
+        Four cases drive the dispatch — exactly the same set the original
+        inline branch handled — but the branches now delegate to named
+        helpers (see ``_serve_in_full`` / ``_serve_partial_consume`` /
+        ``_enqueue_for_tolerance`` / ``_serve_no_tolerance``) so each path's
+        intent is named in one place and the dispatcher reads as a single
+        rule table.
 
         Parameters:
-            customer_id (int): Customer ID for logging purposes.
-            order_quantity (float): The quantity of the product ordered.
-
-        Attributes:
             customer_id (int): Customer ID for logging purposes.
             order_quantity (float): The quantity of the product ordered.
 
@@ -2796,20 +3297,15 @@ class Demand(Node):
             None
         """
         available = self.demand_node.inventory.level
-        self.stats.update_stats(demand_placed=[1,order_quantity]) # update the demand placed statistics
+        self.stats.update_stats(demand_placed=[1, order_quantity])
         if order_quantity <= available:
-            self.demand_node.stats.update_stats(demand_received=[1,order_quantity])
-            yield from self._process_delivery(order_quantity, customer_id)
-        elif self.consume_available and available > 0: # consume available inventory if order quantity is not available (backorder policy = allowed partial)
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:{order_quantity} not available, inventory level:{available}. Consuming available inventory.")
-            self.demand_node.stats.update_stats(demand_received=[1,available],orders_shortage=[1,order_quantity-available])
-            yield from self._process_delivery(available, customer_id)
-        elif self.customer_tolerance > 0: # wait for tolerance time if order quantity is not available (backorder policy = allowed total)
-            self.demand_node.stats.update_stats(demand_received=[1,order_quantity],orders_shortage=[1,order_quantity-available]) # update the orders shortage statistics
-            self.env.process(self.wait_for_order(customer_id, order_quantity))
-        else: # No tolerance, leave without placing an order (backorder policy = not allowed)
-            self.logger.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:{order_quantity} not available, inventory level:{self.demand_node.inventory.level}. No tolerance! Shortage:{order_quantity-available}.")
-            self.demand_node.stats.update_stats(orders_shortage=[1,order_quantity-available]) # update the orders shortage statistics
+            yield from self._serve_in_full(order_quantity, customer_id)
+        elif self.consume_available and available > 0:
+            yield from self._serve_partial_consume(order_quantity, available, customer_id)
+        elif self.customer_tolerance > 0:
+            yield from self._enqueue_for_tolerance(order_quantity, available, customer_id)
+        else:
+            yield from self._serve_no_tolerance(order_quantity, available, customer_id)
     
     def behavior(self):
         """

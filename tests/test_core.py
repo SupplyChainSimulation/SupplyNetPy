@@ -4,22 +4,39 @@ import pytest
 import simpy
 import SupplyNetPy.Components as scm
 
-# Shared module-level environment used by DummyNode (below). Tests that need
-# isolation create their own env in setUp; DummyNode's suppliers/links still
-# reference this one — acceptable for the existing tests, which only exercise
-# DummyNode for static inspection (supplier selection, init checks).
-env = simpy.Environment()
+# §7: per-test SimPy environments — see :func:`_fresh_env` and the per-class
+# ``setUp`` methods below. The previous module-level ``env = simpy.Environment()``
+# leaked state between tests (any process scheduled by one test would
+# notionally remain in the env's queue forever). Tests now own their env, and
+# ``DummyNode`` accepts an ``env=`` parameter so its suppliers / links bind
+# to the same env the test creates in ``setUp``.
+
+def _fresh_env() -> simpy.Environment:
+    """Convenience factory for per-test SimPy environments (§7 isolation)."""
+    return simpy.Environment()
+
+# Module-level env retained as a fallback for the (few) places that still
+# reference it directly. New tests should call ``_fresh_env()`` in setUp.
+env = _fresh_env()
 
 class TestRawMaterial(unittest.TestCase):
     """
-    Testing RawMaterial
+    Testing RawMaterial.
+
+    The fixture is built in :meth:`setUp` (instance attribute) rather than at
+    class-construction time. The previous class-attribute version triggered
+    ``RawMaterial(...)`` at import time, so an unrelated import-time
+    regression surfaced as a *collection error* (no test name in the failure
+    line) instead of a clean test failure (§7).
     """
-    raw_material = scm.RawMaterial(ID="RM1",
-                                   name="Raw Material 1",
-                                   extraction_quantity=30,
-                                   extraction_time=3,
-                                   mining_cost=4,
-                                   cost=1)
+
+    def setUp(self):
+        self.raw_material = scm.RawMaterial(ID="RM1",
+                                            name="Raw Material 1",
+                                            extraction_quantity=30,
+                                            extraction_time=3,
+                                            mining_cost=4,
+                                            cost=1)
 
     def test_raw_material_init(self):
         assert self.raw_material.ID == "RM1"
@@ -62,21 +79,25 @@ class TestRawMaterial(unittest.TestCase):
 
 class TestProduct(unittest.TestCase):
     """
-    Testing Product class
+    Testing Product class. Fixture moved to :meth:`setUp` (§7) so any
+    import-time regression in ``RawMaterial`` / ``Product`` surfaces as a
+    named test failure rather than a pytest collection error.
     """
-    raw_material1 = scm.RawMaterial(ID="RM1", name="Raw Material 1", extraction_quantity=10, extraction_time=2, mining_cost=1, cost=2)
-    raw_material2 = scm.RawMaterial(ID="RM2", name="Raw Material 2", extraction_quantity=5, extraction_time=1, mining_cost=0.5, cost=1)
 
-    product = scm.Product(
-        ID="P1",
-        name="Product 1",
-        manufacturing_cost=10,
-        manufacturing_time=5,
-        sell_price=20,
-        raw_materials=[(raw_material1, 2), (raw_material2, 3)],
-        batch_size=100,
-        buy_price=15
-    )
+    def setUp(self):
+        self.raw_material1 = scm.RawMaterial(ID="RM1", name="Raw Material 1", extraction_quantity=10, extraction_time=2, mining_cost=1, cost=2)
+        self.raw_material2 = scm.RawMaterial(ID="RM2", name="Raw Material 2", extraction_quantity=5, extraction_time=1, mining_cost=0.5, cost=1)
+
+        self.product = scm.Product(
+            ID="P1",
+            name="Product 1",
+            manufacturing_cost=10,
+            manufacturing_time=5,
+            sell_price=20,
+            raw_materials=[(self.raw_material1, 2), (self.raw_material2, 3)],
+            batch_size=100,
+            buy_price=15
+        )
 
     def test_product_init(self):
         assert self.product.ID == "P1"
@@ -198,7 +219,12 @@ class TestProduct(unittest.TestCase):
             )
 
 class DummyNode(scm.InventoryNode):
-    def __init__(self):
+    """Reusable harness — accepts ``env=`` so callers (test setUp) can scope
+    every supplier / link / inventory to a fresh environment per test (§7)."""
+
+    def __init__(self, env=None):
+        if env is None:
+            env = _fresh_env()
         self.infinite_sup1 = scm.Supplier(env, ID="dummy_supplier1", name="Dummy Supplier1", node_type="infinite_supplier")
         self.infinite_sup2 = scm.Supplier(env, ID="dummy_supplier2", name="Dummy Supplier2", node_type="infinite_supplier")
         super().__init__(env=env, ID="dummy_node", name="Dummy Node",
@@ -210,9 +236,12 @@ class DummyNode(scm.InventoryNode):
 
 class TestSSReplenishment(unittest.TestCase):
     def setUp(self):
-        self.env = simpy.Environment()
-        self.node = DummyNode()
-        self.node.env = self.env
+        # §7: per-test env passed into DummyNode so its suppliers / links
+        # are scoped to ``self.env``. Replaces the previous module-shared env
+        # plus post-hoc ``self.node.env = self.env`` patch (which left
+        # node.suppliers / node.inventory bound to the module env).
+        self.env = _fresh_env()
+        self.node = DummyNode(env=self.env)
 
     def test_init_sets_params(self):
         params = {'s': 5, 'S': 20}
@@ -238,9 +267,12 @@ class TestSSReplenishment(unittest.TestCase):
 
 class TestRQReplenishment(unittest.TestCase):
     def setUp(self):
-        self.env = simpy.Environment()
-        self.node = DummyNode()
-        self.node.env = self.env
+        # §7: per-test env passed into DummyNode so its suppliers / links
+        # are scoped to ``self.env``. Replaces the previous module-shared env
+        # plus post-hoc ``self.node.env = self.env`` patch (which left
+        # node.suppliers / node.inventory bound to the module env).
+        self.env = _fresh_env()
+        self.node = DummyNode(env=self.env)
 
     def test_init_sets_params(self):
         params = {'R': 5, 'Q': 10}
@@ -274,9 +306,12 @@ class TestRQReplenishment(unittest.TestCase):
 
 class TestPeriodicReplenishment(unittest.TestCase):
     def setUp(self):
-        self.env = simpy.Environment()
-        self.node = DummyNode()
-        self.node.env = self.env
+        # §7: per-test env passed into DummyNode so its suppliers / links
+        # are scoped to ``self.env``. Replaces the previous module-shared env
+        # plus post-hoc ``self.node.env = self.env`` patch (which left
+        # node.suppliers / node.inventory bound to the module env).
+        self.env = _fresh_env()
+        self.node = DummyNode(env=self.env)
 
     def test_init_sets_params(self):
         params = {'T': 5, 'Q': 1}
@@ -300,9 +335,12 @@ class TestPeriodicReplenishment(unittest.TestCase):
 
 class TestSelectFirst(unittest.TestCase):
     def setUp(self):
-        self.env = simpy.Environment()
-        self.node = DummyNode()
-        self.node.env = self.env
+        # §7: per-test env passed into DummyNode so its suppliers / links
+        # are scoped to ``self.env``. Replaces the previous module-shared env
+        # plus post-hoc ``self.node.env = self.env`` patch (which left
+        # node.suppliers / node.inventory bound to the module env).
+        self.env = _fresh_env()
+        self.node = DummyNode(env=self.env)
 
     def test_init_sets_params(self):
         sf = scm.SelectFirst(self.node, "fixed")
@@ -318,9 +356,12 @@ class TestSelectFirst(unittest.TestCase):
 
 class TestSelectAvailable(unittest.TestCase):
     def setUp(self):
-        self.env = simpy.Environment()
-        self.node = DummyNode()
-        self.node.env = self.env
+        # §7: per-test env passed into DummyNode so its suppliers / links
+        # are scoped to ``self.env``. Replaces the previous module-shared env
+        # plus post-hoc ``self.node.env = self.env`` patch (which left
+        # node.suppliers / node.inventory bound to the module env).
+        self.env = _fresh_env()
+        self.node = DummyNode(env=self.env)
 
     def test_init_sets_params(self):
         sa = scm.SelectAvailable(self.node, "fixed")
@@ -338,9 +379,12 @@ class TestSelectAvailable(unittest.TestCase):
 
 class TestSelectCheapest(unittest.TestCase):
     def setUp(self):
-        self.env = simpy.Environment()
-        self.node = DummyNode()
-        self.node.env = self.env
+        # §7: per-test env passed into DummyNode so its suppliers / links
+        # are scoped to ``self.env``. Replaces the previous module-shared env
+        # plus post-hoc ``self.node.env = self.env`` patch (which left
+        # node.suppliers / node.inventory bound to the module env).
+        self.env = _fresh_env()
+        self.node = DummyNode(env=self.env)
 
     def test_init_sets_params(self):
         sc = scm.SelectCheapest(self.node, "fixed")
@@ -358,9 +402,12 @@ class TestSelectCheapest(unittest.TestCase):
 
 class TestSelectFastest(unittest.TestCase):
     def setUp(self):
-        self.env = simpy.Environment()
-        self.node = DummyNode()
-        self.node.env = self.env
+        # §7: per-test env passed into DummyNode so its suppliers / links
+        # are scoped to ``self.env``. Replaces the previous module-shared env
+        # plus post-hoc ``self.node.env = self.env`` patch (which left
+        # node.suppliers / node.inventory bound to the module env).
+        self.env = _fresh_env()
+        self.node = DummyNode(env=self.env)
 
     def test_init_sets_params(self):
         sf = scm.SelectFastest(self.node, "fixed")
@@ -378,9 +425,12 @@ class TestSelectFastest(unittest.TestCase):
 
 class TestInventory(unittest.TestCase):
     def setUp(self):
-        self.env = simpy.Environment()
-        self.node = DummyNode()
-        self.node.env = self.env
+        # §7: per-test env passed into DummyNode so its suppliers / links
+        # are scoped to ``self.env``. Replaces the previous module-shared env
+        # plus post-hoc ``self.node.env = self.env`` patch (which left
+        # node.suppliers / node.inventory bound to the module env).
+        self.env = _fresh_env()
+        self.node = DummyNode(env=self.env)
 
     def test_init_sets_params(self):
         inv = scm.Inventory(env=self.node.env, capacity=20, initial_level=10, node=self.node, replenishment_policy=None,
@@ -968,7 +1018,7 @@ class TestCanonicalIntroSimple(unittest.TestCase):
         assert stats["transportation_cost"] == 25
         assert stats["demand_received"] == [20, 200]
         assert stats["demand_fulfilled"] == [20, 200]
-        assert stats["orders_shortage"] == [0, 0]
+        assert stats["shortage"] == [0, 0]
         assert stats["backorder"] == [0, 0]
 
 
@@ -1128,3 +1178,559 @@ class TestSelectionPoliciesFilterDisruptedLinks(unittest.TestCase):
 
         link_b.status = "active"
         assert policy.select(10) is link_b, "lock restored once link recovers"
+
+
+class TestDeclarativeInfoKeys(unittest.TestCase):
+    """§4.6: _info_keys / _stats_keys are declared at class level, with subclass lists
+    computed as ``Parent._info_keys + [...]`` so they stay in lockstep with the code
+    without needing manual ``self._info_keys.extend(...)`` calls in ``__init__``."""
+
+    def test_node_subclass_keys_are_class_level(self):
+        # Keys must be readable without constructing any instance.
+        assert "raw_material" in scm.Supplier._info_keys
+        assert "sell_price" in scm.Supplier._info_keys
+        assert "pending_orders" in scm.InventoryNode._info_keys
+        assert "selection_policy" in scm.InventoryNode._info_keys
+        assert "replenishment_policy" in scm.Manufacturer._info_keys
+        assert "order_arrival_model" in scm.Demand._info_keys
+
+    def test_subclass_list_is_independent_of_parent(self):
+        # Each subclass must own a fresh list, not alias the parent's — otherwise
+        # extending one would pollute the other.
+        assert scm.Supplier._info_keys is not scm.Node._info_keys
+        assert scm.InventoryNode._info_keys is not scm.Node._info_keys
+        assert scm.Manufacturer._info_keys is not scm.Node._info_keys
+        assert scm.Demand._info_keys is not scm.Node._info_keys
+        assert scm.SSReplenishment._info_keys is not scm.InventoryReplenishment._info_keys
+        assert scm.SelectAvailable._info_keys is not scm.SupplierSelectionPolicy._info_keys
+
+    def test_selection_policy_subclass_keys(self):
+        assert scm.SelectFirst._info_keys == ["node", "mode", "name"]
+        assert scm.SelectAvailable._info_keys == ["node", "mode", "name"]
+        assert scm.SelectCheapest._info_keys == ["node", "mode", "name"]
+        assert scm.SelectFastest._info_keys == ["node", "mode", "name"]
+
+    def test_get_info_uses_class_level_keys(self):
+        env = simpy.Environment()
+        rm = scm.RawMaterial(ID="RM", name="rm", extraction_quantity=5,
+                             extraction_time=1, mining_cost=1, cost=2)
+        sup = scm.Supplier(env=env, ID="S", name="S", node_type="supplier",
+                           capacity=10, initial_level=5, inventory_holding_cost=0.1,
+                           raw_material=rm, logging=False)
+        info = sup.get_info()
+        # All Node keys + Supplier extensions.
+        for key in ("ID", "name", "node_type", "raw_material", "sell_price"):
+            assert key in info
+
+    def test_statistics_per_instance_extension_does_not_leak(self):
+        # Supplier.__init__ appends "total_material_cost" to its own stats only.
+        # Class-level Statistics._stats_keys must not pick up that append, and
+        # sibling Statistics instances (e.g. an InventoryNode's) must not see it
+        # either — the instance lists are cloned on construction.
+        env = simpy.Environment()
+        rm = scm.RawMaterial(ID="RM2", name="rm", extraction_quantity=5,
+                             extraction_time=1, mining_cost=1, cost=2)
+        sup = scm.Supplier(env=env, ID="SS", name="SS", node_type="supplier",
+                           capacity=10, initial_level=5, inventory_holding_cost=0.1,
+                           raw_material=rm, logging=False)
+        dist = scm.InventoryNode(env=env, ID="DD", name="DD", node_type="distributor",
+                                 capacity=100, initial_level=50, inventory_holding_cost=0.1,
+                                 replenishment_policy=None, policy_param=None,
+                                 product_sell_price=5, product_buy_price=2, logging=False)
+        assert "total_material_cost" in sup.stats._stats_keys
+        assert "total_material_cost" not in dist.stats._stats_keys
+        assert "total_material_cost" not in scm.Statistics._stats_keys
+        assert "total_material_cost" in sup.stats._cost_components
+        assert "total_material_cost" not in dist.stats._cost_components
+        assert "total_material_cost" not in scm.Statistics._cost_components
+
+
+class TestNodeTypeEnum(unittest.TestCase):
+    """§4.7: node_type is validated against the ``NodeType`` str-enum instead of a
+    hard-coded list duplicated between ``Node.__init__`` and ``create_sc_net``."""
+
+    def test_enum_members_cover_all_types(self):
+        expected = {
+            "infinite_supplier", "supplier",
+            "manufacturer", "factory",
+            "warehouse", "distributor",
+            "retailer", "store", "shop",
+            "demand",
+        }
+        assert {m.value for m in scm.NodeType} == expected
+
+    def test_enum_is_str_compatible(self):
+        # str-enum inheritance — every comparison the rest of core.py does
+        # against a literal string keeps working.
+        assert scm.NodeType.SUPPLIER == "supplier"
+        assert "supplier" in scm.NodeType.INFINITE_SUPPLIER
+        assert scm.NodeType.DEMAND.lower() == "demand"
+
+    def test_case_insensitive_lookup(self):
+        assert scm.NodeType("SUPPLIER") is scm.NodeType.SUPPLIER
+        assert scm.NodeType("Supplier") is scm.NodeType.SUPPLIER
+
+    def test_node_accepts_enum_or_string(self):
+        env = simpy.Environment()
+        a = scm.Supplier(env=env, ID="A", name="A", node_type="supplier",
+                         capacity=10, initial_level=5, inventory_holding_cost=0.1,
+                         raw_material=scm.RawMaterial(ID="rm", name="rm",
+                                                      extraction_quantity=1, extraction_time=1,
+                                                      mining_cost=1, cost=1),
+                         logging=False)
+        b = scm.Supplier(env=env, ID="B", name="B", node_type=scm.NodeType.SUPPLIER,
+                         capacity=10, initial_level=5, inventory_holding_cost=0.1,
+                         raw_material=scm.RawMaterial(ID="rm2", name="rm2",
+                                                      extraction_quantity=1, extraction_time=1,
+                                                      mining_cost=1, cost=1),
+                         logging=False)
+        assert a.node_type == b.node_type == "supplier"
+
+    def test_invalid_node_type_raises(self):
+        with pytest.raises(ValueError, match="Invalid node type"):
+            scm.Node(env=simpy.Environment(), ID="X", name="X",
+                     node_type="crossdock", logging=False)
+
+
+class TestLoggerOptIn(unittest.TestCase):
+    """§4.8: ``GlobalLogger`` is inert by default — no FileHandler at import,
+    no per-node FileHandlers at construction, and per-node loggers route
+    through the single ``sim_trace`` parent so handlers are configured in
+    one place."""
+
+    def _file_handlers(self, logger):
+        import logging
+        return [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+
+    def test_module_logger_is_inert_by_default(self):
+        # After construction the global logger should hold only a NullHandler;
+        # specifically no FileHandler should have been opened against the
+        # default trace file path.
+        import logging
+        # Re-create to pick up the documented default state — other tests in
+        # the suite may have flipped enable_logging() on this shared logger.
+        scm.global_logger.disable_logging()
+        assert scm.global_logger.log_to_file is False
+        assert scm.global_logger.log_to_screen is False
+        assert self._file_handlers(scm.global_logger.logger) == []
+        assert any(isinstance(h, logging.NullHandler)
+                   for h in scm.global_logger.logger.handlers)
+
+    def test_node_does_not_attach_its_own_file_handler(self):
+        # Per-node loggers must not open FileHandlers — they propagate to
+        # ``sim_trace`` instead. Construct a node with logging=True (the
+        # default) and confirm its logger has no FileHandler of its own.
+        env = simpy.Environment()
+        node = scm.InventoryNode(env=env, ID="OPTIN_N1", name="N1",
+                                 node_type="warehouse", capacity=10,
+                                 initial_level=0, inventory_holding_cost=0.1,
+                                 replenishment_policy=None, policy_param=None,
+                                 product_sell_price=1, product_buy_price=1)
+        assert self._file_handlers(node.logger.logger) == []
+
+    def test_per_node_logger_is_child_of_sim_trace(self):
+        env = simpy.Environment()
+        node = scm.InventoryNode(env=env, ID="OPTIN_N2", name="N2",
+                                 node_type="warehouse", capacity=10,
+                                 initial_level=0, inventory_holding_cost=0.1,
+                                 replenishment_policy=None, policy_param=None,
+                                 product_sell_price=1, product_buy_price=1)
+        # Hierarchical name → propagation → handlers attached on ``sim_trace``
+        # apply to every node without per-node FileHandler creation.
+        assert node.logger.logger.name == "sim_trace.OPTIN_N2"
+
+    def test_disable_logging_does_not_set_global_disable(self):
+        # The previous implementation called ``logging.disable(CRITICAL)``,
+        # silencing the host application's own loggers as a side effect.
+        # ``disable_logging`` must be local to ``self.logger`` now.
+        import logging
+        scm.global_logger.disable_logging()
+        # Python tracks the global disable threshold via ``logging.root.manager.disable``.
+        assert logging.root.manager.disable == 0
+        scm.global_logger.enable_logging()  # restore for any subsequent tests
+
+
+class TestLoggerAdapter(unittest.TestCase):
+    """§4.9: ``GlobalLogger`` is a proper :class:`logging.LoggerAdapter` so
+    callers can use ``node.logger.info(...)`` directly — no more
+    ``node.logger.logger.info(...)`` double-hop."""
+
+    def test_global_logger_is_a_logger_adapter(self):
+        import logging
+        assert isinstance(scm.global_logger, logging.LoggerAdapter)
+
+    def test_node_logger_is_a_logger_adapter(self):
+        import logging
+        env = simpy.Environment()
+        node = scm.InventoryNode(env=env, ID="ADAPTER_N1", name="N1",
+                                 node_type="warehouse", capacity=10,
+                                 initial_level=0, inventory_holding_cost=0.1,
+                                 replenishment_policy=None, policy_param=None,
+                                 product_sell_price=1, product_buy_price=1,
+                                 logging=False)
+        assert isinstance(node.logger, logging.LoggerAdapter)
+        # All the standard log-level methods route through the adapter directly.
+        for method_name in ("debug", "info", "warning", "error", "critical", "log"):
+            assert callable(getattr(node.logger, method_name))
+
+    def test_underlying_logger_still_reachable(self):
+        # Backward compatibility: ``node.logger.logger`` is the standard
+        # LoggerAdapter attribute pointing at the underlying logger. Tests in
+        # this file (and any user code that still reaches in) keep working.
+        import logging
+        env = simpy.Environment()
+        node = scm.InventoryNode(env=env, ID="ADAPTER_N2", name="N2",
+                                 node_type="warehouse", capacity=10,
+                                 initial_level=0, inventory_holding_cost=0.1,
+                                 replenishment_policy=None, policy_param=None,
+                                 product_sell_price=1, product_buy_price=1,
+                                 logging=False)
+        assert isinstance(node.logger.logger, logging.Logger)
+        assert node.logger.logger.name == "sim_trace.ADAPTER_N2"
+
+
+class TestPerishQueueHeap(unittest.TestCase):
+    """§5.3: ``perish_queue`` is a ``heapq`` min-heap keyed by mfg_date.
+    Out-of-order inserts must still be consumed oldest-first, and the heap
+    invariant has to survive partial-consumption updates of the head."""
+
+    def setUp(self):
+        self.env = simpy.Environment()
+
+    def _heap_invariant_ok(self, heap):
+        # For every parent at index i, both children must compare >= parent.
+        for i in range(len(heap)):
+            for child in (2 * i + 1, 2 * i + 2):
+                if child < len(heap):
+                    assert heap[i] <= heap[child], (
+                        f"Heap invariant broken at i={i}: parent={heap[i]} "
+                        f"child={heap[child]}"
+                    )
+
+    def test_out_of_order_inserts_consumed_oldest_first(self):
+        # Start with a perishable inventory at level 0 (no initial batch), then
+        # push three batches with intentionally out-of-order mfg_dates and
+        # confirm get() returns them oldest-first.
+        inv = _make_inventory(self.env, capacity=100, initial_level=0,
+                              inv_type="perishable", shelf_life=100)
+        # Drop the (0, 0) sentinel that __init__ seeds for an initial_level=0
+        # construction so the test sees only the batches we push below.
+        inv.perish_queue.clear()
+        inv.put(10, manufacturing_date=5)
+        inv.put(10, manufacturing_date=2)   # older — should come out first
+        inv.put(10, manufacturing_date=8)
+        inv.put(10, manufacturing_date=1)   # oldest of all
+        self._heap_invariant_ok(inv.perish_queue)
+
+        _evt, dates = inv.get(40)
+        # Order of mfg_dates returned must be ascending — the FIFO-by-expiry
+        # contract the heap encodes.
+        mfg_dates = [d for d, _ in dates]
+        assert mfg_dates == sorted(mfg_dates)
+        assert mfg_dates == [1, 2, 5, 8]
+        assert inv.perish_queue == []
+
+    def test_partial_consumption_preserves_heap_invariant(self):
+        # Consuming less than the head's full qty replaces the head in place.
+        # The new tuple has the same mfg_date and a smaller qty; the heap must
+        # still satisfy the invariant.
+        inv = _make_inventory(self.env, capacity=100, initial_level=0,
+                              inv_type="perishable", shelf_life=100)
+        inv.perish_queue.clear()
+        for d, q in [(5, 30), (2, 20), (8, 40), (1, 10), (3, 25)]:
+            inv.put(q, manufacturing_date=d)
+        self._heap_invariant_ok(inv.perish_queue)
+
+        # Consume 5 units — only the head (mfg_date=1, qty=10) is touched and
+        # gets replaced with (1, 5). The rest of the heap should be intact.
+        _evt, dates = inv.get(5)
+        assert dates == [(1, 5)]
+        assert inv.perish_queue[0] == (1, 5)
+        self._heap_invariant_ok(inv.perish_queue)
+
+    def test_remove_expired_drains_oldest_first(self):
+        # All batches share the same mfg_date so they all expire together.
+        # remove_expired runs as a SimPy process; advance the env past the
+        # shelf-life threshold and verify everything is gone.
+        inv = _make_inventory(self.env, capacity=100, initial_level=0,
+                              inv_type="perishable", shelf_life=3)
+        inv.perish_queue.clear()
+        for q in (10, 20, 15):
+            inv.put(q, manufacturing_date=0)
+        self.env.run(until=10)
+        assert inv.perish_queue == []
+        assert inv.waste == 45  # 10 + 20 + 15
+
+
+class TestRemoveExpiredEventDriven(unittest.TestCase):
+    """§5.1: ``remove_expired`` is event-driven via ``perish_changed``.
+
+    Replaces the old ``yield env.timeout(1)`` polling daemon. The contract:
+    the daemon sleeps until the head batch's ``mfg_date + shelf_life`` and
+    is woken early only when ``put`` displaces the heap head (or arrives
+    into an empty queue). Tests in this class exercise scheduling/wake-up
+    semantics; the actual drain-on-expiry behaviour is covered above by
+    ``TestPerishQueueHeap.test_remove_expired_drains_oldest_first``.
+    """
+
+    def setUp(self):
+        self.env = simpy.Environment()
+
+    def test_perish_changed_event_initialised(self):
+        inv = _make_inventory(self.env, capacity=100, initial_level=10,
+                              inv_type="perishable", shelf_life=5)
+        # Should expose an untriggered SimPy event for the daemon wake-up.
+        assert hasattr(inv, "perish_changed")
+        assert isinstance(inv.perish_changed, simpy.events.Event)
+        assert not inv.perish_changed.triggered
+
+    def test_put_into_empty_queue_signals_head_change(self):
+        # An empty→non-empty transition is a head change and must wake the
+        # daemon. With initial_level=0 the constructor seeds (0, 0); clear it
+        # to genuinely simulate "queue currently empty" before the put.
+        inv = _make_inventory(self.env, capacity=100, initial_level=0,
+                              inv_type="perishable", shelf_life=5)
+        inv.perish_queue.clear()
+        # Re-arm the wake-up event in case the (0, 0) sentinel push during
+        # construction had already triggered it.
+        inv.perish_changed = self.env.event()
+        inv.put(10, manufacturing_date=2)
+        assert inv.perish_changed.triggered
+
+    def test_put_with_younger_batch_does_not_signal(self):
+        # In the common (monotonic-mfg_date) case, a fresher batch goes to
+        # the back of the heap and the head is unchanged — the daemon must
+        # NOT be woken (otherwise §5.1 would still be a per-put wake storm).
+        inv = _make_inventory(self.env, capacity=100, initial_level=0,
+                              inv_type="perishable", shelf_life=5)
+        inv.perish_queue.clear()
+        inv.put(10, manufacturing_date=2)
+        # Rotate the event so we observe only the next put's effect.
+        inv.perish_changed = self.env.event()
+        inv.put(10, manufacturing_date=4)  # younger — head stays at mfg_date=2
+        assert not inv.perish_changed.triggered
+        # And the head is indeed unchanged.
+        assert inv.perish_queue[0][0] == 2
+
+    def test_put_with_older_batch_displaces_head_and_signals(self):
+        # An older batch (smaller mfg_date) displaces the head: its expiry
+        # is earlier than the prior head's, so the daemon's existing timer
+        # is too long and it must be woken to recompute.
+        inv = _make_inventory(self.env, capacity=100, initial_level=0,
+                              inv_type="perishable", shelf_life=5)
+        inv.perish_queue.clear()
+        inv.put(10, manufacturing_date=4)
+        inv.perish_changed = self.env.event()
+        inv.put(10, manufacturing_date=1)  # older — becomes new head
+        assert inv.perish_changed.triggered
+        assert inv.perish_queue[0] == (1, 10)
+
+    def test_daemon_does_not_advance_time_when_queue_empty(self):
+        # With initial_level=0 the queue is just the (0, 0) sentinel; after
+        # the daemon pops it past shelf_life it should block on
+        # perish_changed forever (no spurious timeouts). Run for a long
+        # horizon and check the daemon left no expired-batches behind and
+        # didn't accumulate phantom waste.
+        inv = _make_inventory(self.env, capacity=100, initial_level=0,
+                              inv_type="perishable", shelf_life=2)
+        # Don't clear perish_queue here — let the daemon process the (0, 0)
+        # sentinel naturally. After t >= 2, the sentinel is removed and the
+        # daemon should idle, not poll.
+        self.env.run(until=1000)
+        assert inv.perish_queue == []
+        assert inv.waste == 0  # qty=0 sentinel doesn't accrue waste
+
+    def test_late_put_after_idle_wakes_daemon_and_drains_on_schedule(self):
+        # Daemon idles on an empty queue, a later put introduces a batch,
+        # daemon must wake, sleep shelf_life units, then drain. Verifies the
+        # full empty→non-empty→expiry round-trip.
+        inv = _make_inventory(self.env, capacity=100, initial_level=0,
+                              inv_type="perishable", shelf_life=3)
+
+        def late_put():
+            yield self.env.timeout(50)  # daemon has long since idled
+            inv.put(20, manufacturing_date=self.env.now)
+
+        self.env.process(late_put())
+        # Run past the late put's expiry: 50 + shelf_life = 53. Add slack.
+        self.env.run(until=60)
+        assert inv.perish_queue == []
+        assert inv.waste == 20
+
+    def test_displacing_put_pulls_expiry_earlier(self):
+        # Daemon is parked on a long sleep; a stale-mfg_date put arrives and
+        # displaces the head with an already-expired batch. Daemon must wake
+        # via perish_changed, recompute sleep_dt=0, and drain the stale
+        # batch immediately on the next iteration.
+        inv = _make_inventory(self.env, capacity=100, initial_level=0,
+                              inv_type="perishable", shelf_life=5)
+        inv.perish_queue.clear()
+        inv.put(10, manufacturing_date=100)  # head: expiry at 105
+
+        def stale_put():
+            yield self.env.timeout(10)
+            # mfg_date=0 with shelf_life=5 means already expired at t=10.
+            inv.put(7, manufacturing_date=0)
+
+        self.env.process(stale_put())
+        # Run a hair past the stale put. Daemon should wake at t=10, see
+        # sleep_dt=0 on next iteration, and drain the (0, 7) batch.
+        self.env.run(until=11)
+        # The (0, 7) batch is gone; the (100, 10) batch is still pending.
+        mfg_dates_left = [d for d, _ in inv.perish_queue]
+        assert 0 not in mfg_dates_left
+        assert inv.waste == 7
+
+
+class TestEndToEndIntegration(unittest.TestCase):
+    """§7: end-to-end integration tests for ``create_sc_net`` →
+    ``simulate_sc_net`` → aggregated KPIs.
+
+    The examples under ``examples/py/`` were the closest thing to integration
+    coverage previously; they don't run under pytest, so a regression in the
+    aggregation path (or the canonical ``profit: -4435.0`` invariant) could
+    ship green. These tests pin the canonical numbers and verify the
+    Network wrapper exposes the same KPIs the dict does.
+    """
+
+    def _build_canonical_net(self):
+        # Identical to ``examples/py/intro_simple.py`` — keep this in sync
+        # with that file so a change to the canonical example is also a
+        # signal to update this fixture.
+        return scm.create_sc_net(
+            nodes=[
+                {'ID': 'S1', 'name': 'Supplier1', 'node_type': 'infinite_supplier'},
+                {'ID': 'D1', 'name': 'Distributor1', 'node_type': 'distributor',
+                 'capacity': 150, 'initial_level': 50, 'inventory_holding_cost': 0.2,
+                 'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s': 100, 'S': 150},
+                 'product_buy_price': 100, 'product_sell_price': 105},
+            ],
+            links=[{'ID': 'L1', 'source': 'S1', 'sink': 'D1', 'cost': 5, 'lead_time': lambda: 2}],
+            demands=[{'ID': 'd1', 'name': 'Demand1',
+                      'order_arrival_model': lambda: 1, 'order_quantity_model': lambda: 10,
+                      'demand_node': 'D1'}],
+        )
+
+    def test_intro_simple_canonical_profit(self):
+        # The canonical -4435.0 profit is the project's smoke-test value;
+        # any change here without a matching update to intro_simple.py docs
+        # is a real regression.
+        sc = self._build_canonical_net()
+        scm.simulate_sc_net(sc, sim_time=20, logging=False)
+        assert sc["profit"] == -4435.0
+        d1_stats = sc["nodes"]["D1"].stats.get_statistics()
+        assert d1_stats["inventory_level"] == 100
+        assert d1_stats["inventory_carry_cost"] == 410.0
+        assert d1_stats["shortage"] == [0, 0]
+        assert d1_stats["backorder"] == [0, 0]
+
+    def test_network_wrapper_matches_dict(self):
+        # §6.1: ``Network`` should be a transparent wrapper — the dict
+        # written by ``simulate_sc_net`` and ``Network.results`` must agree
+        # on every result key.
+        sc = self._build_canonical_net()
+        net = scm.Network(sc)
+        net.simulate(sim_time=20, logging=False)
+        assert net.has_run is True
+        assert net.results["profit"] == sc["profit"]
+        assert net.results["shortage"] == sc["shortage"]
+        # Lookup helpers route to the same node objects as the dict.
+        assert net.node("D1") is sc["nodes"]["D1"]
+
+    def test_log_window_kwarg_runs_to_completion(self):
+        # §6.2: dedicated ``log_window=`` kwarg replaces the overloaded
+        # ``logging=tuple`` form. The simulation must still drive ``env``
+        # all the way to ``sim_time`` regardless of the window choice.
+        sc = self._build_canonical_net()
+        scm.simulate_sc_net(sc, sim_time=20, log_window=(3, 7))
+        assert sc["env"].now >= 20
+        assert sc["profit"] == -4435.0
+
+    def test_logging_tuple_back_compat_still_works(self):
+        # The deprecation shim must keep accepting ``logging=(start, stop)``
+        # so existing user code does not break in the same release as the
+        # rename. The shim emits a warning but still runs the simulation.
+        sc = self._build_canonical_net()
+        scm.simulate_sc_net(sc, sim_time=20, logging=(3, 7))
+        assert sc["profit"] == -4435.0
+
+
+class TestInventoryInvariants(unittest.TestCase):
+    """§7: invariant checks for ``Inventory`` that property-based tests
+    would have caught the original ``remove_expired`` bug. Hand-rolled here
+    rather than introducing ``hypothesis`` as a hard test dep."""
+
+    def setUp(self):
+        self.env = simpy.Environment()
+
+    def test_perishable_quantities_match_container_level(self):
+        # Sum of perishable batch quantities (excluding the qty=0 sentinels
+        # that ``remove_expired`` may leave behind transiently) must equal
+        # the SimPy container level after every put/get sequence.
+        inv = _make_inventory(self.env, capacity=200, initial_level=0,
+                              inv_type="perishable", shelf_life=100)
+        inv.perish_queue.clear()
+        for d, q in [(1, 10), (3, 30), (2, 20), (5, 15), (4, 25)]:
+            inv.put(q, manufacturing_date=d)
+        assert sum(q for _, q in inv.perish_queue if q > 0) == inv.level
+        # Consume across two batches and re-check.
+        get_event, _ = inv.get(35)  # eats (1,10), (2,20), partial of (3,30)
+        # SimPy returns immediately when the container has enough to give —
+        # ``get_event`` is already triggered, so a process-less check is OK.
+        assert sum(q for _, q in inv.perish_queue if q > 0) == inv.level
+
+    def test_on_hand_never_below_container_level_before_dispatch(self):
+        # ``on_hand`` (inventory position = shelf + in-transit) must always
+        # be >= container.level. The opposite would mean we're shipping
+        # against negative in-transit stock.
+        env = simpy.Environment()
+        sup = scm.Supplier(env=env, ID="S1", name="S", node_type="infinite_supplier")
+        inv_node = scm.InventoryNode(
+            env=env, ID="D1", name="D", node_type="warehouse",
+            capacity=100, initial_level=20, inventory_holding_cost=0.1,
+            replenishment_policy=scm.SSReplenishment,
+            policy_param={'s': 50, 'S': 80},
+            product_sell_price=10, product_buy_price=5,
+            logging=False,
+        )
+        scm.Link(env=env, ID="L1", source=sup, sink=inv_node, lead_time=lambda: 2, cost=1)
+        env.run(until=30)
+        assert inv_node.inventory.on_hand >= inv_node.inventory.level
+
+
+class TestEnsureNumericCallable(unittest.TestCase):
+    """§6.4: ``ensure_numeric_callable`` must accept scalars, accept zero-arg
+    numeric callables, and reject callables that return non-numerics on the
+    validation invocation (so passing e.g. a class doesn't crash later)."""
+
+    def test_scalar_is_wrapped(self):
+        wrapped = scm.ensure_numeric_callable("x", 7)
+        assert callable(wrapped)
+        assert wrapped() == 7
+
+    def test_numeric_callable_passes_through(self):
+        f = lambda: 3.5
+        wrapped = scm.ensure_numeric_callable("x", f)
+        assert wrapped is f
+        assert wrapped() == 3.5
+
+    def test_class_callable_is_rejected(self):
+        # A class is callable (``Foo()`` returns an instance), so the old
+        # ``not callable(value)`` guard skipped the wrap and the eventual
+        # ``value()`` returned a Foo instance — not a number — that crashed
+        # later inside a SimPy generator. Validate-on-call surfaces this
+        # immediately at construction.
+        class Foo:
+            pass
+        with pytest.raises(ValueError):
+            scm.ensure_numeric_callable("x", Foo)
+
+    def test_string_returning_callable_is_rejected(self):
+        with pytest.raises(ValueError):
+            scm.ensure_numeric_callable("x", lambda: "two")
+
+    def test_raising_callable_surfaces_typeerror(self):
+        def bad():
+            raise RuntimeError("nope")
+        with pytest.raises(TypeError):
+            scm.ensure_numeric_callable("x", bad)

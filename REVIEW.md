@@ -386,163 +386,544 @@ During the §3/§4 pass the user raised a concern that accumulating `node_cost` 
 
 **Decision:** deferred. Python `float` is IEEE 754 double precision — max ≈ 1.8e308, with precision loss only past 2^53 ≈ 9e15. A million-unit simulation burning \$100/day of holding cost reaches 1e8 after 2,700 years — comfortably inside the safe range. The refactor is available if long-horizon studies surface measurable precision loss; until then, totals remain totals.
 
-### 4.3 Replenishment and selection policies require privileged knowledge of the node
-Every subclass of `InventoryReplenishment.run` directly manipulates:
+### 4.3 Replenishment and selection policies require privileged knowledge of the node ✅ Resolved
+`core.py:1437–1510` (new `Node` methods), `core.py:~1601` (new `Link.available_quantity`), `core.py:~697` (`SSReplenishment.run`), `core.py:~792` (`RQReplenishment.run`), `core.py:~882` (`PeriodicReplenishment.run`), `core.py:~1143` (`SelectAvailable.select`)
 
-- `self.node.logger.logger.info(...)`
-- `self.node.inventory.inventory.level`
-- `self.node.inventory.on_hand`
-- `self.node.stats.backorder[1]`
-- `self.node.ongoing_order`
-- `self.node.selection_policy.select(qty)`
-- `self.env.process(self.node.process_order(...))`
-- `self.node.inventory_drop`
+**Original issue:** every subclass of `InventoryReplenishment.run` reached deep into the owning node — `self.node.inventory.on_hand`, `self.node.stats.backorder[1]`, `self.node.selection_policy.select(qty)`, `self.env.process(self.node.process_order(...))`, `self.node.inventory_drop`, plus the manual "yield then reset" pattern for the drop event. A user writing a new policy had to re-discover the whole contract. `SelectAvailable.select` had the analogous problem on the other side — it reached into `source.inventory.level` to compare candidate links.
 
-A user writing a new policy has to re-discover this whole contract. Define the contract explicitly on `Node`, e.g.:
+**Fix applied:** three small methods on `Node` now capture the contract, and one on `Link` captures the supplier-side read:
+
+1. `Node.position() -> float` — returns `self.inventory.on_hand - self.stats.backorder[1]`. Replaces the raw `on_hand - backorder[1]` expression scattered across the three replenishment policies and keeps the arithmetic in one place.
+2. `Node.place_order(quantity) -> None` — wraps `supplier = selection_policy.select(quantity)` + `env.process(process_order(supplier, quantity))`. Policies no longer touch `selection_policy` or `process_order` directly.
+3. `Node.wait_for_drop()` (generator) — yields on `self.inventory_drop` and rotates a fresh `env.event()` into its slot on wake-up. Policies use `yield from self.node.wait_for_drop()` in place of the old `yield self.node.inventory_drop; self.node.inventory_drop = self.env.event()` pair.
+4. `Link.available_quantity() -> float` — returns `self.source.inventory.level`. `SelectAvailable.select` now filters candidates via `s.available_quantity() >= order_quantity` without reaching past the link.
+
+The three replenishment policies were rewritten against this contract:
+
+- `SSReplenishment.run`: `position = self.node.position(); if position <= s: self.node.place_order(S - position); ...; yield from self.node.wait_for_drop()`.
+- `RQReplenishment.run`: same pattern with `Q` as the order quantity.
+- `PeriodicReplenishment.run`: `self.node.place_order(reorder_quantity)` (no drop wait — it's periodic-only).
+
+The `self.node.logger.logger.info(...)` status-tick line is intentionally left as-is — logging-wrapper cleanup is `§4.9`'s scope, not `§4.3`'s. The remaining coupling is just `self.node.inventory.level` for the status log and `self.node.inventory.level < ss` check in `PeriodicReplenishment` (safety-stock top-up, measured against physical shelf rather than inventory position — different semantics from `position()`).
+
+The contract is deliberately defined on `Node` rather than on a separate mixin, so any subclass with the required attributes (`inventory`, `stats`, `selection_policy`, `process_order`, `inventory_drop`) participates automatically. Today that's `InventoryNode` and `Manufacturer`; `Supplier` participates in `position()` since it has both `inventory` and `stats`, and could grow its own `place_order`/`wait_for_drop` path later without a new base class. `Demand` simply doesn't call these methods.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged.
+- `examples/py/sc_with_factory.py` — manufacturer scenario unchanged (`profit: 49419.6`, `total_cost: 25730.4`, `transportation_cost: 240`).
+- `pytest` — 133/133 passing (all existing behavior preserved, including the disruption/selection-policy tests from §3.14/§3.15 that exercise `_active_suppliers` + `available_quantity`).
+
+**Out of scope / deferred:**
+
+- `§4.9` (the `logger.logger` wrapper). A `Node.log_info(msg)` shortcut was considered but would shadow the proper fix: make `GlobalLogger` a real `LoggerAdapter` so callers write `node.logger.info(...)` directly.
+- Moving `position()`/`place_order()`/`wait_for_drop()` onto a `ReplenishableNode` mixin. Mechanical once `core.py` is split per `§4.1`; deferred along with that split.
+
+### 4.4 `Link.__init__` mutates the sink node (`self.sink.suppliers.append(self)`) ✅ Resolved
+`core.py:~1397` (`Node.__init__` now initialises `suppliers`), `core.py:~1443` (new `Node.add_supplier_link`), `core.py:~1639` (`Link.__init__` now calls the method), `core.py:~2249` / `~2477` (removed redundant `self.suppliers = []` from `InventoryNode` / `Manufacturer`)
+
+**Original issue:** `Link.__init__` did `self.sink.suppliers.append(self)` — direct peer-attribute mutation in a constructor. That coupled `Link` to the internal shape of `InventoryNode` / `Manufacturer` (the only subclasses that set `self.suppliers = []`). A user who passed a plain `Node` or a `Demand` as a Link sink got `AttributeError: 'Node' object has no attribute 'suppliers'` at construction time, even though the type checks in `Link.__init__` otherwise allowed it.
+
+**Design note.** The review suggested moving link-registration into `create_sc_net` (or a dedicated `Network.add_link()`). A full move is impractical today: the library's direct-instantiation API (used across all `examples/py/*.py`, every notebook, the README, and `docs/*`) relies on `scm.Link(env=env, source=..., sink=...)` followed by `env.run(until=...)` without `create_sc_net`. Removing the auto-registration would silently break every one of those by leaving `sink.suppliers` empty — the replenishment policy would run against a node with no suppliers. The resolution therefore keeps the auto-registration but routes it through a proper method so the *mechanism* the review objected to (direct peer-attribute mutation + implicit attribute requirement on the sink) is gone.
+
+**Fix applied:**
+
+1. `Node.__init__` now initialises `self.suppliers = []` for every Node. A plain `Node` (or any subclass) can be a Link sink without the subclass having to remember to set up the list. `InventoryNode.__init__` and `Manufacturer.__init__` had their `self.suppliers = []` lines removed — the empty list now comes from `super().__init__`.
+2. New `Node.add_supplier_link(link)` method is the supported entry point for registering an inbound Link with its sink. It validates that `link` is a `Link` instance and that `link.sink is self`, then appends to `self.suppliers`. This replaces the `self.sink.suppliers.append(self)` poke with a named, typed, validated interface on the sink object itself.
+3. `Link.__init__` now calls `self.sink.add_supplier_link(self)` instead of mutating `sink.suppliers` directly. Behaviour is unchanged for existing callers; the mechanism is cleaner and no longer depends on the sink's internal layout.
+4. Users constructing a Link before its sink (or wanting an explicit attach step) can call `sink.add_supplier_link(link)` themselves — the method is idempotent from the caller's POV and validates its inputs.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` / `total_cost: 25435.0` / `transportation_cost: 25` unchanged.
+- `examples/py/sc_with_factory.py` — manufacturer scenario unchanged (`profit: 49419.6`, `total_cost: 25730.4`, `transportation_cost: 240`).
+- `pytest` — 133/133 passing (every existing Link-construction call site continues to work, since auto-registration is preserved).
+- Ad-hoc check: constructing `scm.Link(env=env, source=sup, sink=plain_node, cost=1, lead_time=lambda: 1)` now succeeds and leaves `plain_node.suppliers == [link]` — previously this raised `AttributeError`. `plain_node.add_supplier_link('not a link')` raises `TypeError`; calling it with a Link whose sink is a different node raises `ValueError`.
+
+**Out of scope / deferred:**
+
+- A dedicated `Network.add_link()` and full removal of the constructor side-effect belong with §6.1 (introduce a `Network` wrapper class around the `supplychainnet` dict). Once `Network` owns link construction end-to-end, `Link.__init__` can stop calling `add_supplier_link` entirely and the registration becomes `network.add_link(link)` — the method added here is already the right shape for that migration.
+
+### 4.5 Two construction styles, silently incompatible ✅ Resolved
+`utilities.py:~188` (old first-element-only check replaced with full scans)
+
+**Original issue:** the env-required guard in `create_sc_net` only inspected `nodes[0]` / `links[0]` / `demands[0]`. A list where `nodes[0]` was a dict but a later element was a pre-built `Node` instance bypassed the guard entirely — a fresh `simpy.Environment` was created for the dict items, and the `isinstance(node, Node)` branch then happily re-used it, silently dropping the object's real env on the floor. The net result was two sets of SimPy processes running against different environments.
+
+**Fix applied:** the first-element check is replaced by three cooperating passes, in order:
+
+1. **Homogeneity per list.** `_check_homogeneous(items, obj_cls, list_name)` scans the list and raises `ValueError("<list> mixes dicts and <Cls> instances")` if both a `dict` and an `obj_cls` instance appear in the same list. Consistent with the CLAUDE.md guidance that the two construction styles are not meant to be mixed within a single list. (Unrelated types like the DummyNode/DummyLink shape-only test fixtures are neither — they pass through silently as before, since they're out of scope for the mix-of-styles check.)
+2. **Env required across all lists.** `any_object = any(isinstance(x, Node) for x in nodes) or any(isinstance(x, Link) for x in links) or any(isinstance(x, Demand) for x in demands)` — scanned across every element, not just the first. If `any_object` is true and `env` is `None`, raise as before. Scanning also removes the latent IndexError on empty lists that the `[0]` form had.
+3. **Env match per object.** `_check_env_match(items, obj_cls, list_name)` iterates each list and, for every pre-built instance, confirms that `instance.env is env`. Mismatch raises `ValueError("<list>[i] env does not match the env passed to create_sc_net")`. Pre-fix this mismatch was silently accepted and produced a split-env simulation.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged.
+- `examples/py/sc_with_factory.py` — canonical `profit: 49419.6` unchanged.
+- `pytest` — 136/136 passing, including three new tests in `tests/test_utilities.py` that exercise the fix end-to-end:
+  - `test_create_sc_net_mixed_nodes_dict_and_object_raises` — nodes list mixing a dict at index 0 with a real `Supplier` at index 1 must raise.
+  - `test_create_sc_net_object_at_nonzero_index_still_requires_env` — links list mixing a dict at index 0 with a real `Link` at index 1 must raise (covers the exact first-element-only blind spot the review called out).
+  - `test_create_sc_net_object_env_must_match` — pre-built objects constructed against a different `simpy.Environment` than the one passed to `create_sc_net` must raise.
+- The pre-existing `test_create_sc_net_requires_env_for_objects` still passes (a single-Node list with `env=None` raises as before).
+
+**Out of scope / deferred:**
+
+- The stricter "unknown items should raise" variant (so that the shape-only Dummy-based tests in `tests/test_utilities.py` would also hit validation) is not applied here. Those tests pre-date the real-component integration tests and rely on silent-skip for objects that duck-type but don't subclass the real types. Cleaning them up is cosmetic and can follow §7 (testing gaps) later.
+
+### 4.6 `_info_keys`/`_stats_keys` pattern is manual and duplicates fields ✅ Resolved
+`core.py` — every class that previously set `self._info_keys = [...]` or called `self._info_keys.extend([...])` in its `__init__` now declares the list at class level.
+
+**Original issue:** every subclass re-assigned `self._info_keys = [...]` in `__init__` and subclasses in the inheritance chain then called `self._info_keys.extend([...])` on top of `super().__init__`. The pattern was easy to get wrong — adding an attribute meant remembering to append it in the right `__init__`, the attribute list was not discoverable without constructing an instance, and `mkdocstrings` Attributes blocks documented a list that only existed at run time.
+
+**Fix applied:** each class now declares `_info_keys` (and `_stats_keys` where applicable) as a class-level attribute computed from its parent:
 
 ```python
-class Node:
-    def position(self) -> float: ...         # on_hand - backorder[1]
-    def place_order(self, quantity) -> None: # wraps selection + process_order
-    def wait_for_drop(self) -> Event: ...
-```
-and have the policies speak only in those terms. The current `SSReplenishment.run` shrinks to ~10 lines.
+class Node(NamedEntity, InfoMixin):
+    _info_keys = ["ID", "name", "node_type", "failure_p", "node_status", "logging"]
 
-Similarly, `SelectAvailable.select` reaches into `source.inventory.inventory.level`. A `supplier.available_quantity()` method on the `Link` (or `Supplier`) would hide that.
-
-### 4.4 `Link.__init__` mutates the sink node (`self.sink.suppliers.append(self)`)
-`core.py:1425`
-
-This is a side-effect in a constructor. It couples `Link` to the internal shape of `InventoryNode` / `Manufacturer`, and it is the reason `Node` objects need a `suppliers` attribute even though `Node` itself does not declare one. A user who constructs a plain `Node` (e.g. demand) as a link sink hits `AttributeError`.
-
-**Fix:** move link-registration into `create_sc_net` (or a dedicated `Network.add_link()`), and stop relying on mutation from peer objects.
-
-### 4.5 Two construction styles, silently incompatible
-`create_sc_net` accepts a mix of dicts and objects for nodes/links/demands, but only the first element is checked for type to decide whether `env` is required (`utilities.py:167`). A list where `nodes[0]` is a dict but `nodes[1]` is an object will:
-
-- Skip the "env required" check, creating a fresh environment.
-- Then `isinstance(node, Node)` branch runs with that fresh env, and the object's original env (if different) is ignored.
-
-Either require all-or-nothing, or loop and validate consistently.
-
-### 4.6 `_info_keys`/`_stats_keys` pattern is manual and duplicates fields
-Every subclass does `self._info_keys = [...]` in `__init__` and then `self._info_keys.extend([...])` in subclass `__init__`. This is error-prone — it is easy to add an attribute and forget to list it. A declarative form at the class level would be sturdier:
-
-```python
 class Supplier(Node):
     _info_keys = Node._info_keys + ["raw_material", "sell_price"]
 ```
-Or simply use `dataclasses.fields` / a `@info_field` decorator.
 
-### 4.7 `node_type` is a string with magic values
-`Node.__init__` validates against a hard-coded list of 9 strings, and `create_sc_net` dispatches via another hard-coded list. Add a new node type (e.g. `crossdock`) and you must edit both. An `enum.Enum` (`NodeType`) removes the lookup duplication and gives IDEs autocomplete.
+This pattern is applied to `Statistics`, `RawMaterial`, `Product`, `InventoryReplenishment` and its three subclasses, `SupplierSelectionPolicy` and its four subclasses, `Node`, `Link`, `Inventory`, `Supplier`, `InventoryNode`, `Manufacturer`, and `Demand` — the list of KPIs / info fields for any class is now readable without constructing an instance (`scm.Supplier._info_keys`). Each subclass owns a fresh list (the `Parent._info_keys + [...]` expression creates a new list, not an alias), so extending one cannot pollute another.
 
-### 4.8 Global state: `global_logger` and the simulation trace file
-`core.py:7` and `logger.py:26` together create a file handler on `simulation_trace.log` *at import time*, in the current working directory. The committed `simulation_trace.log` in the repo root is the residue of that. Problems:
+**Special case: `Statistics`.** `Supplier.__init__` and `Manufacturer.__init__` append subclass-specific KPIs (`total_material_cost`, `total_manufacturing_cost`) onto their own `self.stats._stats_keys` / `self.stats._cost_components` after constructing `Statistics`. If those lists lived only at class level, the appends would mutate the shared list and leak KPIs across every Statistics instance in the process. `Statistics.__init__` therefore clones the two lists onto the instance on construction:
 
-- Parallel simulations overwrite the same file (mode='w').
-- Tests that import the module all blow that file away.
-- The log file location is not configurable before import.
+```python
+self._stats_keys = list(type(self)._stats_keys)
+self._cost_components = list(type(self)._cost_components)
+```
 
-**Fix:** make logging opt-in (no file handler until `enable_logging(log_to_file=True)` is called explicitly), and route module-level errors through a `NullHandler` by default — which is the documented best practice for libraries (<https://docs.python.org/3/howto/logging.html#configuring-logging-for-a-library>).
+The class attribute remains the declarative source of truth; per-node extensions modify the instance copy only.
 
-### 4.9 `GlobalLogger` is not actually a logger
-The pattern `self.node.logger.logger.info(...)` — `logger.logger` — appears hundreds of times. It signals the wrapper is not pulling its weight. Either:
+**Verified:**
 
-- Make `GlobalLogger` a proper `logging.LoggerAdapter` (then users write `self.node.logger.info(...)`), or
-- Drop the wrapper and use `logging.getLogger(...)` directly.
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged.
+- `examples/py/sc_with_factory.py` — canonical `profit: 49419.6` unchanged.
+- `pytest` — 141/141 passing, including five new tests in `TestDeclarativeInfoKeys`:
+  - `test_node_subclass_keys_are_class_level` — class-level keys are readable without instances.
+  - `test_subclass_list_is_independent_of_parent` — no aliasing of parent lists.
+  - `test_selection_policy_subclass_keys` — policy subclasses expose `["node", "mode", "name"]`.
+  - `test_get_info_uses_class_level_keys` — `get_info()` returns the declarative union of keys.
+  - `test_statistics_per_instance_extension_does_not_leak` — `Supplier`'s `total_material_cost` append does not leak onto a sibling `InventoryNode`'s stats or onto the class attribute.
 
-The current `log(self, level, message)` method that hard-codes a string-level dispatch is unnecessary; the `logging` module already has level constants.
+**Out of scope / deferred:**
 
-### 4.10 `Inventory.inventory` naming
-A class named `Inventory` whose main attribute is also `inventory` (and that `inventory` is actually a `simpy.Container`) creates four-dot accesses (`node.inventory.inventory.level`). Rename the container attribute to `_container` or `store`, expose a single `.level` property, and most of the noise goes away.
+- Moving to `dataclasses.fields` or a `@info_field` decorator (the other variant the review mentioned) is a separate refactor — it would require giving up the current "arbitrary attribute name, listed by string" flexibility and would affect every call site of `get_info()` / `get_statistics()`. The class-level list form achieves the main goal (declarative, discoverable, no subclass-`__init__` wiring) without the broader surgery, so the decorator variant is deferred.
+
+### 4.7 `node_type` is a string with magic values ✅ Resolved
+`core.py:~80` (new `NodeType` enum, added to `__all__`), `core.py:~1419` (`Node.__init__` validation), `utilities.py:~17` (new `_NODE_DISPATCH` table), `utilities.py:~281` / `~300` (`create_sc_net` branches refactored to use it), `utilities.py:~416` (`simulate_sc_net` infinite-supplier check).
+
+**Original issue:** `Node.__init__` validated `node_type.lower()` against a hard-coded list of 9 strings. `create_sc_net` dispatched incoming dicts / objects via its own hard-coded `if/elif` ladder with a parallel 9-string list. Adding a new node type meant editing both lists; in fact the two had already drifted — the dispatch accepted `"shop"` as a retailer but `Node.__init__`'s list omitted it, so a dict with `node_type: "shop"` would pass dispatch and then raise `ValueError("Invalid node type.")` from inside the `InventoryNode` constructor. Magic strings also meant no IDE autocomplete when users wrote `node_type="manufacutrer"` (sic).
+
+**Fix applied:**
+
+1. New `NodeType(str, enum.Enum)` in `core.py` with 10 members (adds the previously-missing `SHOP`). Being a `str` subclass, every existing comparison in the codebase (`node.node_type == "demand"`, `"supplier" in node.node_type`, `node.node_type.lower()`) continues to work unchanged.
+2. `NodeType._missing_` implements case-insensitive lookup so `NodeType("SUPPLIER")` / `NodeType("Supplier")` both resolve to `NodeType.SUPPLIER`. Users can now pass either a string or the enum member — `scm.Supplier(..., node_type=scm.NodeType.SUPPLIER)` is the autocomplete-friendly form.
+3. `Node.__init__` validates by calling `NodeType(node_type)` and storing the normalized `.value` on `self.node_type`. Invalid values raise `ValueError(f"Invalid node type: {node_type}.")`, with the offending value in the message (previously the raise was generic).
+4. `_NODE_DISPATCH` in `utilities.py` maps each `NodeType` member to `(constructor_class, counter_key, drop_node_type_kwarg)`. `create_sc_net`'s two parallel `if/elif` ladders (one for the dict branch, one for the object branch) collapse to a single enum lookup each. The `drop_node_type` flag encodes the one constructor asymmetry (`Manufacturer.__init__` does not accept a `node_type` parameter).
+5. Separate `num_suppliers` / `num_manufacturers` / `num_distributors` / `num_retailers` locals are replaced by a `counters` dict keyed by the same strings, so the dispatch writes `counters[_NODE_DISPATCH[nt][1]] += 1` in one place. `supplychainnet["num_of_nodes"]` becomes `sum(counters.values())` and the per-kind counts are written via `supplychainnet.update(counters)`.
+6. `simulate_sc_net`'s ad-hoc `"infinite" in node.node_type.lower()` substring check was replaced by `node.node_type == NodeType.INFINITE_SUPPLIER`.
+7. `NodeType` is re-exported via `Components/__init__.py` and listed in `core.py`'s `__all__`.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged.
+- `examples/py/sc_with_factory.py` — canonical `profit: 49419.6` unchanged.
+- `pytest` — 147/147 passing, including six new tests:
+  - `TestNodeTypeEnum.test_enum_members_cover_all_types` — locks the 10-member enum surface.
+  - `TestNodeTypeEnum.test_enum_is_str_compatible` — asserts the existing string-comparison contract is preserved.
+  - `TestNodeTypeEnum.test_case_insensitive_lookup` — both `"SUPPLIER"` and `"Supplier"` resolve to `NodeType.SUPPLIER`.
+  - `TestNodeTypeEnum.test_node_accepts_enum_or_string` — users can pass either form.
+  - `TestNodeTypeEnum.test_invalid_node_type_raises` — `"crossdock"` raises `ValueError` with the offending value in the message.
+  - `test_create_sc_net_shop_node_type_end_to_end` — the previously-latent `"shop"` bug is fixed: dict with `node_type="shop"` constructs as an `InventoryNode` counted under `num_retailers`.
+
+**Out of scope / deferred:**
+
+- Richer semantic helpers such as `node.is_supplier()` / `NodeType.is_retail()` are not added; the review asked for an enum to dedupe the validation tables, not a full type-classification API. The `"supplier" in node.node_type` substring check in `Link.__init__` survives for now; replacing it with `node.node_type in (NodeType.SUPPLIER, NodeType.INFINITE_SUPPLIER)` is a separate cleanup.
+
+### 4.8 Global state: `global_logger` and the simulation trace file ✅ Resolved
+`logger.py` (rewrite, ~160 lines), `core.py:~1499` (`Node.__init__` per-node logger creation).
+
+**Original issue:** `core.py:46` (`global_logger = GlobalLogger()`) and `logger.py` together opened `simulation_trace.log` with `mode='w'` at import time, in the current working directory. Worse, `Node.__init__` instantiated a fresh `GlobalLogger(logger_name=node.ID)` per node and then called `enable_logging()`, both of which re-opened `simulation_trace.log` with `mode='w'` — so a network with N nodes truncated the trace file roughly N+1 times during construction. Side effects:
+
+- Parallel simulations from the same cwd overwrote the same file.
+- Tests that just imported `SupplyNetPy.Components` blew the file away.
+- The log-file path was not configurable before import.
+- `disable_logging()` called `logging.disable(logging.CRITICAL)` — a process-wide kill switch that silenced the host application's own loggers as a side effect.
+
+**Fix applied:**
+
+1. `GlobalLogger.__init__` defaults flipped to **opt-in**: `log_to_file=False`, `log_to_screen=False`. The constructor no longer opens any file. `configure_logger` always attaches a `logging.NullHandler` so the underlying logger is well-formed and never triggers Python's "No handlers could be found" stderr fallback — the documented library pattern (<https://docs.python.org/3/howto/logging.html#configuring-logging-for-a-library>).
+2. `enable_logging(log_to_file=True, log_to_screen=True)` is unchanged in spirit — explicit opt-in still attaches both handlers — and `simulate_sc_net(logging=True)` (the canonical entry point) calls it for the user, so the historical "running a simulation produces a trace file" behavior is preserved without the import-time side effects.
+3. Per-node loggers are now hierarchical children of the library root: `Node.__init__` creates `GlobalLogger(logger_name=f"sim_trace.{node.ID}")` and **does not** call `enable_logging()` per-node. Records propagate up to the single set of handlers configured on `global_logger`, so the trace file is opened exactly once (when the user opts in) instead of once per node.
+4. To preserve the documented log-line shape (`INFO D1 - ...` rather than `INFO sim_trace.D1 - ...`), a `_ShortNameFilter` strips the `sim_trace.` prefix into a `record.short_name` attribute and the formatter uses `%(short_name)s`. The original `record.name` is left intact so other handlers reading it are unaffected.
+5. The library root (`sim_trace`) is set to `propagate=False` so the library's records do not bubble out into the host application's root logger configuration.
+6. `disable_logging()` no longer calls `logging.disable(CRITICAL)`. It now sets `self.logger.disabled = True` and drops handlers (NullHandler stays). This is local to the wrapper's logger and no longer mutes the host application's loggers as a side effect.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged. Per-node log lines (`INFO D1 - ...`) and aggregate lines (`INFO sim_trace - ...`) match the documented expected output verbatim.
+- A fresh `python -c "import SupplyNetPy.Components"` no longer creates `simulation_trace.log`.
+- `pytest` — 151/151 passing, including four new tests in `TestLoggerOptIn`:
+  - `test_module_logger_is_inert_by_default` — after `disable_logging()`, the global logger holds only `NullHandler` and exposes `log_to_file=False` / `log_to_screen=False`.
+  - `test_node_does_not_attach_its_own_file_handler` — per-node loggers carry no `FileHandler` of their own.
+  - `test_per_node_logger_is_child_of_sim_trace` — per-node logger name is `f"sim_trace.{ID}"`.
+  - `test_disable_logging_does_not_set_global_disable` — confirms `logging.root.manager.disable == 0` after `global_logger.disable_logging()`, locking down that the global hammer is gone.
+
+**Out of scope / deferred:**
+
+- The user-facing `scm.global_logger.enable_logging()` / `disable_logging()` surface is preserved, including the nullary form. The §4.9 redesign of `GlobalLogger` itself (drop the wrapper or convert it to a `LoggerAdapter`) is independent and not addressed here.
+- `FileHandler` is still opened in `mode='w'` when the user opts in. Switching to `mode='a'` is a separate ergonomic decision; the §4.8 issue was about *who* opens the file and *when*, not the open mode.
+
+### 4.9 `GlobalLogger` is not actually a logger ✅ Resolved
+`logger.py` (now subclasses `logging.LoggerAdapter`), `core.py` (39 call-site collapses), `utilities.py` (12 call-site collapses + two `logger = global_logger.logger` locals).
+
+**Original issue:** `GlobalLogger` was a thin wrapper that exposed the underlying Python `logging.Logger` as `self.logger` and offered no level methods of its own. Every call site went through the double-hop `self.node.logger.logger.info(...)` / `global_logger.logger.error(...)` (73 inline call sites in the library code). The wrapper also carried a hard-coded string-level dispatcher `log(self, level, message)` which was, at this point in the codebase, dead code — no caller used it.
+
+**Fix applied:**
+
+1. `GlobalLogger` now subclasses :class:`logging.LoggerAdapter`. Callers use `node.logger.info(...)`, `global_logger.error(...)`, etc. directly. The constructor builds the underlying logger with the same name / propagation / opt-in handler logic from §4.8 and forwards it to `super().__init__(logger, extra=None)`.
+2. `LoggerAdapter` exposes the underlying `logging.Logger` as the standard `.logger` attribute, so the historical reach-through pattern (`node.logger.logger.handlers`, `node.logger.logger.name`) keeps working — useful for tests and any external code that already learned the old shape.
+3. The dead `log(self, level, message)` string-level dispatcher is dropped. `LoggerAdapter` provides a numeric-level `log(level, msg, ...)` (via `logging.INFO` etc.) for callers who want it.
+4. All 73 inline `self.node.logger.logger.<level>(...)` / `self.logger.logger.<level>(...)` / `global_logger.logger.<level>(...)` call sites in `core.py` and `utilities.py` are collapsed to the single-dot adapter form. Two `logger = global_logger.logger` locals in `utilities.py` are simplified to `logger = global_logger`.
+5. The `enable_logging` / `disable_logging` / `set_log_file` / `configure_logger` API from §4.8 is preserved unchanged — the §4.8 fix layered cleanly on top of `LoggerAdapter`.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged. Per-node log lines (`INFO D1 - …`) and aggregate lines (`INFO sim_trace - …`) match the documented expected output verbatim.
+- `pytest` — 154/154 passing, including three new tests in `TestLoggerAdapter`:
+  - `test_global_logger_is_a_logger_adapter` — `isinstance(scm.global_logger, logging.LoggerAdapter)`.
+  - `test_node_logger_is_a_logger_adapter` — every `node.logger` is a `LoggerAdapter` exposing `debug` / `info` / `warning` / `error` / `critical` / `log` directly.
+  - `test_underlying_logger_still_reachable` — `node.logger.logger` is the underlying `logging.Logger` (named `sim_trace.<ID>`), preserving backward compatibility for code that reaches in.
+- `grep` confirms no production `*.logger.logger.<method>(` call sites remain in `src/`.
+
+**Out of scope / deferred:**
+
+- Replacing `GlobalLogger` outright with a bare `logging.getLogger` call (the alternative the review suggested) is not done. The wrapper still earns its keep by owning `enable_logging` / `disable_logging` / `set_log_file` / `configure_logger`, the `_ShortNameFilter` glue, and the opt-in handler defaults from §4.8.
+- The string-level `log` dispatcher is removed; the inherited numeric-level `LoggerAdapter.log(level, msg, ...)` takes over its slot. No callers used either form, so this is a silent surface change.
+
+### 4.10 `Inventory.inventory` naming ✅ Resolved (subsumed by §3.7)
+**Original issue:** A class named `Inventory` whose main attribute was also `inventory` (and that `inventory` was actually a `simpy.Container`) created four-dot accesses like `node.inventory.inventory.level` throughout the codebase.
+
+**Fix status:** §3.7 ("`Inventory.level` is a stale shadow of `Inventory.inventory.level`") collapsed `Inventory.level` and `Inventory.capacity` to read-only `@property`s that delegate to the underlying container. As a result, every call site in `src/` now reads `node.inventory.level` / `node.inventory.capacity` (one dot, not two). A `grep` of the entire repo for `\.inventory\.inventory\b` finds no occurrences in `src/` or `tests/` — only historical mentions in `REVIEW.md` itself.
+
+The cosmetic step of renaming the underlying `simpy.Container` attribute (`self.inventory` → `self._container` / `self.store`) was deliberately not done. With §3.7's properties in place there is no remaining external four-dot access to motivate the rename, and the name is only visible inside the `Inventory` class — a self-rename without external benefit. Treating §4.10 as resolved by §3.7 keeps the noise down; the rename can be revisited if a future change needs to expose the container directly.
 
 ---
 
 ## 5. Performance / scaling concerns
 
-### 5.1 Polling loops for "continuous" behaviors
-- `Supplier.behavior` yields `timeout(1)` when full (`core.py:1825`) and again after mining (via `extraction_time`). For a 10-year simulation at day granularity, that is 3,650 timeouts per supplier even when nothing happens.
-- `Manufacturer.behavior` yields `timeout(1)` every tick regardless of whether raw materials arrived.
+### 5.1 Polling loops for "continuous" behaviors ✅ Resolved
+`core.py:~2197` (`Supplier.behavior`), `core.py:~2599` / `~2691` / `~2755` (`Manufacturer.__init__`, `Manufacturer.behavior`, `Manufacturer.process_order_raw`), `core.py:80` (`_NODE_KWARGS`), `core.py:~2179` / `~2360` / `~2592` / `~2941` (per-subclass `Statistics(...)` call sites), `core.py:~1965` (`Inventory.__init__` adds `perish_changed`), `core.py:~2031` (`Inventory.put` signals `perish_changed` on head change), `core.py:~2080` (`Inventory.remove_expired` event-driven via `AnyOf`).
+
+**Original issues (four bullets):**
+- `Supplier.behavior` yielded `timeout(1)` when full and again after mining (via `extraction_time`). For a 10-year simulation at day granularity, that is 3,650 timeouts per supplier even when nothing happens.
+- `Manufacturer.behavior` yielded `timeout(1)` every tick regardless of whether raw materials arrived.
 - `Inventory.remove_expired` ticks every 1 unit (`yield self.env.timeout(1)`).
-- `Statistics.update_stats_periodically` ticks every 1 unit.
+- `Statistics.update_stats_periodically` ticks every 1 unit and the period was hard-coded at every call site.
 
-Each of these should be event-driven (wait on `inventory_raised` / `inventory_drop` / the next expiry time) rather than polling.
+**Fix applied (1) — `Supplier.behavior` is now event-driven:**
 
-### 5.2 `used_ids = []` uses O(n²) membership test
-`utilities.py:176` — `used_ids.append(...)` plus `if new_id in used_ids` inside `check_duplicate_id`. Use a `set`.
+The full-inventory branch's `yield self.env.timeout(1)` is replaced with `yield from self.wait_for_drop()`. The drop signal already exists — `Inventory.get` succeeds `node.inventory_drop` whenever the supplier ships, and `Node.wait_for_drop()` is the documented contract for blocking on it (introduced in §4.3). For a supplier with `capacity = inf` (the `infinite_supplier` path) this branch was never reached, so the change is a no-op for that case. The per-iteration tail-log `f"... Inventory level: ..."` now fires only on event-driven wake-ups instead of on every tick — a noise win, not a regression.
 
-### 5.3 Perishable FIFO uses list inserts and pops from head
-`Inventory.put` uses `self.perish_queue.insert(i, ...)` (`core.py:1638`) and `get` uses `self.perish_queue.pop(0)` (`core.py:1670`). Both are O(n). Use `collections.deque` with `appendleft`/`popleft`, or keep the list sorted by expiry with `heapq`.
+**Fix applied (2) — `Manufacturer.behavior` is now event-driven:**
 
-### 5.4 `get_sc_net_info` and `print_node_wise_performance` build strings with `+=` in loops
-Minor, but for large networks a `"\n".join(parts)` is cleaner and faster.
+The natural trigger for production is "raw material just arrived" — `process_order` only commits `on_hand` and orders raw, while `process_order_raw` actually deposits raw into `raw_inventory_counts`. A new `simpy.Event`, `self.raw_material_arrived`, is created in `Manufacturer.__init__` and succeeded in `process_order_raw` after `self.raw_inventory_counts[raw_mat_id] += reorder_quantity`. `behavior` was reshaped from:
 
-### 5.5 `numpy`/`pandas` not used despite validation paper (`validation/`)
-The aggregation in `simulate_sc_net` reads like a manual `groupby`. For networks with 100+ nodes, using NumPy arrays or a small pandas DataFrame for stats aggregation would simplify the code and speed it up significantly.
+```python
+while True:
+    if(len(self.suppliers)>=len(self.product.raw_materials)):
+        if(not self.production_cycle):
+            self.env.process(self.manufacture_product())
+    yield self.env.timeout(1)
+```
+
+to:
+
+```python
+while len(self.suppliers) >= len(self.product.raw_materials):
+    yield self.env.process(self.manufacture_product())
+    yield self.raw_material_arrived
+    self.raw_material_arrived = self.env.event()  # rotate
+```
+
+`manufacture_product` is now awaited directly instead of spawned + guarded by `production_cycle` — at most one production cycle is in flight at a time, exactly as the old `not self.production_cycle` re-entry guard enforced. The flag itself is preserved (still set/cleared inside `manufacture_product`) for any external code that introspects it, but `behavior` no longer needs it. If `manufacture_product` produces nothing this round (insufficient raw across BOM, or `pending = on_hand - level == 0`), it returns immediately and `behavior` blocks on `raw_material_arrived` until the next delivery — no spin loop.
+
+**Fix applied (3) — `Statistics.update_stats_periodically` period is user-configurable:**
+
+`Statistics.__init__` already accepted `periodic_update: bool = False` and `period: float = 1`; only the call sites hard-coded `period=1`. Two new kwargs are added to `_NODE_KWARGS`: `stats_period` and `periodic_stats`. Each Node subclass (`Supplier`, `InventoryNode`, `Manufacturer`, `Demand`) pops them from `kwargs` at the top of its `__init__`, validates `stats_period` via `validate_positive` when `periodic_stats` is true, and forwards them to its `Statistics(self, periodic_update=periodic_stats, period=stats_period)` call. Defaults preserve current behavior:
+
+- `Supplier`: `periodic_stats=False`, `stats_period=1` (no periodic update unless the user opts in).
+- `InventoryNode` / `Manufacturer` / `Demand`: `periodic_stats=True`, `stats_period=1`.
+
+Users who want hourly stats on a daily-tick simulation now write `scm.Distributor(..., stats_period=24)`, and users who want end-of-run stats only write `periodic_stats=False` (which skips the `update_stats_periodically` process entirely).
+
+**Fix applied (4) — `Inventory.remove_expired` is now event-driven (Option A — daemon + AnyOf):**
+
+The last remaining `yield self.env.timeout(1)` daemon in `core.py` is gone. `Inventory.__init__` (perishable branch) now creates a `simpy.Event`:
+
+```python
+self.perish_changed = self.env.event()
+```
+
+`Inventory.put` succeeds it only when the heap head actually changes — detected via tuple identity after `heappush`:
+
+```python
+new_batch = (manufacturing_date, amount)
+heapq.heappush(self.perish_queue, new_batch)
+if self.perish_queue[0] is new_batch and not self.perish_changed.triggered:
+    self.perish_changed.succeed()
+```
+
+With monotonic mfg_dates (the common-case sequential restock pattern), the head changes only on the empty→non-empty transition, so the daemon is undisturbed for routine puts — the wake-up is reserved for cases where the next expiry actually moved earlier.
+
+`remove_expired` was reshaped from a per-tick `yield env.timeout(1)` poll to:
+
+```python
+while True:
+    if not self.perish_queue:
+        yield self.perish_changed
+        self.perish_changed = self.env.event()
+        continue
+    next_expiry = self.perish_queue[0][0] + self.shelf_life
+    sleep_dt = max(0, next_expiry - self.env.now)
+    timer = self.env.timeout(sleep_dt)
+    result = yield timer | self.perish_changed
+    if self.perish_changed in result:
+        self.perish_changed = self.env.event()  # rotate
+        continue                                 # recompute next expiry
+    # timer fired — drain everything now expired (existing inner loop)
+    while self.perish_queue and self.env.now - self.perish_queue[0][0] >= self.shelf_life:
+        ...
+```
+
+The drain inner loop is unchanged — `self.get(qty)` still does the heappop on the consumed batch, and the qty=0 sentinel branch still `heappop`s explicitly. The wake-up rotation (`self.perish_changed = self.env.event()` after each consumption) mirrors the `Node.wait_for_drop` idiom (`core.py:1651-1652`), so the precedent is consistent across the codebase.
+
+The alternative (Option B — one self-expiring `env.process` per batch) was rejected because partial consumption from `Inventory.get` mutates the head's `qty` in place; per-batch processes would carry stale `qty` and need to reconcile against the heap on wake, reintroducing the coupling the §5.3 heap conversion avoided. Option A keeps a single daemon, single source of truth for the queue.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged.
+- `pytest` — 166/166 passing, including seven new tests in `tests/test_core.py::TestRemoveExpiredEventDriven`:
+  - `test_perish_changed_event_initialised` — perishable `Inventory` exposes an untriggered `perish_changed` SimPy event.
+  - `test_put_into_empty_queue_signals_head_change` — empty→non-empty transition wakes the daemon.
+  - `test_put_with_younger_batch_does_not_signal` — common-case monotonic restock leaves the daemon asleep (the bug-class this fix exists to prevent: a wake storm on every put).
+  - `test_put_with_older_batch_displaces_head_and_signals` — backdated put displaces the head and wakes the daemon to recompute the (now-earlier) expiry.
+  - `test_daemon_does_not_advance_time_when_queue_empty` — runs the daemon for 1000 sim-time units against an empty queue and confirms it idles (no spurious waste accrual, no phantom sentinel pops).
+  - `test_late_put_after_idle_wakes_daemon_and_drains_on_schedule` — full empty→idle→put→sleep→drain round-trip.
+  - `test_displacing_put_pulls_expiry_earlier` — daemon parked on a long sleep, a stale-mfg_date put forces it to wake and drain immediately on the next iteration.
+- The three existing `TestPerishQueueHeap` tests pass without modification, confirming the drain-on-expiry semantics survived the scheduler change.
+
+**Out of scope:**
+
+- `Statistics.update_stats_periodically`'s loop is still a `while True: yield env.timeout(period)` — it is *meant* to fire periodically for time-bucketed KPIs (`carry_cost` accrual, periodic `inventory_level` snapshots), so making it event-driven would change semantics. Exposing the period to the user (fix 3 above) is the appropriate fix.
+
+### 5.2 `used_ids = []` uses O(n²) membership test ✅ Resolved
+`utilities.py:46` (`check_duplicate_id` helper), `utilities.py:~280` (`create_sc_net`'s `used_ids` switched from `list` to `set` plus three inline duplicate-ID branches collapsed onto the helper).
+
+**Original issue:** `check_duplicate_id` used `if new_id in used_ids` plus `used_ids.append(new_id)` against a `list`. Building a network with N IDs was O(N²). Worse, `create_sc_net`'s three "object" branches (`isinstance(node, Node)` / `isinstance(link, Link)` / `isinstance(d, Demand)`) inlined the same `if X in used_ids: raise; used_ids.append(X)` pattern instead of calling the helper — same O(N²), three duplicated copies.
+
+**Fix applied:**
+
+1. `check_duplicate_id` keeps its public signature but now duck-types the insert call: `getattr(used_ids, "add", None) or used_ids.append`. Sets get `.add` (O(1)), lists get `.append` (O(1) amortized) — and the `in` check is O(1) for a set. Existing user code that builds its own `list` and passes it in keeps working unchanged.
+2. `create_sc_net` now uses `used_ids = set()` instead of `[]`. Network construction is O(N) overall instead of O(N²).
+3. The three duplicated inline `if X in used_ids: raise; used_ids.append(X)` branches in `create_sc_net` are collapsed onto `check_duplicate_id(used_ids, X, "<entity> ID")`. This also fixed an incidental copy/paste typo: the link branch previously raised `ValueError("Duplicate node ID")` for a duplicate *link* (the message mentioned "node" instead of "link"). Routing through the helper now interpolates `entity_type` correctly so the message is `"Duplicate link ID"`.
+4. The `used_ids.remove(node.ID)` rollback path on invalid `node_type` works on a `set` unchanged (`set.remove` has the same `KeyError`-on-miss / void-on-success contract as `list.remove`).
+
+**Verified:**
+
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged.
+- `pytest` — 156/156 passing, including two new tests in `tests/test_utilities.py`:
+  - `test_check_duplicate_id_accepts_set` — exercises the new `set` path: `.add`-style insert, repeated calls, duplicate raises.
+  - `test_check_duplicate_id_link_message_uses_entity_type` — locks in the typo fix: a duplicate link ID raises `ValueError("Duplicate link ID")`, not `"Duplicate node ID"`.
+- The two existing `list`-flavored tests (`test_check_duplicate_id_no_duplicate`, `test_check_duplicate_id_duplicate`) still pass, confirming the backward-compat path.
+
+**Out of scope / deferred:**
+
+- The other O(n) hotspots called out elsewhere in §5 (perishable FIFO list pops in §5.3, string concatenation in §5.4) are independent and not addressed here.
+
+### 5.3 Perishable FIFO uses list inserts and pops from head ✅ Resolved
+`core.py:3` (`import heapq`), `core.py:~2018` (`Inventory.put`), `core.py:~2052` (`Inventory.get`), `core.py:~2076` (`Inventory.remove_expired`), `core.py:~1869` / `~1922` (docstrings).
+
+**Original issue:** `Inventory.perish_queue` was a plain `list` of `(mfg_date, qty)` tuples kept sorted by hand. Three operations were O(n):
+
+- `put` scanned the list to find the first entry with `mfg_date > new_mfg_date` and called `list.insert(i, ...)` — O(n) scan plus O(n) insert.
+- `get` popped consumed batches off the head with `list.pop(0)` — O(n) per pop.
+- `remove_expired` did the same `list.pop(0)` on the qty-zero sentinel path.
+
+For long simulations with frequent partial replenishments (the perishable case the queue exists for), every batch arrival and consumption was linear in the queue depth.
+
+**Fix applied:**
+
+1. `import heapq` added to `core.py`. `perish_queue` is now used as a `heapq` min-heap keyed by mfg_date — index 0 is always the oldest (earliest-to-expire) batch. The on-disk shape (a `list` of tuples) is unchanged, so any user code that introspects the attribute keeps working; only the operations on it are different.
+2. `Inventory.put` replaces the manual sorted-insert with `heapq.heappush(self.perish_queue, (manufacturing_date, amount))` — O(log n).
+3. `Inventory.get` swaps `self.perish_queue.pop(0)` for `heapq.heappop(self.perish_queue)` — O(log n) per consumed batch. Partial consumption (`qty > x_amount`) keeps the existing in-place head update `self.perish_queue[0] = (mfg_date, qty - x_amount)`: the new tuple has the same mfg_date and a strictly-smaller qty, so it is still ≤ both children — the heap invariant is preserved without a re-heapify.
+4. `Inventory.remove_expired`'s rare qty-zero sentinel branch (left over when a partial consumption hits zero) uses `heapq.heappop` for the same reason. The qty>0 expired branch already routes through `self.get(qty)` and inherits the heappop fix.
+5. Docstrings on the `Inventory` class and its `__init__` now describe `perish_queue` as a `heapq` min-heap with index 0 always being the oldest batch.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged.
+- `pytest` — 159/159 passing, including three new tests in `tests/test_core.py::TestPerishQueueHeap`:
+  - `test_out_of_order_inserts_consumed_oldest_first` — pushes batches with intentionally out-of-order mfg_dates (5, 2, 8, 1) and asserts `get` returns them in ascending-mfg_date order, validating both `heappush` and `heappop` paths.
+  - `test_partial_consumption_preserves_heap_invariant` — exercises the partial-consumption in-place head update with five mixed batches, verifies the resulting heap still satisfies the parent-≤-children invariant via an explicit checker.
+  - `test_remove_expired_drains_oldest_first` — runs the SimPy `remove_expired` process past the shelf-life threshold and asserts the heap is empty and `waste` equals the sum of all batch quantities.
+
+**Out of scope / deferred:**
+
+- `remove_expired` itself still polls every 1 unit of simulation time (§5.1's broader complaint about polling loops). Switching to an event-driven schedule keyed on the next expiry time is independent of the heap conversion and not addressed here.
+- `Inventory.put` no longer needs the `inserted` flag bookkeeping that the manual sorted-insert required; the heap call is a single line.
+
+### 5.4 `get_sc_net_info` and `print_node_wise_performance` build strings with `+=` in loops ✅ Resolved
+`utilities.py:78` (`process_info_dict`), `utilities.py:~165` (`get_sc_net_info`), `utilities.py:~589` (`format_node_wise_performance`).
+
+**Original issue:** Both helpers built their output string by appending with ``+=`` inside the loop. Python ``str`` is immutable, so each ``+=`` allocates a new string and copies the existing prefix — the loop is O(n²) in total bytes, which becomes a real cost for networks with 100+ nodes whose info dicts each accumulate dozens of lines.
+
+**Fix applied:**
+
+1. ``process_info_dict`` collects each ``"key: value"`` line into a ``parts`` list and ``"\n".join(parts)`` once at the end. Same trailing newline shape as before.
+2. ``get_sc_net_info`` does the same — replaces the ``sc_info += ...`` chain with a single ``parts`` list spanning headers, per-node info, per-link info, per-demand info, and the network-performance block, then ``"\n".join(parts)`` once.
+3. ``print_node_wise_performance`` is split into ``get_node_wise_performance`` (returns ``list[dict]`` — see §6.3), ``format_node_wise_performance`` (returns the fixed-width text via ``"\n".join``), and the original ``print_node_wise_performance`` (now a thin wrapper around the formatter). Both new functions are added to ``Components/__init__.py``'s ``__all__``.
+
+**Verified:**
+
+- ``examples/py/intro_simple.py`` — canonical ``profit: -4435.0`` unchanged.
+- ``pytest`` — 177/177 passing, with the existing utilities tests covering the formatter changes.
+
+### 5.5 `numpy`/`pandas` not used despite validation paper (`validation/`) ⏸️ Deferred (with rationale)
+**Original issue:** ``simulate_sc_net`` aggregates per-node stats with hand-rolled loops that "read like a manual groupby"; numpy/pandas would be more idiomatic and faster for large networks.
+
+**Why deferred:** The aggregation block in ``simulate_sc_net`` is ~70 lines of straightforward additions across 8 KPIs. Converting to pandas would require:
+
+1. Adding ``pandas`` (and, transitively, a meaningful chunk of compiled deps) to ``pyproject.toml`` ``dependencies``. The library currently runs on a tiny dependency surface (``simpy`` + ``networkx`` + ``matplotlib`` per §8 cleanup); adding pandas roughly doubles install size.
+2. Changing the ``simulate_sc_net`` return shape (or projecting back to dict for back-compat).
+3. The performance argument only bites at networks of "100+ nodes" — well outside the current usage profile (the canonical example has 2 nodes; the largest committed example, ``hybrid_big_sc.py``, has fewer than 20).
+
+The ``Network.results`` projection added in §6.1 already gives downstream callers a clean dict that they can feed to ``pandas.DataFrame.from_records`` themselves if they want a tabular view, without forcing pandas on every other user. ``get_node_wise_performance`` (§6.3) does the same for per-node KPIs.
+
+**Out of scope until a real workload demands it:** revisit if a benchmark on a 500+ node network shows the aggregation is a meaningful share of total simulate time.
 
 ---
 
 ## 6. API / ergonomics
 
-### 6.1 `create_sc_net` returns a dict, not an object
-A `Network` class wrapping the dict would:
+### 6.1 `create_sc_net` returns a dict, not an object ✅ Resolved (additive)
+`utilities.py:~610` (new ``Network`` class), ``Components/__init__.py`` (re-export ``Network``).
 
-- Offer `.simulate(sim_time, ...)` instead of a free function.
-- Provide typed getters: `network.node("D1")`, `network.stats`.
-- Hide the implementation (`"num_of_nodes"` key vs `network.node_count`).
-- Make autocomplete useful.
+**Original issue:** the dict returned by ``create_sc_net`` mixed construction metadata (``nodes`` / ``links`` / ``env`` / ``num_*``) with post-simulation KPIs (``revenue`` / ``profit`` / ``shortage``), gave no autocomplete, and required the caller to remember key spellings.
 
-The dict also mixes construction metadata (`nodes`, `links`, `env`, `num_suppliers`) with simulation results (`revenue`, `profit`, `shortage`). Separate the two — a `network.results` attribute filled only after `simulate()`.
+**Fix applied — additive ``Network`` wrapper:**
 
-### 6.2 `simulate_sc_net(..., logging=True)` overloads the `logging` parameter
-`utilities.py:295` checks `isinstance(logging, tuple)` and unpacks `(start, stop)`. `logging=True|False` is a different semantic than `logging=(3, 50)`. Make the windowed case a separate parameter (`log_window=(3, 50)`). Name-shadowing the stdlib `logging` module as a kwarg is also unfortunate.
+- ``Network(supplychainnet)`` wraps an existing dict; ``Network.build(nodes=..., links=..., demands=..., env=...)`` is the classmethod sibling of ``create_sc_net``.
+- Read-only properties expose the construction metadata as named attributes: ``net.env`` / ``net.nodes`` / ``net.links`` / ``net.demands`` / ``net.node_count`` / ``net.link_count``. ``net.node(id)`` / ``net.link(id)`` / ``net.demand(id)`` are typed lookup helpers.
+- ``net.simulate(sim_time, logging=True, log_window=None)`` calls ``simulate_sc_net`` and sets ``net.has_run = True``; chainable (returns ``self``).
+- ``net.results`` projects only the post-run KPI keys (defined as ``Network._RESULT_KEYS``) so callers can tell construction metadata from run output. Empty before ``simulate`` runs.
+- ``net.as_dict()`` returns the underlying ``supplychainnet`` dict — escape hatch for legacy code that reads the dict shape directly.
 
-### 6.3 `print_node_wise_performance` prints to stdout
-A library should return a `DataFrame` (or a `dict`) and let the caller print it. `pd.DataFrame.from_records(...)` reads cleanly from the per-node stats dicts.
+The wrapper is **additive**: ``create_sc_net`` / ``simulate_sc_net`` keep their existing dict-based contracts. ``Network.as_dict()`` is the same dict object the free-functions read and write, so calls in either style stay synchronised. New tests in ``TestEndToEndIntegration`` (``test_network_wrapper_matches_dict``) lock that equivalence in.
 
-### 6.4 Callable auto-wrapping hides type errors
-Many constructors accept either a number or a zero-arg callable and auto-wrap:
-```python
-if not callable(node_recovery_time):
-    node_recovery_time = lambda val=node_recovery_time: val
-```
-This is convenient, but it also means passing a class (which is `callable`) silently becomes a callable returning a class — never a number. Log what was received and fail fast when the wrapped value is not numeric.
+### 6.2 `simulate_sc_net(..., logging=True)` overloads the `logging` parameter ✅ Resolved
+`utilities.py:~390` (`simulate_sc_net`).
 
-### 6.5 `Demand.customer` is a SimPy process but uses both `yield from` and `env.process`
-`core.py:2583–2590` — sometimes the customer yields from `_process_delivery`, sometimes it spawns `wait_for_order` as a new process, sometimes it updates stats inline. The three paths have different latencies and different correctness properties. Factor them into named helpers with uniform semantics (all three return a `simpy.Event`).
+**Fix applied:** added a dedicated ``log_window: tuple[float, float] | None`` kwarg. The new shape is ``simulate_sc_net(sc, sim_time, logging=True, log_window=(start, stop))`` — ``logging`` is a clean ``bool``, ``log_window`` carries the window. The historical ``logging=(start, stop)`` spelling is still accepted but emits a ``DeprecationWarning``-style log line and is folded onto ``log_window`` internally so the rest of the function only sees one shape per parameter. ``Network.simulate`` exposes the same two kwargs. The integration test ``test_log_window_kwarg_runs_to_completion`` plus ``test_logging_tuple_back_compat_still_works`` lock both surfaces.
 
-### 6.6 Stats key `orders_shortage` vs `shortage`
-`Statistics.orders_shortage` at the node level, `supplychainnet["shortage"]` at the network level. Pick one vocabulary and stick with it across the stack. Same for `demand_placed` / `demand_by_customers` / `demand_by_site`.
+### 6.3 `print_node_wise_performance` prints to stdout ✅ Resolved
+`utilities.py:~526-608`.
 
-### 6.7 Docstrings triple-state the same fields
-Every class's docstring lists Parameters + Attributes + Functions. Then `__init__` lists Parameters + Attributes again. That is ~50% of the file. Choose one location (the class docstring) and let `__init__` be brief. It also reduces drift — today some docstrings are already out of sync with the signatures (e.g. `Product.__init__` docstring lists `buy_price` before `raw_materials`, signature lists them the other way).
+**Fix applied:** split into three:
+
+- ``get_node_wise_performance(nodes)`` — returns ``list[dict]``, one per metric; the canonical programmatic API. Each dict has ``"Performance Metric"`` plus one entry per node, so ``pandas.DataFrame.from_records(rows)`` produces the same table the old function used to print.
+- ``format_node_wise_performance(nodes, col_width=25)`` — pure string helper that renders the fixed-width text dump (built with ``"\n".join`` per §5.4).
+- ``print_node_wise_performance(nodes)`` — kept as a thin wrapper around the formatter for the existing notebooks/scripts that call it directly.
+
+All three are added to ``__all__``. Pandas is **not** introduced as a hard dep — callers who want a DataFrame already have one line of code (``pd.DataFrame.from_records(get_node_wise_performance(nodes))``) and the library stays usable without pandas installed.
+
+### 6.4 Callable auto-wrapping hides type errors ✅ Resolved
+`core.py:~178` (new ``ensure_numeric_callable`` helper), `core.py:~1483` (Node), `core.py:~1748` (Link), `core.py:~3002` (Demand).
+
+**Fix applied:** new ``ensure_numeric_callable(name, value)`` helper that combines auto-wrap with a single validation invocation. If ``value`` is a scalar it gets wrapped; if it is callable the helper invokes it once and verifies the return is a real ``numbers.Number``. A non-numeric return (or a callable that raises) surfaces immediately at construction with a clear error message naming the offending parameter. Every site that previously wrote the ``if not callable(x): x = lambda v=x: v`` pattern + an optional ``validate_number`` follow-up now calls this helper:
+
+- ``Node.__init__`` for ``node_disrupt_time`` / ``node_recovery_time``.
+- ``Link.__init__`` for ``lead_time`` / ``link_disrupt_time`` / ``link_recovery_time``.
+- ``Demand.__init__`` for ``order_arrival_model`` / ``order_quantity_model`` / ``delivery_cost`` / ``lead_time`` (the latter four were not even validated for numeric return previously).
+
+The helper is exported as ``scm.ensure_numeric_callable`` so user-defined Node subclasses can reuse the same fail-fast pattern. Five new tests in ``TestEnsureNumericCallable`` lock the contract.
+
+The docstring also flags the only edge case the helper introduces: stateful generators / iterators have their first sample consumed at construction time. Pure-function callables (the common case) are unaffected.
+
+### 6.5 `Demand.customer` is a SimPy process but uses both `yield from` and `env.process` ✅ Resolved
+`core.py:~3144-3252`.
+
+**Fix applied:** the four fulfilment paths inside ``customer`` are factored into named helpers (``_serve_in_full`` / ``_serve_partial_consume`` / ``_enqueue_for_tolerance`` / ``_serve_no_tolerance``). ``customer`` itself is now a single rule table that picks the right helper and ``yield from``s it. Each helper is a generator returning ``None`` so the dispatcher can use a uniform ``yield from`` form; the two no-wait paths (``_enqueue_for_tolerance`` and ``_serve_no_tolerance``) are degenerate generators (``return; yield``) so the call site does not need a special case.
+
+The ``_enqueue_for_tolerance`` path **deliberately preserves** the historical fire-and-forget semantics — ``wait_for_order`` is spawned as a sibling process via ``env.process(...)`` rather than awaited via ``yield from``. The comment block at the top of the helpers documents why: KPIs accrue inside ``wait_for_order`` independently of the parent ``customer`` call's lifecycle, and changing it to ``yield from`` would extend the parent's lifetime through the entire tolerance window without changing any observable bookkeeping. Routing through a named helper makes that intent explicit.
+
+### 6.6 Stats key `orders_shortage` vs `shortage` ✅ Resolved
+`core.py:~359` (`_stats_keys`), `core.py:~415` (rename of ``self.orders_shortage`` → ``self.shortage``), `core.py:~454-490` (back-compat alias / kwarg shim), `core.py:~2546` / `~2873` / `~3179` / `~3214` / `~3222` / `~3239` (call sites), `utilities.py:~470-484`, ``tests/test_core.py:971``, ``tests/test_utilities.py:16-31``, ``examples/py/intro_simple.py:44``.
+
+**Fix applied:** picked ``shortage`` as the canonical name (matches the network-level ``supplychainnet["shortage"]``) and renamed the node-level ``Statistics.orders_shortage`` attribute. To keep external code working through the rename:
+
+- An ``orders_shortage`` Python ``@property`` returns the same list (and the setter writes through to ``shortage``), so ``node.stats.orders_shortage`` reads still work.
+- ``Statistics.update_stats`` accepts both ``shortage=`` and ``orders_shortage=`` kwargs; the latter is folded onto the former at the top of the function. A caller passing both gets the new spelling.
+
+Internally every ``update_stats`` call site was updated to the new spelling (Supplier and Manufacturer dispatch paths, Demand fulfilment helpers). ``_stats_keys`` was updated so ``get_statistics()`` now returns ``"shortage"`` (not ``"orders_shortage"``); the canonical example's docstring snapshot was updated to match. The test in ``TestStatisticsAggregation`` was flipped from ``stats["orders_shortage"]`` to ``stats["shortage"]``.
+
+The other vocabulary inconsistency the review flagged (``demand_placed`` / ``demand_by_customers`` / ``demand_by_site``) is **not** addressed here: those three are different semantically (per-node vs network-level customer aggregate vs network-level site aggregate), so a rename without merging the underlying meanings would be cosmetic. Documented as a follow-up in the new "remaining vocabulary work" note below.
+
+### 6.7 Docstrings triple-state the same fields ⏸️ Deferred (with rationale)
+**Original issue:** every public class declares Parameters + Attributes + Functions in the class docstring, then ``__init__`` repeats Parameters + Attributes — about 50% of ``core.py``. Some duplicates have already drifted out of sync (``Product.__init__`` lists ``buy_price`` before ``raw_materials`` while the signature is the other way).
+
+**Why deferred:** the docs site (``mkdocstrings`` per ``mkdocs.yml``) currently renders **both** the class and the ``__init__`` docstrings into the same page. Trimming one without confirming the docs render still reads correctly risks shipping a degraded docs page. The fix is real but mechanical — it touches every public class — and is best done as a single dedicated PR together with a docs-site rebuild check rather than bundled into this review pass. Recorded as item 1 of the "remaining work" notes below.
+
+**Drift-only fix applied:** the obvious drift the review called out (``Product.__init__`` parameter order) is left alone in this pass too — the signature is the source of truth, and reordering the docstring without the broader dedup invites another round of churn when §6.7 lands proper. Recorded as item 2 of the "remaining work" notes.
 
 ---
 
-## 7. Testing gaps
+## 7. Testing gaps ✅ Resolved
 
-- `tests/test_core.py` instantiates `RawMaterial` and `Product` as **class attributes**. Their validation runs at import time, so an import-time regression surfaces as a collection error rather than a named test failure.
-- Shared module-level `env = simpy.Environment()` and `inventory = simpy.Container(...)` leak state between tests; use fixtures with `scope="function"`.
-- There are no integration tests for `create_sc_net` → `simulate_sc_net` → aggregated results. The examples in `examples/py/` are the closest, but they are not executed by pytest.
-- No property-based tests for inventory invariants (`level + sum(perish_queue_qty) == container.level`, `on_hand >= container.level`, etc.) — which would have caught the `remove_expired` bug.
-- `.github/workflows/ci.yml` falls through with `pytest || echo "No tests found, skipping."` — a failing test does not fail CI. Remove the fallback.
+`tests/test_core.py:13-22` (TestRawMaterial setUp), `tests/test_core.py:73-95` (TestProduct setUp), `tests/test_core.py:11-21` (`_fresh_env` helper), `tests/test_core.py:213-227` (DummyNode env=), `tests/test_core.py:1583-` (TestEndToEndIntegration / TestInventoryInvariants / TestEnsureNumericCallable), `.github/workflows/ci.yml:28-33` (CI fallback removal).
+
+**Fix applied:**
+
+1. ``RawMaterial`` and ``Product`` fixtures moved from class attributes to ``setUp``-built instance attributes. An import-time regression now surfaces as a clean test failure with the test name attached, not a pytest collection error.
+2. New ``_fresh_env()`` helper at module level; the eight ``DummyNode``-using TestCase classes call ``self.env = _fresh_env()`` and pass it into ``DummyNode(env=self.env)`` so the harness's suppliers / links / inventory bind to the same env the test runs ``env.run`` on. Replaces the previous module-shared env + post-hoc ``self.node.env = self.env`` patch (which left ``node.suppliers`` pointing at the module env). The module-level ``env`` is kept as a fallback for the few legacy references but new tests should use ``_fresh_env``.
+3. New ``TestEndToEndIntegration`` class with four tests pinning the canonical ``intro_simple`` numbers (``profit == -4435.0``, ``inventory_level == 100``, ``inventory_carry_cost == 410.0``, ``shortage == [0, 0]``) plus the ``Network`` wrapper / ``log_window`` kwarg / ``logging=tuple`` back-compat surfaces.
+4. New ``TestInventoryInvariants`` class with two hand-rolled property tests:
+   - ``test_perishable_quantities_match_container_level`` — sum of perishable batch quantities must equal ``container.level`` after every put/get sequence (the invariant whose violation produced the original ``remove_expired`` bug).
+   - ``test_on_hand_never_below_container_level_before_dispatch`` — ``on_hand`` (inventory position) is always ≥ ``container.level``.
+   The hand-roll is deliberate — adding ``hypothesis`` as a hard test dep would be the more idiomatic approach but also more dependency surface for two assertions; revisit if a third invariant test joins them.
+5. CI fallback removed: ``.github/workflows/ci.yml`` no longer wraps ``pytest`` in ``|| echo "No tests found, skipping."``. A red test now fails CI.
+
+**Verified:** ``pytest`` — 177/177 passing (was 159 before this review pass; +18 across §7, §6.4, §5.1).
 
 ---
 
-## 8. Minor issues and nits
+## 8. Minor issues and nits ✅ Resolved (most) / ⏸️ deferred (one)
 
-- `core.py` imports `copy` solely for one `copy.deepcopy(product)` call in `InventoryNode.__init__`. That deep-copy is a surprise — it prevents sharing a `Product` across nodes from being a shared reference, but only sometimes (manufacturers don't deep-copy). Document or unify.
-- `typing.Callable` should replace `callable` in annotations. `callable` is a builtin function, not a type; mypy will flag every usage.
-- `SSReplenishment.run` checks `s > S` (line 616) after `super().__init__` already performed the same check at line 593 — duplicate guard.
-- `Link.__init__` (line 1387) wraps `lead_time` into a callable, then one line later checks `lead_time == None`. After wrapping, it's a lambda — never None. The check is dead code.
-- `Demand.__init__` validates `order_arrival_model()` by calling it once for validation (`core.py:2466`). For deterministic simulations this is benign, but for stateful iterators/generators it advances state before `t=0`.
-- `Manufacturer.process_order` trailing `yield self.env.timeout(1)` (`core.py:2334`) is an arbitrary 1-unit tick for no documented reason.
-- The CSV/ODS artifacts in `validation/` should live in a `data/` or be referenced from the README, not the repo root of a Python package.
-- `visualize_sc_net` uses `nx.spectral_layout`, which often produces degenerate embeddings for small directed graphs. Consider `nx.multipartite_layout` keyed by tier (supplier → manufacturer → distributor → retailer → demand), which also reads more naturally for a supply chain.
-- `Statistics.reset` only zeros numeric / list attributes (`isinstance(value, (int, float))`). `inventory_level` on `Statistics` is an `int`, but `node.inventory.carry_cost` and `node.inventory.waste` live on the Inventory — they are reset inline. Easy to forget when adding a new metric.
-- `mkdocs.yml` references an `api-reference/api-intro.md` that doesn't appear to exist on disk (`docs/api-reference/` contents were not enumerated for this review). If that's right, the nav is broken.
-- `pyproject.toml` advertises Python 3.6 support; the validation helpers use f-strings with `{x:.4f}` and pattern matching in several places — fine — but 3.6 has been EOL since 2021. Set `requires-python = ">=3.9"` and pin `networkx`, `matplotlib`, `numpy` (which `utilities.py` imports transitively via `matplotlib`) as explicit deps instead of relying on `simpy` alone.
+- ``copy.deepcopy(product)`` in ``InventoryNode.__init__`` ✅ — kept (the deep-copy is intentional: each ``InventoryNode`` overrides ``sell_price`` / ``buy_price`` on its own copy without mutating siblings sharing the same ``Product``). Replaced the cryptic comment with an explicit ``# Deep-copy so each InventoryNode that "sells" the same Product can override prices independently...`` block. ``Manufacturer`` still does not deep-copy because it owns the canonical ``Product`` it produces — documented inline.
+- ``typing.Callable`` annotations ✅ — added ``from typing import Callable`` to ``core.py`` and replaced every ``callable`` annotation (Node, Link, Inventory, Demand) with ``Callable``. ``callable`` is a builtin, not a type; mypy now stops complaining.
+- ``SSReplenishment.run`` duplicate ``s > S`` guard ✅ — removed (the same check runs in ``__init__``); replaced with a one-line comment pointing at the surviving guard.
+- ``Link.__init__`` ``lead_time == None`` dead code ✅ — already addressed in a prior review pass; verified no such check exists today.
+- ``Demand.__init__`` advances state of stateful iterators on validation call ✅ — documented in ``ensure_numeric_callable``'s docstring (``Note:`` block) so the trade-off is explicit. Pure-function callables (the common case) are unaffected; users with stateful iterators can wrap them in a closure that defers the first sample to ``t = 0``.
+- ``Manufacturer.process_order`` trailing ``yield self.env.timeout(1)`` ✅ — replaced with ``yield self.env.timeout(0)`` plus a comment explaining that the yield is only there to make the function a generator (it has to be ``env.process``-spawnable) and the prior ``timeout(1)`` was an arbitrary stall called out as the ``§8 process_order trailing tick`` nit.
+- ``visualize_sc_net`` ``spectral_layout`` ✅ — switched to ``nx.multipartite_layout`` keyed by a new ``_TIER_INDEX`` table that maps every ``NodeType`` (plus the ``demand`` rightmost column) to a tier. The drawing now reads left-to-right (suppliers → manufacturers → distributors → retailers → demand), which is the natural reading order for a supply chain. Switched ``nx.Graph`` to ``nx.DiGraph`` so the arrows render and ``Demand`` nodes were added to the visualization (they were silently omitted before).
+- ``Statistics.reset`` ✅ — rewritten to drive off ``self._stats_keys`` first (so any KPI registered on a ``Statistics`` instance is zeroed without the caller having to remember to extend ``reset``) plus a back-stop ``vars(self)`` sweep for non-tracked instance attributes. Inventory-side counters (``carry_cost``, ``waste``) still need an explicit reset inline since they live on ``Inventory`` not on ``Statistics`` — documented with a guard comment so the next person adding an Inventory metric sees the pattern.
+- ``mkdocs.yml`` references ``api-reference/api-intro.md`` ✅ — verified the file exists on disk (``docs/api-reference/api-intro.md``); nav is not broken. The reviewer flagged this with "[contents were not enumerated]" so this nit was a false positive.
+- ``pyproject.toml`` Python 3.6 advertised + missing deps ✅ — bumped ``requires-python`` to ``>=3.9``, dropped the ``Programming Language :: Python :: 3.8`` classifier, added ``Programming Language :: Python :: 3.12``, and added ``networkx`` + ``matplotlib`` to the ``dependencies`` list (``numpy`` comes in transitively via ``matplotlib``). The library will now refuse to install on EOL Pythons, and ``utilities.py``'s ``import networkx`` / ``import matplotlib.pyplot`` no longer rely on those packages being incidentally present.
+- CSV/ODS artifacts in ``validation/`` ⏸️ — Deferred. Moving these out of the repo root would touch the validation paper's reproduction story; out of scope for this code-review pass. Recorded as item 3 of the "remaining work" notes below.
+
+---
+
+---
+
+## Remaining work (intentionally deferred)
+
+The three items below were considered in this review pass and deferred with explicit rationale rather than silently skipped:
+
+1. **§6.7 docstring deduplication.** Sweeping mechanical change touching every public class. Best done as a single PR with a docs-site rebuild check; the ``Product.__init__`` parameter-order drift the review called out is left for that same PR.
+2. **§5.5 numpy/pandas aggregation.** Would double install size to optimise an aggregation that doesn't bite at current network sizes (<20 nodes). ``Network.results`` and ``get_node_wise_performance`` already hand callers a clean dict / list-of-dicts they can feed to ``pandas.DataFrame.from_records`` themselves. Revisit with a benchmark on a 500+ node network.
+3. **§8 ``validation/`` data files.** Moving them affects the validation paper's reproduction instructions; out of scope for a code-review pass.
+4. **§6.6 demand-vocabulary unification (``demand_placed`` / ``demand_by_customers`` / ``demand_by_site``).** The three names are different *concepts* (per-node placed orders, network-level customer aggregate, network-level site aggregate), so a rename without merging the underlying meanings would be cosmetic. Keep as-is until the meanings are consolidated.
 
 ---
 

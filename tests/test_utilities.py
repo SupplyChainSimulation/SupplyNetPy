@@ -13,7 +13,7 @@ class DummyStats:
         self.revenue = 50
         self.demand_placed = [3, 30]
         self.fulfillment_received = [2, 20]
-        self.orders_shortage = [1, 10]
+        self.shortage = [1, 10]
         self.backorder = [0, 0]
     def update_stats(self):
         pass
@@ -26,7 +26,7 @@ class DummyStats:
             "revenue": self.revenue,
             "demand_placed": self.demand_placed,
             "fulfillment_received": self.fulfillment_received,
-            "orders_shortage": self.orders_shortage,
+            "shortage": self.shortage,
             "backorder": self.backorder,
         }
 
@@ -86,6 +86,26 @@ def test_check_duplicate_id_duplicate():
     used_ids = ["A"]
     with pytest.raises(ValueError):
         utilities.check_duplicate_id(used_ids, "A", "node ID")
+
+
+def test_check_duplicate_id_accepts_set():
+    """§5.2: ``check_duplicate_id`` accepts a ``set`` and inserts via ``.add``,
+    giving O(1) membership checks for ``create_sc_net``'s internal use."""
+    used_ids = set()
+    utilities.check_duplicate_id(used_ids, "A", "ID")
+    assert "A" in used_ids
+    utilities.check_duplicate_id(used_ids, "B", "ID")
+    assert used_ids == {"A", "B"}
+    with pytest.raises(ValueError):
+        utilities.check_duplicate_id(used_ids, "A", "node ID")
+
+
+def test_check_duplicate_id_link_message_uses_entity_type():
+    """Routing the inline object-branches through the helper fixes a copy/paste
+    typo that previously raised ``"Duplicate node ID"`` for a duplicate
+    *link*. The helper now interpolates ``entity_type`` into the message."""
+    with pytest.raises(ValueError, match="Duplicate link ID"):
+        utilities.check_duplicate_id({"L1"}, "L1", "link ID")
 
 def test_process_info_dict_logs_and_returns(monkeypatch):
     logger = DummyLogger()
@@ -327,3 +347,85 @@ def test_create_sc_net_invalid_link_endpoint_raises():
                 "order_quantity_model": lambda: 5, "demand_node": "D1"}]
     with pytest.raises(ValueError):
         utilities.create_sc_net(nodes, links, demands)
+
+
+# §4.5: create_sc_net must validate both construction styles consistently.
+# Previously only ``nodes[0]`` / ``links[0]`` / ``demands[0]`` were checked to
+# decide whether env was required, so a dict at index 0 followed by a Node
+# instance at a later index silently bypassed the env check.
+
+
+def test_create_sc_net_mixed_nodes_dict_and_object_raises():
+    env = simpy.Environment()
+    obj_supplier = scm.Supplier(env=env, ID="S2", name="S2", node_type="infinite_supplier", logging=False)
+    # nodes[0] is a dict, nodes[1] is a real Node instance — must be rejected.
+    nodes = [{"ID": "S1", "name": "S1", "node_type": "infinite_supplier"}, obj_supplier]
+    links = [{"ID": "L1", "source": "S1", "sink": "S2", "cost": 1, "lead_time": lambda: 1}]
+    demands = [{"ID": "d1", "name": "d", "order_arrival_model": lambda: 1,
+                "order_quantity_model": lambda: 5, "demand_node": "S2"}]
+    with pytest.raises(ValueError, match="mixes dicts"):
+        utilities.create_sc_net(nodes, links, demands, env=env)
+
+
+def test_create_sc_net_object_at_nonzero_index_still_requires_env():
+    env = simpy.Environment()
+    # Links list has an object at index 1; nodes/demands are all dicts.  Pre-fix,
+    # ``links[0]`` being a dict meant the env-required guard did not fire even
+    # though the object at links[1] belonged to a different env. Post-fix, the
+    # whole list is scanned so this mix is rejected outright.
+    nodes = [{"ID": "S1", "name": "S1", "node_type": "infinite_supplier"},
+             {"ID": "D1", "name": "D1", "node_type": "distributor",
+              "capacity": 100, "initial_level": 0, "inventory_holding_cost": 0.1,
+              "replenishment_policy": None, "policy_param": None,
+              "product_sell_price": 5, "product_buy_price": 2}]
+    # A dummy real Link object — we cannot construct it against "S1"/"D1" dicts,
+    # so use a parallel env + parallel nodes purely for the validator to reject.
+    other_env = simpy.Environment()
+    other_s = scm.Supplier(env=other_env, ID="Sx", name="Sx", node_type="infinite_supplier", logging=False)
+    other_d = scm.InventoryNode(env=other_env, ID="Dx", name="Dx", node_type="distributor",
+                                capacity=100, initial_level=0, inventory_holding_cost=0.1,
+                                replenishment_policy=None, policy_param=None,
+                                product_sell_price=5, product_buy_price=2, logging=False)
+    other_link = scm.Link(env=other_env, ID="Lx", source=other_s, sink=other_d, cost=1, lead_time=lambda: 1)
+    links = [{"ID": "L1", "source": "S1", "sink": "D1", "cost": 1, "lead_time": lambda: 1}, other_link]
+    demands = [{"ID": "d1", "name": "d", "order_arrival_model": lambda: 1,
+                "order_quantity_model": lambda: 5, "demand_node": "D1"}]
+    with pytest.raises(ValueError, match="mixes dicts"):
+        utilities.create_sc_net(nodes, links, demands, env=env)
+
+
+def test_create_sc_net_shop_node_type_end_to_end():
+    # §4.7: "shop" was previously a latent bug — create_sc_net's dispatch
+    # ladder accepted it as a retailer, but Node.__init__'s hard-coded valid
+    # list did not include "shop", so the object construction itself raised
+    # ValueError. After unifying both against the NodeType enum (which lists
+    # "shop"), the end-to-end path works.
+    nodes = [{"ID": "SUP", "name": "S", "node_type": "infinite_supplier"},
+             {"ID": "SHP", "name": "ShopX", "node_type": "shop",
+              "capacity": 100, "initial_level": 50, "inventory_holding_cost": 0.1,
+              "replenishment_policy": None, "policy_param": None,
+              "product_sell_price": 5, "product_buy_price": 2}]
+    links = [{"ID": "L1", "source": "SUP", "sink": "SHP", "cost": 1, "lead_time": lambda: 1}]
+    demands = [{"ID": "d1", "name": "d", "order_arrival_model": lambda: 1,
+                "order_quantity_model": lambda: 5, "demand_node": "SHP"}]
+    sc = utilities.create_sc_net(nodes, links, demands)
+    assert sc["nodes"]["SHP"].node_type == "shop"
+    assert sc["num_retailers"] == 1
+
+
+def test_create_sc_net_object_env_must_match():
+    env = simpy.Environment()
+    other_env = simpy.Environment()
+    # Object built against ``other_env`` but passed to create_sc_net with ``env``.
+    # Pre-fix this was silently accepted and the object's env was left dangling;
+    # post-fix it must raise.
+    s = scm.Supplier(env=other_env, ID="Sz", name="Sz", node_type="infinite_supplier", logging=False)
+    d = scm.InventoryNode(env=other_env, ID="Dz", name="Dz", node_type="distributor",
+                          capacity=100, initial_level=0, inventory_holding_cost=0.1,
+                          replenishment_policy=None, policy_param=None,
+                          product_sell_price=5, product_buy_price=2, logging=False)
+    l = scm.Link(env=other_env, ID="Lz", source=s, sink=d, cost=1, lead_time=lambda: 1)
+    dem = scm.Demand(env=other_env, ID="dz", name="dz", order_arrival_model=lambda: 1,
+                     order_quantity_model=lambda: 5, demand_node=d, logging=False)
+    with pytest.raises(ValueError, match="env does not match"):
+        utilities.create_sc_net(nodes=[s, d], links=[l], demands=[dem], env=env)
