@@ -859,7 +859,11 @@ class TestStatisticsCostComposition(unittest.TestCase):
                                  capacity=100, initial_level=50, inventory_holding_cost=0.1,
                                  replenishment_policy=None, policy_param=None,
                                  product_sell_price=5, product_buy_price=2)
-        expected = {"inventory_carry_cost", "inventory_spend_cost", "transportation_cost"}
+        # ``destroyed_value`` joins the cost components so disruption-driven
+        # inventory loss (Inventory.destroy + disruption_impact) shows up in
+        # node_cost (and therefore profit) without callers needing a
+        # separate "loss" line.
+        expected = {"inventory_carry_cost", "inventory_spend_cost", "transportation_cost", "destroyed_value"}
         assert expected == set(node.stats._cost_components)
 
     def test_supplier_adds_material_cost_component(self):
@@ -1581,6 +1585,34 @@ class TestRemoveExpiredEventDriven(unittest.TestCase):
         assert 0 not in mfg_dates_left
         assert inv.waste == 7
 
+    def test_fractional_shelf_life_does_not_hang(self):
+        # Regression: with shelf_life=1.2, the drain test ``env.now - mfg_date
+        # >= shelf_life`` is FP-unstable (e.g. ``9.2 - 8`` rounds to
+        # ``1.1999999999999993`` and fails ``>= 1.2``). The daemon's timer was
+        # set from ``mfg_date + shelf_life`` and fires exactly at env.now ==
+        # next_expiry, so the drain test must use the same additive form;
+        # otherwise the daemon falls through with sleep_dt=0 and re-enters at
+        # the same simulated time forever. This test would hang prior to the
+        # fix; with the fix it completes promptly and drains expired batches.
+        inv = _make_inventory(self.env, capacity=1000, initial_level=0,
+                              inv_type="perishable", shelf_life=1.2)
+        inv.perish_queue.clear()
+
+        # Push one batch every integer tick so head expiries fall on the
+        # FP-fragile values 1.2, 2.2, ..., 9.2 etc.
+        def steady_puts():
+            for t in range(20):
+                yield self.env.timeout(1)
+                inv.put(10, manufacturing_date=self.env.now)
+
+        self.env.process(steady_puts())
+        self.env.run(until=25)
+        # Every batch put before t = 25 - 1.2 = 23.8 must have expired and
+        # the daemon must have advanced past every one of them — no stalls.
+        # Heads with mfg_date <= 23 expire by their respective deadline.
+        assert all(d > 25 - 1.2 for d, _ in inv.perish_queue), inv.perish_queue
+        assert inv.waste >= 10 * 19  # all 19 of the early batches should be wasted
+
 
 class TestEndToEndIntegration(unittest.TestCase):
     """§7: end-to-end integration tests for ``create_sc_net`` →
@@ -1734,3 +1766,363 @@ class TestEnsureNumericCallable(unittest.TestCase):
             raise RuntimeError("nope")
         with pytest.raises(TypeError):
             scm.ensure_numeric_callable("x", bad)
+
+
+class TestInventoryDestroy(unittest.TestCase):
+    """Direct unit tests for ``Inventory.destroy``: the synchronous-drain
+    primitive that the Node disruption hook builds on."""
+
+    def setUp(self):
+        self.env = _fresh_env()
+        self.node = DummyNode(env=self.env)
+
+    def test_destroy_all_drains_container_and_on_hand(self):
+        inv = self.node.inventory
+        starting = inv.level
+        assert starting > 0
+        destroyed = inv.destroy()
+        assert destroyed == starting
+        assert inv.level == 0
+        assert inv.on_hand == 0
+
+    def test_destroy_partial_clamps_to_amount(self):
+        inv = self.node.inventory
+        starting = inv.level
+        destroyed = inv.destroy(amount=starting / 2)
+        assert destroyed == starting / 2
+        assert inv.level == starting - starting / 2
+
+    def test_destroy_clamps_oversize_request(self):
+        inv = self.node.inventory
+        starting = inv.level
+        destroyed = inv.destroy(amount=starting * 100)
+        assert destroyed == starting
+        assert inv.level == 0
+
+    def test_destroy_zero_or_negative_is_noop(self):
+        inv = self.node.inventory
+        starting = inv.level
+        assert inv.destroy(amount=0) == 0
+        assert inv.destroy(amount=-5) == 0
+        assert inv.level == starting
+
+    def test_destroy_on_infinite_supplier_is_noop(self):
+        env = _fresh_env()
+        sup = scm.Supplier(env=env, ID="INF", name="InfSup", node_type="infinite_supplier")
+        # infinite_supplier inventory is level=inf; destroy must not blow up
+        # and must not touch the level.
+        assert sup.inventory.level == float('inf')
+        assert sup.inventory.destroy() == 0
+        assert sup.inventory.level == float('inf')
+
+    def test_destroy_does_not_signal_inventory_drop(self):
+        """Destruction must NOT trigger ``inventory_drop`` — that is the
+        replenishment-policy wake signal, and during a disruption window the
+        dispatch gate is closed anyway. Triggering it would queue orders to
+        fire the moment the node recovers (a wake storm)."""
+        # Drain via destroy and check the event has not been succeeded.
+        assert not self.node.inventory_drop.triggered
+        self.node.inventory.destroy()
+        assert not self.node.inventory_drop.triggered
+
+    def test_destroy_perishable_drains_oldest_first(self):
+        env = _fresh_env()
+        node = DummyNode(env=env)
+        # Build a perishable inventory with three known batches and confirm
+        # FIFO drain matches the documented head-first order.
+        inv = scm.Inventory(env=env, capacity=100, initial_level=0, node=node,
+                            replenishment_policy=None, holding_cost=0,
+                            shelf_life=10, inv_type="perishable")
+        # ``perish_queue`` is a min-heap by mfg_date; pushing in arbitrary
+        # order is fine — index 0 is always the oldest.
+        inv.put(10, manufacturing_date=1)  # oldest
+        inv.put(20, manufacturing_date=5)
+        inv.put(30, manufacturing_date=3)
+        # Destroy 25 — that's the entire mfg_date=1 batch (10) plus 15 of
+        # mfg_date=3 (oldest after the first batch is gone). The mfg_date=5
+        # batch is untouched.
+        inv.destroy(amount=25)
+        remaining = sorted(inv.perish_queue)
+        assert remaining == [(3, 15), (5, 20)]
+
+    def test_destroy_perishable_full_wipe(self):
+        env = _fresh_env()
+        node = DummyNode(env=env)
+        inv = scm.Inventory(env=env, capacity=100, initial_level=0, node=node,
+                            replenishment_policy=None, holding_cost=0,
+                            shelf_life=10, inv_type="perishable")
+        inv.put(10, manufacturing_date=1)
+        inv.put(20, manufacturing_date=5)
+        inv.destroy()  # default = all
+        # Heap is empty after a full wipe.
+        assert inv.perish_queue == []
+        assert inv.level == 0
+
+
+class TestNodeDisruptionImpactDefaults(unittest.TestCase):
+    """Default behavior (no impact specified) must match pre-existing
+    semantics so the §validation numbers don't shift."""
+
+    def test_no_impact_leaves_inventory_intact(self):
+        env = _fresh_env()
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=80, inventory_holding_cost=1.0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            failure_p=0.0, node_disrupt_time=lambda: 5,
+            node_recovery_time=lambda: 3,
+        )
+        # Build a tiny supplier just so the node has somewhere to place orders
+        # if a policy ever wanted to (it doesn't here).
+        env.run(until=20)
+        # No impact set → inventory must remain untouched even though the
+        # node went inactive at t=5.
+        assert node.inventory.level == 80
+        assert node.stats.destroyed_qty == 0
+        assert node.stats.destroyed_value == 0
+
+
+class TestNodeDisruptionImpactDestroyAll(unittest.TestCase):
+    """``disruption_impact='destroy_all'`` wipes the node's inventory at the
+    active→inactive edge and books the loss into stats."""
+
+    def test_destroy_all_wipes_inventory_at_disruption_edge(self):
+        env = _fresh_env()
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=80, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            node_disrupt_time=lambda: 5, node_recovery_time=lambda: 3,
+            disruption_impact="destroy_all",
+        )
+        env.run(until=4)  # before the disruption — inventory intact
+        assert node.inventory.level == 80
+        env.run(until=6)  # disruption fired at t=5
+        assert node.inventory.level == 0
+        assert node.stats.destroyed_qty == 80
+        assert node.stats.destroyed_value == 80 * 5  # buy_price = 5
+
+    def test_destroy_all_rolls_into_node_cost(self):
+        env = _fresh_env()
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=50, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=4,
+            node_disrupt_time=lambda: 2, node_recovery_time=lambda: 100,
+            disruption_impact="destroy_all",
+        )
+        env.run(until=10)
+        # destroyed_value (200) is in _cost_components, so it must show up
+        # in node_cost after stats are updated. update_stats is called
+        # internally by destroy_all_impact, which sums node_cost.
+        assert node.stats.destroyed_value == 200
+        assert node.stats.node_cost >= 200  # may include carrying cost too
+
+    def test_destroy_all_fires_only_on_active_to_inactive_edge(self):
+        """The hook must fire once per disruption, not on every tick during
+        the outage. With recovery_time=10 and disrupt_time=5, a 30-tick run
+        sees two disruption edges (t=5 and t=20) and stocks 50 each refill —
+        but in this test, no replenishment policy means a single edge fires."""
+        env = _fresh_env()
+        call_count = {"n": 0}
+
+        def custom_impact(node):
+            call_count["n"] += 1
+
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=80, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            node_disrupt_time=lambda: 5, node_recovery_time=lambda: 4,
+            disruption_impact=custom_impact,
+        )
+        env.run(until=20)
+        # Edges: active→inactive at t=5, recover at t=9, inactive again
+        # at t=14, recover at t=18, inactive again at t=23 (after run end).
+        # So edges in [0, 20]: t=5, t=14 → 2 calls.
+        assert call_count["n"] == 2
+
+
+class TestNodeDisruptionImpactDestroyFraction(unittest.TestCase):
+    """``disruption_impact='destroy_fraction'`` wipes a fraction of the
+    current level. Fraction may be a scalar or a zero-arg callable that
+    samples a fresh value per edge."""
+
+    def test_scalar_fraction(self):
+        env = _fresh_env()
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=100, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            node_disrupt_time=lambda: 5, node_recovery_time=lambda: 100,
+            disruption_impact="destroy_fraction",
+            disruption_loss_fraction=0.25,
+        )
+        env.run(until=10)
+        assert node.inventory.level == 75
+        assert node.stats.destroyed_qty == 25
+
+    def test_callable_fraction_samples_per_edge(self):
+        env = _fresh_env()
+        # ``ensure_numeric_callable`` invokes the callable once at construction
+        # to validate the return type is numeric — that consumes the first
+        # value of any stateful generator. So the sequence below has 3 values:
+        # [validation, edge_1, edge_2] = [0.5, 0.5, 0.5].
+        fractions = iter([0.5, 0.5, 0.5])
+
+        def next_fraction():
+            return next(fractions)
+
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=200, initial_level=100, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            node_disrupt_time=lambda: 5, node_recovery_time=lambda: 4,
+            disruption_impact="destroy_fraction",
+            disruption_loss_fraction=next_fraction,
+        )
+        env.run(until=20)
+        # Edge 1 (t=5): 100 * 0.5 = 50 destroyed → level = 50
+        # Edge 2 (t=14): 50 * 0.5 = 25 destroyed → level = 25
+        assert node.inventory.level == 25
+        assert node.stats.destroyed_qty == 75
+
+    def test_fraction_out_of_range_raises_on_disruption(self):
+        env = _fresh_env()
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=80, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            node_disrupt_time=lambda: 5, node_recovery_time=lambda: 100,
+            disruption_impact="destroy_fraction",
+            disruption_loss_fraction=1.5,  # invalid — caught at first edge
+        )
+        with pytest.raises(ValueError):
+            env.run(until=10)
+
+
+class TestNodeDisruptionImpactCustomCallable(unittest.TestCase):
+    """User-supplied callables are the escape hatch for arbitrary effects:
+    contamination, capacity damage, partial spoilage with non-uniform
+    distributions, etc."""
+
+    def test_custom_callable_runs_with_node_arg(self):
+        env = _fresh_env()
+        captured = {"node": None}
+
+        def impact(node):
+            captured["node"] = node
+            # User decides what to do — here, nuke half via the public destroy API.
+            node.inventory.destroy(amount=node.inventory.level * 0.5,
+                                   reason="contamination")
+
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=60, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            node_disrupt_time=lambda: 5, node_recovery_time=lambda: 100,
+            disruption_impact=impact,
+        )
+        env.run(until=10)
+        assert captured["node"] is node
+        assert node.inventory.level == 30
+
+
+class TestNodeDisruptionImpactValidation(unittest.TestCase):
+    def test_unknown_string_preset_raises(self):
+        env = _fresh_env()
+        with pytest.raises(ValueError):
+            scm.InventoryNode(
+                env=env, ID="D1", name="D1", node_type="warehouse",
+                capacity=100, initial_level=10, inventory_holding_cost=0,
+                replenishment_policy=None, policy_param={},
+                product_sell_price=10, product_buy_price=5,
+                disruption_impact="explode_everything",
+            )
+
+    def test_non_callable_non_string_raises(self):
+        env = _fresh_env()
+        with pytest.raises(ValueError):
+            scm.InventoryNode(
+                env=env, ID="D1", name="D1", node_type="warehouse",
+                capacity=100, initial_level=10, inventory_holding_cost=0,
+                replenishment_policy=None, policy_param={},
+                product_sell_price=10, product_buy_price=5,
+                disruption_impact=42,  # not str, not callable, not None
+            )
+
+    def test_none_and_lowercase_none_string_are_equivalent(self):
+        env1 = _fresh_env()
+        env2 = _fresh_env()
+        n1 = scm.InventoryNode(
+            env=env1, ID="A", name="A", node_type="warehouse",
+            capacity=10, initial_level=5, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            disruption_impact=None,
+        )
+        n2 = scm.InventoryNode(
+            env=env2, ID="A", name="A", node_type="warehouse",
+            capacity=10, initial_level=5, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            disruption_impact="None",
+        )
+        assert n1._disruption_impact_fn is None
+        assert n2._disruption_impact_fn is None
+
+
+class TestManufacturerDisruptionImpactDestroyAll(unittest.TestCase):
+    """For a Manufacturer, ``destroy_all`` must wipe both the finished-goods
+    inventory and the per-raw-material counts — the spirit of "everything
+    physical at this site is gone" applies to both stockpiles. The
+    Manufacturer's own behavior loop continually consumes/refills raw
+    materials, so this test invokes the impact handler directly on a
+    constructed manufacturer to isolate the destroy-all mechanism from
+    the production schedule."""
+
+    def test_destroy_all_wipes_finished_and_raw_inventories(self):
+        from SupplyNetPy.Components.core import _destroy_all_impact
+
+        env = _fresh_env()
+        rm = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=10,
+                             extraction_time=2, mining_cost=1, cost=2)
+        sup = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier",
+                           capacity=100, initial_level=100,
+                           inventory_holding_cost=0, raw_material=rm)
+        prod = scm.Product(ID="P1", name="P1", manufacturing_cost=1,
+                           manufacturing_time=1, sell_price=20,
+                           raw_materials=[(rm, 1)], batch_size=5)
+        mfr = scm.Manufacturer(
+            env=env, ID="M1", name="M1",
+            capacity=100, initial_level=10, inventory_holding_cost=0,
+            product_sell_price=20, replenishment_policy=None, policy_param={},
+            product=prod, supplier_selection_policy=scm.SelectFirst,
+        )
+        scm.Link(env=env, ID="L1", source=sup, sink=mfr, lead_time=lambda: 1, cost=0)
+        # Force a known raw_inventory_counts state. Bypassing env.run avoids
+        # the behavior loop consuming or refilling these counts before the
+        # destroy call can observe them.
+        mfr.raw_inventory_counts[rm.ID] = 50
+
+        _destroy_all_impact(mfr)
+
+        assert mfr.inventory.level == 0
+        # Key may persist with value 0 — that's expected; the dict isn't
+        # rebuilt, only its values are zeroed.
+        assert mfr.raw_inventory_counts.get(rm.ID, 0) == 0
+        # destroyed_qty covers both finished (10) and raw (50) units.
+        assert mfr.stats.destroyed_qty == 60
+        # destroyed_value: finished priced at product.buy_price (which the
+        # Manufacturer init set to manufacturing_cost + raw_material cost
+        # = 1 + 2 = 3); raw priced at rm.cost = 2.
+        # 10*3 + 50*2 = 130
+        assert mfr.stats.destroyed_value == 130

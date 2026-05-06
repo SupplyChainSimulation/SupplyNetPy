@@ -44,6 +44,32 @@ supplychainnet = scm.create_sc_net(nodes=[supplier1, distributor1], links=[link1
 supplychainnet = scm.simulate_sc_net(supplychainnet, sim_time=20, logging=True)
 ~~~
 
+#### Modeling what a disruption does to stored inventory
+
+In real life, a disruption is rarely just a pause — a flood can ruin every box in a warehouse, a power outage can spoil refrigerated goods, contamination can force a partial recall, and theft can take a slice of the shelf. SupplyNetPy lets you describe these *physical* effects on inventory in addition to simply marking a node as offline.
+
+The basic disruption settings (`failure_p`, `node_disrupt_time`) only switch the node off and stop it from accepting new orders; they leave the stored stock untouched. To say what actually *happens* to the goods on the shelf when the disruption begins, set the `disruption_impact` option:
+
+~~~python
+# Scenario 1: total loss (e.g., warehouse fire, flood). Wipes everything on the shelf.
+scm.InventoryNode(..., disruption_impact="destroy_all")
+
+# Scenario 2: partial loss (e.g., power outage spoils some refrigerated goods).
+# Here, 30% of whatever is on the shelf is destroyed each time a disruption hits.
+# You can also pass a function instead of 0.3 to randomize the loss each time.
+scm.InventoryNode(..., disruption_impact="destroy_fraction",
+                  disruption_loss_fraction=0.3)
+
+# Scenario 3: anything more specific (e.g., contamination of half the stock).
+# Write a small Python function that describes what to do, and pass it in.
+def contaminate(node):
+    node.inventory.destroy(amount=node.inventory.level * 0.5,
+                           reason="contamination")
+scm.InventoryNode(..., disruption_impact=contaminate)
+~~~
+
+The loss is applied once, at the moment the disruption begins (not repeatedly during the outage). The amount lost and its monetary value are saved on the node as `node.stats.destroyed_qty` and `node.stats.destroyed_value`, and the value is automatically subtracted when the simulation calculates the node's profit — so you don't need to do that bookkeeping yourself.
+
 
 ## Documentation
 For detailed documentation and advanced usage, please refer to the [official documentation](https://supplychainsimulation.github.io/SupplyNetPy/).

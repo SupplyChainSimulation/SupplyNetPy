@@ -137,11 +137,11 @@ price = 7 # unit cost of drug
 
 def setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time):
     """Setup environment, supplier, distributor, link, and demand process."""
-    supplier = scm.Supplier(env, "S1", "Supplier 1", "infinite_supplier", 
+    supplier = scm.Supplier(env=env, ID="S1", name="Supplier 1", node_type="infinite_supplier",
                             node_disrupt_time=disrupt_time.geometric,
                             node_recovery_time=recovery_time.geometric)
 
-    distributor = scm.InventoryNode(env, "D1", "Distributor 1", "distributor",
+    distributor = scm.InventoryNode(env=env, ID="D1", name="Distributor 1", node_type="distributor",
                                     capacity=float('inf'), initial_level=ini_level,
                                     inventory_holding_cost=h, inventory_type="perishable",
                                     manufacture_date=manufacturer_date_cal, shelf_life=e,
@@ -149,9 +149,10 @@ def setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time):
                                     policy_param={'s': s, 'S': S},
                                     product_buy_price=0, product_sell_price=price)
 
-    link = scm.Link(env, "l1", supplier, distributor, cost=o, lead_time=lambda: l)
+    link = scm.Link(env=env, ID="l1", source=supplier, sink=distributor,
+                    cost=o, lead_time=lambda: l)
 
-    demand = scm.Demand(env, "d1", "demand 1", order_arrival_model=lambda: 1,
+    demand = scm.Demand(env=env, ID="d1", name="demand 1", order_arrival_model=lambda: 1,
                         order_quantity_model=st.poisson_demand, demand_node=distributor)
 
     return supplier, distributor, demand, link
@@ -172,7 +173,7 @@ def single_sim_run(S, s, ini_level, logging=True):
     demand.stats.reset()
     pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T,logging=logging)
 
-    shortage = distributor.stats.orders_shortage[1]
+    shortage = distributor.stats.shortage[1]
     waste = distributor.stats.inventory_waste
     holding = distributor.stats.inventory_carry_cost
     transport = distributor.stats.transportation_cost
@@ -210,7 +211,7 @@ def run_for_s(s_low, s_high, s_step, capacity, ini_level, num_replications):
             demand.stats.reset()
             pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T,logging=False)
 
-            shortage = distributor.stats.orders_shortage[1]
+            shortage = distributor.stats.shortage[1]
             waste = distributor.stats.inventory_waste
             holding = distributor.stats.inventory_carry_cost
             transport = distributor.stats.transportation_cost

@@ -20,4 +20,17 @@ This page lists known issues, current limitations, and planned improvements for 
 - **Simulation Parallelization**: To enable faster execution of the model and support real-time simulation.
 - **Simulation-Based Optimization (SBO)**: Integration of optimization methods from Python's SciPy library to support SBO.
 
-> Note: Node and link disruption (`failure_p`, `node_disrupt_time`, `node_recovery_time` on `Node`; equivalents on `Link`) is already supported and is not planned work. Pass an `rng` argument, or call `scm.set_seed(n)` before building the network, to make disruption draws reproducible.
+> Note: Disruption modeling for both nodes (warehouses, factories, retailers, etc.) and links (transport routes) is already built into SupplyNetPy and is *not* on the planned-work list. You can configure disruptions in two ways:
+>
+> - **Random** — set `failure_p` on a `Node` (or its equivalent on a `Link`) to give it a probability of failing at each tick.
+> - **Scheduled** — set `node_disrupt_time` and `node_recovery_time` to make the node go offline at fixed intervals and come back after a fixed delay.
+>
+> On top of that, the `disruption_impact` setting on a node controls what happens to the *goods on the shelf* when a disruption begins:
+>
+> - `"destroy_all"` — every unit at the node is lost (e.g., a fire at a warehouse).
+> - `"destroy_fraction"` — a portion of the stock is lost. The portion is given by `disruption_loss_fraction`, which can be either a fixed number between 0 and 1 (e.g., `0.3` for 30%) or a small Python function that returns a different value each time, if you want randomized losses.
+> - A custom Python function — for any other rule (contamination of certain batches, partial spoilage, capacity damage, etc.).
+>
+> The amount destroyed and its monetary value are recorded automatically as `node.stats.destroyed_qty` and `node.stats.destroyed_value`, and the value is subtracted from profit, so the financial impact appears in the simulation results without any extra bookkeeping.
+>
+> If you want repeatable simulation runs (for example, to compare two policies fairly under the *same* sequence of random failures), either pass an `rng` argument when you create a node or link, or call `scm.set_seed(n)` once before building the network.

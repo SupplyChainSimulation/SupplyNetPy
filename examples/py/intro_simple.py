@@ -37,19 +37,22 @@ print(stats) # print
 
 """
 #node-info-out-st
-{'demand_placed': [5, 300], 
-'fulfillment_received': [4, 250], 
-'demand_received': [20, 200], 
-'demand_fulfilled': [20, 200], 
+{'name': 'D1 statistics',
+'demand_placed': [5, 300],
+'fulfillment_received': [4, 250],
+'demand_received': [20, 200],
+'demand_fulfilled': [20, 200],
 'shortage': [0, 0],
-'backorder': [0, 0], 
-'inventory_level': 100, 
-'inventory_waste': 0, 
-'inventory_carry_cost': 410.0, 
-'inventory_spend_cost': 25000, 
-'transportation_cost': 25, 
-'node_cost': 25435.0, 
-'revenue': 21000, 
+'backorder': [0, 0],
+'inventory_level': 100,
+'inventory_waste': 0,
+'inventory_carry_cost': 410.0,
+'inventory_spend_cost': 25000,
+'transportation_cost': 25,
+'destroyed_qty': 0,
+'destroyed_value': 0,
+'node_cost': 25435.0,
+'revenue': 21000,
 'profit': -4435.0}
 #node-info-out-en
 """

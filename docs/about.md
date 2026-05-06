@@ -28,6 +28,12 @@
     - Periodic review (Q, T)
     - Periodic review (Q, T) with safety stock
 - **Flexible lead times**: Define deterministic or stochastic lead times and transportation costs.
+- **Disruption modeling**: Both nodes (warehouses, factories, etc.) and links (transport routes) can be made to fail — either at scheduled times or randomly with a given probability. On top of that, the `disruption_impact` setting on a node describes what physically happens to the goods on the shelf when a disruption hits:
+    - `"destroy_all"` — everything is lost (e.g., a fire or flood at a warehouse).
+    - `"destroy_fraction"` paired with a loss fraction — a portion of the stock is lost; the fraction can be a fixed number or randomized for each event (useful for, say, a power outage that spoils part of the refrigerated stock).
+    - A custom function — for any other rule you want to capture (contamination, theft, partial damage, …).
+
+    The amount lost and its monetary value are tracked automatically per node and the value is subtracted from profit, so the financial impact of disruptions shows up in the simulation results without extra bookkeeping.
 - **Simple API**: Build and simulate supply chain models using clear Python code.
 - **Performance tracking**: Automatically generate logs and compute supply chain performance indicators.
 
