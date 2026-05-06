@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/api-reference/api-ref-logger/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Logger - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Logger";
+        var mkdocs_page_input_path = "api-reference/api-ref-logger.md";
+        var mkdocs_page_url = "/SupplyNetPy/api-reference/api-ref-logger/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With Factory</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Logger</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger">GlobalLogger</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.set_log_file">set_log_file</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.get_log_file">get_log_file</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.set_logger">set_logger</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.configure_logger">configure_logger</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.enable_logging">enable_logging</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#SupplyNetPy.Components.logger.GlobalLogger.disable_logging">disable_logging</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">Logger</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <p>The <code>GlobalLogger</code> class provides a flexible logging system for the SupplyNetPy simulations. It allows logging messages to both the console and a file, and can be easily enabled or disabled during runtime.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="SupplyNetPy.Components.logger" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">SupplyNetPy.Components.logger</span>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="SupplyNetPy.Components.logger.GlobalLogger" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">GlobalLogger</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">GlobalLogger</span><span class="p">(</span><span class="n">logger_name</span><span class="o">=</span><span class="n">_LIBRARY_LOGGER_NAME</span><span class="p">,</span> <span class="n">log_to_file</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">log_file</span><span class="o">=</span><span class="s1">&#39;simulation_trace.log&#39;</span><span class="p">,</span> <span class="n">log_to_screen</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="logging.LoggerAdapter">LoggerAdapter</span></code></p>
+
+
+
+        <p>Library-wide :class:<code>logging.LoggerAdapter</code> with on/off file and screen handlers.</p>
+<p>Subclasses :class:<code>logging.LoggerAdapter</code> so callers can write
+<code>node.logger.info(...)</code> (and <code>debug</code> / <code>warning</code> / <code>error</code> /
+<code>critical</code>) directly — no more <code>node.logger.logger.info(...)</code> double-hop.
+The underlying :class:<code>logging.Logger</code> is still reachable as
+<code>self.logger</code> (the standard adapter attribute), so older code that
+reaches through that attribute keeps working.</p>
+<p><strong>The wrapper is inert by default.</strong> <code>GlobalLogger()</code> attaches only a
+:class:<code>logging.NullHandler</code> and does not open any file — output is opt-in.
+Call :meth:<code>enable_logging</code> (or pass <code>log_to_file=True</code> /
+<code>log_to_screen=True</code> to the constructor) to attach real handlers. This is
+the documented Python-library logging pattern; see
+https://docs.python.org/3/howto/logging.html#configuring-logging-for-a-library</p>
+<p>The library exports a module-level <code>global_logger = GlobalLogger()</code> from
+<code>core.py</code> whose underlying :class:<code>logging.Logger</code> is named
+<code>"sim_trace"</code>. Every per-node logger created by :class:<code>Node</code> lives at
+<code>"sim_trace.&lt;node.ID&gt;"</code> and propagates up to <code>"sim_trace"</code> — so all
+log routing is configured in <strong>one place</strong> by calling
+<code>scm.global_logger.enable_logging(...)</code>. <code>simulate_sc_net(logging=True)</code>
+does this automatically; users who drive <code>env.run(...)</code> themselves and
+want a log file must call it explicitly.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger_name</code></b>
+                  (<code><span title="str">str</span></code>, default:
+                      <code><span title="SupplyNetPy.Components.logger._LIBRARY_LOGGER_NAME">_LIBRARY_LOGGER_NAME</span></code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Name of the underlying :class:<code>logging.Logger</code>.
+Defaults to <code>"sim_trace"</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_file</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>False</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Attach a :class:<code>logging.FileHandler</code> writing to
+<code>log_file</code> (mode <code>'w'</code>). Defaults to <code>False</code> — opt-in.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_file</code></b>
+                  (<code><span title="str">str</span></code>, default:
+                      <code>&#39;simulation_trace.log&#39;</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Destination file path. Only opened when
+<code>log_to_file</code> is <code>True</code>. Defaults to <code>"simulation_trace.log"</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_screen</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>False</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Attach a :class:<code>logging.StreamHandler</code>. Defaults
+to <code>False</code> — opt-in.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>logger</code></b>
+                  (<code><span title="logging.Logger">Logger</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>The underlying logger instance (inherited
+from :class:<code>logging.LoggerAdapter</code>).</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_file</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Current file-handler flag.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_to_screen</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Current screen-handler flag.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_file</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Current destination file path.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p><span class="doc-section-title">Methods:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+            <tr class="doc-section-item">
+              <td><code><span title="SupplyNetPy.Components.logger.GlobalLogger.debug/info/warning/error/critical/log/exception">debug/info/warning/error/critical/log/exception</span></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Inherited from
+:class:<code>logging.LoggerAdapter</code> — call them directly on the
+adapter instead of routing through <code>.logger</code>.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="set_log_file (SupplyNetPy.Components.logger.GlobalLogger.set_log_file)" href="#SupplyNetPy.Components.logger.GlobalLogger.set_log_file">set_log_file</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Set the destination file and re-attach handlers.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="get_log_file (SupplyNetPy.Components.logger.GlobalLogger.get_log_file)" href="#SupplyNetPy.Components.logger.GlobalLogger.get_log_file">get_log_file</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Return the current log file path.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="set_logger (SupplyNetPy.Components.logger.GlobalLogger.set_logger)" href="#SupplyNetPy.Components.logger.GlobalLogger.set_logger">set_logger</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Rebind <code>self.logger</code> to a different name.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="configure_logger (SupplyNetPy.Components.logger.GlobalLogger.configure_logger)" href="#SupplyNetPy.Components.logger.GlobalLogger.configure_logger">configure_logger</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Re-build handlers from current flags. Always
+attaches :class:<code>logging.NullHandler</code>.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="enable_logging (SupplyNetPy.Components.logger.GlobalLogger.enable_logging)" href="#SupplyNetPy.Components.logger.GlobalLogger.enable_logging">enable_logging</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Opt-in: attach
+handlers and unmute the logger.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="disable_logging (SupplyNetPy.Components.logger.GlobalLogger.disable_logging)" href="#SupplyNetPy.Components.logger.GlobalLogger.disable_logging">disable_logging</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Mute the logger and drop handlers (NullHandler stays).</p>
+                </div>
+              </td>
+            </tr>
+      </tbody>
+    </table>
+
+
+
+
+
+
+
+                  <details class="quote">
+                    <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+             <span class="n">logger_name</span><span class="o">=</span><span class="n">_LIBRARY_LOGGER_NAME</span><span class="p">,</span>
+             <span class="n">log_to_file</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+             <span class="n">log_file</span><span class="o">=</span><span class="s1">&#39;simulation_trace.log&#39;</span><span class="p">,</span>
+             <span class="n">log_to_screen</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">logger_name</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+    <span class="c1"># The library root logger should not leak records up to Python&#39;s root</span>
+    <span class="c1"># logger — that would dump our logs into whatever the host application</span>
+    <span class="c1"># has configured. Per-node child loggers keep ``propagate=True`` so</span>
+    <span class="c1"># their records still reach the handlers attached here.</span>
+    <span class="k">if</span> <span class="n">logger_name</span> <span class="o">==</span> <span class="n">_LIBRARY_LOGGER_NAME</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">propagate</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="c1"># Fresh GlobalLogger == fresh slate: a previous instance may have set</span>
+    <span class="c1"># disabled=True on the same underlying Python logger.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">disabled</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="c1"># extra=None: we don&#39;t inject any contextual fields. The base</span>
+    <span class="c1"># LoggerAdapter.process() returns (msg, kwargs) unchanged in that case.</span>
+    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">logger</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">log_to_file</span> <span class="o">=</span> <span class="n">log_to_file</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">log_to_screen</span> <span class="o">=</span> <span class="n">log_to_screen</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span> <span class="o">=</span> <span class="n">log_file</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">configure_logger</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+                  </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.set_log_file" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">set_log_file</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">set_log_file</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Set the destination log file and re-attach handlers.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">set_log_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the destination log file and re-attach handlers.&quot;&quot;&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span> <span class="o">=</span> <span class="n">filename</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">configure_logger</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.get_log_file" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">get_log_file</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_log_file</span><span class="p">()</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Return the current log file path.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_log_file</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the current log file path.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.set_logger" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">set_logger</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">set_logger</span><span class="p">(</span><span class="n">logger_name</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Rebind the underlying logger to a different name.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">set_logger</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">logger_name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Rebind the underlying logger to a different name.&quot;&quot;&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">logger_name</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.configure_logger" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">configure_logger</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">configure_logger</span><span class="p">()</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Replace this logger's handlers based on current <code>log_to_file</code> /
+<code>log_to_screen</code> flags. A :class:<code>logging.NullHandler</code> is always
+attached so the logger never triggers Python's "No handlers could be
+found" stderr fallback — the recommended default for library loggers.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">configure_logger</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Replace this logger&#39;s handlers based on current ``log_to_file`` /</span>
+<span class="sd">    ``log_to_screen`` flags. A :class:`logging.NullHandler` is always</span>
+<span class="sd">    attached so the logger never triggers Python&#39;s &quot;No handlers could be</span>
+<span class="sd">    found&quot; stderr fallback — the recommended default for library loggers.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">handlers</span> <span class="o">=</span> <span class="p">[</span><span class="n">logging</span><span class="o">.</span><span class="n">NullHandler</span><span class="p">()]</span>
+
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_to_screen</span><span class="p">:</span>
+        <span class="n">screen_handler</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">StreamHandler</span><span class="p">()</span>
+        <span class="n">screen_handler</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+        <span class="n">screen_handler</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="n">_LOG_FORMAT</span><span class="p">))</span>
+        <span class="n">screen_handler</span><span class="o">.</span><span class="n">addFilter</span><span class="p">(</span><span class="n">_ShortNameFilter</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">screen_handler</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_to_file</span><span class="p">:</span>
+        <span class="n">file_handler</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">FileHandler</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;w&#39;</span><span class="p">)</span>
+        <span class="n">file_handler</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+        <span class="n">file_handler</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="n">_LOG_FORMAT</span><span class="p">))</span>
+        <span class="n">file_handler</span><span class="o">.</span><span class="n">addFilter</span><span class="p">(</span><span class="n">_ShortNameFilter</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">file_handler</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.enable_logging" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">enable_logging</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">enable_logging</span><span class="p">(</span><span class="n">log_to_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">log_to_screen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Opt-in. Unmute the logger and (re)attach screen and/or file handlers
+according to the arguments. Defaults are <code>True</code> for both so a bare
+<code>enable_logging()</code> call gives the user the historical "noisy"
+behavior on demand.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">enable_logging</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log_to_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">log_to_screen</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Opt-in. Unmute the logger and (re)attach screen and/or file handlers</span>
+<span class="sd">    according to the arguments. Defaults are ``True`` for both so a bare</span>
+<span class="sd">    ``enable_logging()`` call gives the user the historical &quot;noisy&quot;</span>
+<span class="sd">    behavior on demand.&quot;&quot;&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">disabled</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">log_to_file</span> <span class="o">=</span> <span class="n">log_to_file</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">log_to_screen</span> <span class="o">=</span> <span class="n">log_to_screen</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">configure_logger</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="SupplyNetPy.Components.logger.GlobalLogger.disable_logging" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">disable_logging</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">disable_logging</span><span class="p">()</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Mute the logger. Sets <code>self.logger.disabled = True</code> and drops all
+handlers (a :class:<code>logging.NullHandler</code> is re-attached so the logger
+remains well-formed). Note: this only affects <code>self.logger</code> — it
+does not touch the global <code>logging.disable</code> switch, which would
+suppress the host application's own logging.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/SupplyNetPy/Components/logger.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">disable_logging</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Mute the logger. Sets ``self.logger.disabled = True`` and drops all</span>
+<span class="sd">    handlers (a :class:`logging.NullHandler` is re-attached so the logger</span>
+<span class="sd">    remains well-formed). Note: this only affects ``self.logger`` — it</span>
+<span class="sd">    does not touch the global ``logging.disable`` switch, which would</span>
+<span class="sd">    suppress the host application&#39;s own logging.&quot;&quot;&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">disabled</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">handlers</span> <span class="o">=</span> <span class="p">[</span><span class="n">logging</span><span class="o">.</span><span class="n">NullHandler</span><span class="p">()]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">log_to_file</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">log_to_screen</span> <span class="o">=</span> <span class="kc">False</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../api-ref-utilities/" class="btn btn-neutral float-left" title="Utilities"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../../known-issues/" class="btn btn-neutral float-right" title="Known Issues and Planned Work">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../api-ref-utilities/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../../known-issues/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
