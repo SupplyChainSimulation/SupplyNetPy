@@ -6,7 +6,7 @@
 
 # News Vendor Problem
 
-This example illustrates how to model and simulate the classic **newsvendor problem**. In this problem, a decision-maker must determine the optimal order quantity for a perishable product with uncertain demand, aiming to maximize expected profit by balancing the risks of overstocking and understocking. 
+Imagine a newspaper vendor who buys copies wholesale every morning and sells them through the day. Demand is uncertain — some days are busy, some quiet. If the vendor buys too few copies, they miss out on sales (and on the profit those sales would have brought in). If they buy too many, the leftover papers are wasted at the end of the day, since yesterday's news doesn't sell tomorrow. **How many copies should the vendor buy?** That is the **newsvendor problem**: finding the order quantity that, on average, gives the highest profit when you balance the cost of running out against the cost of leftovers. The same trade-off shows up for any perishable product with unpredictable demand — fresh produce, baked goods, daily prepared meals, magazines, flowers, and so on.
 
 ## Problem Definition
 
@@ -104,6 +104,6 @@ The following plot shows the relationship between profit and order quantity (Q).
 ![alt text](img/img_newsvendor_Q.png)
 
 
-## Takeway
+## Takeaway
 
 This example demonstrated how to solve the newsvendor problem using simulation-based approaches using SupplyNetPy library. By simulating different order quantities and evaluating the resulting profits, we can visualize and confirm the optimal order quantity that maximizes expected profit. This approach can be extended to more complex inventory scenarios and demand distributions, providing valuable insights for inventory management decisions.

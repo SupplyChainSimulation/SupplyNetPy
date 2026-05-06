@@ -1,19 +1,19 @@
 # Complex Supply Chain Network
 
-This example demonstrates how to build and simulate a multi‑echelon, hybrid supply chain with different replenishment policies in **SupplyNetPy**.
+This example shows how to build and simulate a *multi-echelon, hybrid* supply chain in **SupplyNetPy**, using a mix of replenishment policies. By **multi-echelon** we mean a chain with several layers — for instance, a raw-material supplier feeding a factory, the factory feeding distributors, and the distributors feeding retailers. By **hybrid** we mean that a downstream node can be replenished by more than one upstream node (so retailers can order from either of two distributors).
 
 ![Newsvendor](img/bread_sc.png)
 
 ## Goals
 
 * Creating a network with multiple raw materials, suppliers, a manufacturer, two distributors, and several retailers.
-* Mix replenishment policies (\`SS\`, \`RQ\`, \`Periodic\`).
+* Mix replenishment policies (`SS`, `RQ`, `Periodic`).
 * Include hybrid connections (ordering from multiple distributors).
 
 ## Key Concepts Used
 
 * **Products, Raw Materials**: Class `Product` used to create a product, Bread, with some shelf life, `RawMaterial` is used to create raw materials (dough, sugar, yeast)
-* **Nodes**: Clasees `Supplier`, `Manufacturer`, `InventoryNode` are used to create suppliers,  bakery (factory), distributors, and retailers (cake shops).
+* **Nodes**: Classes `Supplier`, `Manufacturer`, `InventoryNode` are used to create suppliers,  bakery (factory), distributors, and retailers (cake shops).
 * **Links**: Class `Link` is used to link different nodes in the network
 * **Policies**:
     * `SSReplenishment`: order up to **S** when inventory <= **s**

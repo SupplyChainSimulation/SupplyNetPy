@@ -13,7 +13,7 @@ scm.Supplier(env=env, ID="S1", name="S1", node_type=scm.NodeType.SUPPLIER)
 
 #### Writing a custom replenishment policy
 
-The built-in replenishment policies (_SSReplenishment_, _RQReplenishment_, _PeriodicReplenishment_) talk to their owning node through a small contract on _Node_, rather than reaching into its internal attributes. A user-defined `InventoryReplenishment` subclass should use the same contract so it stays decoupled from the node's layout:
+The built-in replenishment policies (_SSReplenishment_, _RQReplenishment_, _PeriodicReplenishment_) communicate with the node they belong to through a small set of helper methods on _Node_, rather than reading or writing the node's internal attributes directly. A user-defined `InventoryReplenishment` subclass should use the same helpers so that it stays decoupled from the internal layout of `Node`:
 
 - `node.position()` — current backorder-aware inventory position (`on_hand - stats.backorder[1]`). Use this in place of reading `node.inventory.on_hand` and `node.stats.backorder[1]` separately.
 - `node.place_order(quantity)` — picks a supplier via the node's supplier-selection policy and spawns the dispatch process. Use this in place of `selection_policy.select(...)` + `env.process(process_order(...))`.

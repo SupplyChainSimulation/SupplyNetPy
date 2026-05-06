@@ -1,6 +1,8 @@
 # About SupplyNetPy
 
-**SupplyNetPy** is an open-source Python library designed specifically for modeling, simulating, and analyzing supply chain networks and inventory systems. The library features supply chain-specific components to model arbitrary supply chain networks easily. It is built on Python’s SimPy discrete-event simulation framework and provides a flexible and extensible toolkit for researchers, engineers, and practitioners in operations, logistics, and supply chain management.
+**SupplyNetPy** is an open-source Python library for building, running, and analyzing supply-chain simulations. You describe a supply chain — its suppliers, factories, warehouses, retailers, demand, and the links between them — and SupplyNetPy plays out the events in that chain (orders being placed, shipments arriving, demand showing up, nodes failing) and reports how the system behaves: how much stock sits where, where shortages appear, what each part costs, and how profitable the chain is overall.
+
+Under the hood it runs on top of [SimPy](https://simpy.readthedocs.io/), a Python framework for **event-driven simulation** — instead of advancing the clock one fixed step at a time, the simulator jumps directly from one event to the next (the next order arrival, the next delivery, the next failure), which makes long simulations fast even when events are sparse. SupplyNetPy is intended for researchers, students, and practitioners working in operations, logistics, and supply-chain management.
 
 ---
 
@@ -20,13 +22,13 @@
 
 - **Modular architecture**: Build arbitrarily complex, multi-echelon supply chain networks by assembling built-in components.
 - **Discrete-event simulation**: High-fidelity event-driven simulation powered by SimPy.
-- **Inventory models**: Support for multiple replenishment policies:
-    - (s, S) replenishment
-    - (s, S) with safety stock
-    - Reorder point–quantity (RQ)
-    - Reorder point–quantity (RQ) with safety stock
-    - Periodic review (Q, T)
-    - Periodic review (Q, T) with safety stock
+- **Inventory models**: Several built-in *replenishment policies* — the rules that decide *when* to reorder and *how much* to order:
+    - **(s, S)** — when stock falls below the level *s*, place an order large enough to bring it up to *S*.
+    - **(s, S) with safety stock** — same rule as above, but also keep a buffer of safety stock on top of *s*, so a sudden surge in demand doesn't immediately cause a shortage.
+    - **Reorder point–quantity (RQ)** — when stock falls below the reorder point *R*, order a fixed quantity *Q*.
+    - **Reorder point–quantity (RQ) with safety stock** — same rule, with an extra safety-stock buffer.
+    - **Periodic review (Q, T)** — every *T* days, order *Q* units (regardless of the current level).
+    - **Periodic review (Q, T) with safety stock** — same rule, with an extra safety-stock buffer to guard against demand spikes between reviews.
 - **Flexible lead times**: Define deterministic or stochastic lead times and transportation costs.
 - **Disruption modeling**: Both nodes (warehouses, factories, etc.) and links (transport routes) can be made to fail — either at scheduled times or randomly with a given probability. On top of that, the `disruption_impact` setting on a node describes what physically happens to the goods on the shelf when a disruption hits:
     - `"destroy_all"` — everything is lost (e.g., a fire or flood at a warehouse).

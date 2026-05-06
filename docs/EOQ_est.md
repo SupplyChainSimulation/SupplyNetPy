@@ -13,12 +13,12 @@ img{
 
 ## System Description
 
-As Best Buy sells its current inventory of HP computers, the purchasing manager places a  replenishment order for a new lot of Q computers. Including the cost of transportation, Best Buy incurs a fixed cost of $S per order. The purchasing manager must decide on the number of computers to order from HP in a lot. For this decision, we assume the following inputs:
+As Best Buy sells through its current stock of HP computers, the purchasing manager places a replenishment order for a new batch of *Q* computers (the **lot size**). Each order carries a fixed cost of *S* dollars — a per-order overhead that covers paperwork, transport, receiving, and similar costs that do *not* scale with the size of the order. The purchasing manager has to decide how many computers to put in each order. The decision uses the following inputs:
 
- - D Annual demand of the product
- - S Fixed cost incurred per order
- - C Cost per unit
- - h Holding cost per year as a fraction of product cost
+ - *D* — annual demand for the product (how many units are sold per year)
+ - *S* — fixed cost incurred per order (independent of the order size)
+ - *C* — cost per unit (what HP charges Best Buy for one computer)
+ - *h* — holding cost per year, expressed as a fraction of the product cost (e.g., *h* = 0.2 means it costs 20% of the unit price to keep one unit on the shelf for a year — covering storage, capital tied up in inventory, etc.)
  
  Assume that HP does not offer any discounts, and each unit costs $C no matter how large an order is. The holding cost is thus given by H = hC. The model is developed using the following basic assumptions:
 

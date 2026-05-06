@@ -19,15 +19,15 @@ Safety inventory can help a supply chain improve product availability in the pre
 
 ## System Description
 
-__Bloomingdale__ sells Gucci purses. Demand is 100 per week. Gucci takes 3 weeks to deliver purses to Bloomingdale in response to an order. Therfore Bloomingdale can place an order when exactly 300 purses are remaining in the inventory.
+__Bloomingdale__ sells Gucci purses. Demand is 100 per week. Gucci takes 3 weeks to deliver purses to Bloomingdale in response to an order. Therefore Bloomingdale can place an order when exactly 300 purses are remaining in the inventory.
 
-Given deand fluctuations, demand over three weeks may be higher or lower than that of 300. If it is higher, Bloomingdale will lose sales. The store manager decides to put an order of 400 purses (therfore, safety level is 100).
+Given demand fluctuations, demand over three weeks may be higher or lower than that of 300. If it is higher, Bloomingdale will lose sales. The store manager decides to put an order of 400 purses (therefore, safety level is 100).
 
 __Goal:__ To determine the appropriate level of safety inventory.
 
-__Replinishment policies:__
+__Replenishment policies:__
 
-  1. __Continuous review:__ Inventory is continuously tracked, and an order for a lot size Q is placed when the inventory declines to the reorder point (ROP). As an example, consider the store manager at B&M who continuously tracks the inventory of phones. She orders 600 phones when the inventory drops below ROP 400. In this case, the size of the order does not change from one order to the next. The time between orders may fluctuate given variable demand.
+  1. __Continuous review:__ Inventory is tracked all the time, and an order for a fixed lot size *Q* is placed the moment the level falls to a pre-set threshold called the **reorder point (ROP)** — the stock level at which a refill is triggered. As an example, consider the store manager at B&M who continuously tracks the inventory of phones. She orders 600 phones the moment the inventory drops below the reorder point of 400. In this case, the size of each order is fixed (always 600); only the *time* between consecutive orders varies, depending on how fast demand consumes the stock.
 
   2. __Periodic review:__ Inventory status is checked at regular periodic intervals, and an order is placed to raise the inventory level to a specified threshold. As an example, consider the purchase of film at B&M. The store manager does not track film inventory continuously. Every Thursday, employees check film inventory, and the manager orders enough so that the total of the available inventory and the size of the order equals 1,000 films. In this case, the time between orders is fixed. The size of each order, however, can fluctuate given variable demand.
 

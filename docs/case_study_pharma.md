@@ -8,23 +8,26 @@ In this example, we aim to understand the supply chain network system described 
 
 ## System Description
 
-It is a single echelon supply chain: (A distributor: Hospital Pharmacy, and a supplier: Pharmaceutical Manufacturing Facility)
+The system is a single-echelon supply chain — that is, a chain with just one layer between the source and the customer. In this case, a hospital pharmacy (the distributor) is supplied directly by a pharmaceutical manufacturing facility (the supplier).
 
- - A distributor facing stochastic demand is connected to an infinite supplier.
- - The supplier can be disrupted with probability = 0.001 at given day t.
- - The distributor replenishment policy: (s,S)
- - The product is perishable with shelf life of 90 days.
- - The authors model and simulate the system to find optimum values of policy parameters (s,S) that minimizes total expected cost per day
+ - The pharmacy faces stochastic (i.e., unpredictable, day-to-day-varying) demand and is connected to a supplier with unlimited stock.
+ - On any given day, the supplier may be disrupted (unable to ship) with probability 0.001.
+ - The pharmacy follows an (s, S) replenishment policy: when the inventory level falls below *s*, place an order large enough to bring it up to *S*.
+ - The product is perishable, with a shelf life of 90 days.
+ - The authors model and simulate this system to find the values of *s* and *S* that minimize the expected total cost per day.
 
 ![image-2.png](img/case_study_pharma_files/case_study_pharma_sc.png)
 
 Inventory Type: Perishable <br>
-Inventory position (level at given time t) = inventory on hand + inventory en route <br>
-Replenishment Policy: (s,S) When level falls below s, order is placed for (S - current inventory position) units <br>
-Review period = 1 day (monitor inventory everyday) <br>
-H = Inventory at hand <br>
-H' = Inventory at hand that expires at the end of the day t <br>
-P = Inventory position = H + inventory en route <br>
+**Inventory position** is the amount of stock the pharmacy can count on as of today — *what is physically on the shelf right now*, plus *anything already ordered that has not yet arrived* (i.e., in transit from the supplier). It is the basis on which the next reorder decision is made. <br>
+&emsp; Inventory position = inventory on hand + inventory en route <br>
+Replenishment Policy: (s, S) — when the inventory position falls below *s*, place an order for (*S* − current inventory position) units, so that the position is brought back up to *S*. <br>
+Review period = 1 day (the pharmacy checks its inventory every day). <br>
+
+The flowchart below uses the following shorthand: <br>
+&emsp; H = inventory on hand (what is on the shelf) <br>
+&emsp; H′ = portion of H that will expire at the end of day *t* <br>
+&emsp; P = inventory position = H + inventory en route <br>
 
 ![image.png](img/case_study_pharma_files/case_study_pharma_flow.png)
 
@@ -62,7 +65,7 @@ Costs of interest are shortage, waste, holding and ordering <br>
  same end of the month expiration date. Hence drugs are only discarded at the end of the month.
  - The inventory on-hand is know each day.
  - Estimated days until inventory expires is known each day.
- - Lead time is deterministic and +ve. The Order placed at the end of the day (t-1), and arrives at the begining of the day t.
+ - Lead time is deterministic and positive. The order placed at the end of the day (t-1) arrives at the beginning of day t.
  - Demand is stochastic.
  - Supply uncertainty is due to disruptions
  (these two are independent of each other)
@@ -79,7 +82,7 @@ Costs of interest are shortage, waste, holding and ordering <br>
  - z = waste cost (1 units)
  - h = holding cost (0.001 units)
  - o = ordering cost (0.5 units)
- - dt = demand on day t (stochastic) (Poission 25/day)
+ - dt = demand on day t (stochastic) (Poisson 25/day)
  - yt = binary variable for supply disruption status on day t (yt=0 disrupted, yt=1 available) (stochastic) (p=0.01)
  - disrupt_time ~ Geom(p=0.01)
  - recovery_time ~ Geom(p=1/30)
@@ -129,7 +132,7 @@ b = 5       #shortage cost (5 units)
 z = 1       #waste cost (1 units)
 h = 0.001   #holding cost (0.001 units)
 o = 0.5     #ordering cost (0.5 units)
-dt = 25     #demand on day t (stochastic) (Poission 25/day)
+dt = 25     #demand on day t (stochastic) (Poisson 25/day)
 # yt = binary variable for supply disruption status on day t (yt=0 disrupted, yt=1 available) (stochastic) (p=0.01)
 yt_p = 0.01  # ~ Geometric(p=0.01), sampled from Geometric distribution with probability p = 0.01
 yt_r = 1/30 # node recovery time ~ Geometric(p=1/30), sampled from Geometric distribution with probability p = 1/30 = 0.033
