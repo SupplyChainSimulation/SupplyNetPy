@@ -332,6 +332,60 @@ if gross + reorder_quantity > self.inventory.inventory.capacity:
 - Canonical `examples/py/intro_simple.py` unchanged (`profit: -4435.0`): a single-link network can't exercise the filter.
 - `pytest` — 133/133 passing.
 
+### 3.16 Probabilistic disruption (`failure_p`) busy-spins instead of polling per tick ✅ Resolved
+`core.py:~1842` (`Node.disruption`), `core.py:~2117` (`Link.disruption`)
+
+**Original issue (2026-05-07):** both disruption loops had the shape
+
+```python
+while True:
+    if status == "active":
+        if disrupt_time:
+            yield env.timeout(disrupt_time())
+            ...set inactive...
+        elif rng.random() < failure_p:
+            ...set inactive...
+            yield env.timeout(1)
+        # ← no else branch, no yield on the miss path
+    else:
+        yield env.timeout(recovery_time())
+        ...set active...
+```
+
+When only `failure_p` was set and the rng draw *missed* (the common case for any small `failure_p`), neither the `if` nor the `elif` body executed. Control fell through to the next iteration of `while True` with simulation time **not advanced**, drawing the rng again immediately. Because Python's `random()` returns from `[0, 1)`, a sufficiently long tight loop will eventually land below any positive `failure_p` — so the node/link disrupted "almost certainly at `t=0`" regardless of how small `failure_p` was. `failure_p` did not behave as a per-tick probability at all; it behaved as a guarantee, with the only randomness being the wall-clock wait for Python to draw a small enough number.
+
+In the *hit* branch, the `yield env.timeout(1)` was a separate (and minor) bug: after going inactive, the next iteration falls through to `else` and yields `recovery_time` — the extra 1-tick wait there only delayed recovery start by one unit.
+
+**Fix applied:** restructured both loops into `if disrupt_time / else: <draw>; yield timeout(1)`. The probabilistic poll now yields one tick per draw whether or not it hit:
+
+```python
+if status == "active":
+    if disrupt_time:
+        yield env.timeout(disrupt_time())
+        ...set inactive...
+    else:
+        if rng.random() < failure_p:
+            ...set inactive...
+        yield env.timeout(1)   # unconditional — one draw per tick
+else:
+    yield env.timeout(recovery_time())
+    ...set active...
+```
+
+Both call sites carry an inline comment explaining why the yield is on the *outer* path of the probabilistic branch and not gated by the rng draw. Behavior of `disrupt_time` (timed disruption) is unchanged — that branch was already correct, and `intro_simple.py` only exercises the `disrupt_time` path indirectly via no-disruption defaults, so its `profit: -4435.0` baseline is untouched.
+
+**Verified:**
+
+- Canonical `examples/py/intro_simple.py` unchanged (`profit: -4435.0`).
+- `pytest` — 202/202 passing (198 prior + 4 new).
+- Four new regression tests in `tests/test_core.py`:
+  - `TestNodeDisruptionProbabilisticIsTimePaced::test_misses_do_not_busy_spin_and_node_stays_active`: stubs `rng.random()` to always return `0.99` (strictly above `failure_p=0.01`). Without the fix, `env.run(until=20)` would never return — the loop would tight-spin in real wall time. With the fix, the run completes and the rng is drawn exactly 20 times (once per tick).
+  - `TestNodeDisruptionProbabilisticIsTimePaced::test_hit_after_misses_flips_status_at_the_hitting_tick`: stubs the rng with the sequence `[0.9, 0.9, 0.001]`. Asserts the node remains `active` after `env.run(until=2)` and flips to `inactive` after `env.run(until=3)` — pinning the per-tick scheduling deterministically.
+  - `TestLinkDisruptionProbabilisticIsTimePaced::test_misses_do_not_busy_spin_and_link_stays_active`: same shape against `Link.link_failure_p`.
+  - `TestLinkDisruptionProbabilisticIsTimePaced::test_hit_after_misses_flips_status_at_the_hitting_tick`: same shape against `Link.link_failure_p`.
+
+**Behavioral note for downstream users:** small `failure_p` values now actually produce small per-tick probabilities. Any user simulation tuned around the broken behavior will see different (much rarer) disruption frequency. The `validation/` numbers were not generated with `failure_p`-driven disruption (the cross-check uses scheduled `disrupt_time`, which lives on the `if disrupt_time` branch and was unchanged), so those still hold.
+
 ---
 
 ## 4. Design / architecture issues

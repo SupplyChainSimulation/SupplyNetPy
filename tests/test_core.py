@@ -2126,3 +2126,133 @@ class TestManufacturerDisruptionImpactDestroyAll(unittest.TestCase):
         # = 1 + 2 = 3); raw priced at rm.cost = 2.
         # 10*3 + 50*2 = 130
         assert mfr.stats.destroyed_value == 130
+
+
+class _StubRng:
+    """Deterministic RNG stub. Records ``.random()`` call count and returns
+    a fixed value (or values from a sequence). Used to pin the behavior of
+    probabilistic disruption to a known schedule.
+    """
+
+    def __init__(self, value=None, seq=None):
+        self.calls = 0
+        self._value = value
+        self._seq = list(seq) if seq is not None else None
+
+    def random(self):
+        self.calls += 1
+        if self._seq is not None:
+            if not self._seq:
+                # Pad with the last value rather than raising — keeps the
+                # disruption loop running so the test can observe steady
+                # state past the scripted prefix.
+                return 0.999
+            return self._seq.pop(0)
+        return self._value
+
+
+class TestNodeDisruptionProbabilisticIsTimePaced(unittest.TestCase):
+    """Regression: ``Node.disruption`` with only ``failure_p`` set must poll
+    once per simulation tick.
+
+    The earlier code only yielded ``timeout(1)`` after a *successful*
+    disruption draw — a missed draw fell through ``while True`` with no
+    ``yield``, busy-spinning in real wall time and drawing the rng
+    unboundedly per tick. ``failure_p`` therefore collapsed to "near-certain
+    disruption at t=0" regardless of its magnitude.
+
+    With the fix in place, the rng is drawn exactly once per tick and the
+    loop yields ``timeout(1)`` whether or not the draw hit, so ``failure_p``
+    behaves as a per-tick probability.
+    """
+
+    def test_misses_do_not_busy_spin_and_node_stays_active(self):
+        # rng always returns 0.99 — strictly above failure_p=0.01, so no
+        # disruption ever fires. Without the fix this would tight-loop
+        # forever (env.run never returns); with the fix env.run completes
+        # and the rng is drawn once per tick.
+        env = _fresh_env()
+        rng = _StubRng(value=0.99)
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=80, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            failure_p=0.01, node_recovery_time=lambda: 3,
+            rng=rng,
+        )
+        env.run(until=20)
+        # One draw per tick, t=0..t=19 → 20 draws. No busy spin.
+        assert rng.calls == 20
+        assert node.node_status == "active"
+
+    def test_hit_after_misses_flips_status_at_the_hitting_tick(self):
+        # First two draws miss (0.9 > 0.01), third draw hits (0.001 < 0.01).
+        # Schedule (with the fix):
+        #   t=0: draw 0.9   → miss, yield 1
+        #   t=1: draw 0.9   → miss, yield 1
+        #   t=2: draw 0.001 → HIT, set inactive, yield 1
+        #   t=3: status=inactive → wait recovery (10), so still inactive at t=12
+        env = _fresh_env()
+        rng = _StubRng(seq=[0.9, 0.9, 0.001])
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=80, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            failure_p=0.01, node_recovery_time=lambda: 10,
+            rng=rng,
+        )
+        env.run(until=2)  # processes t=0 and t=1 (both misses), pauses pre-t=2
+        assert node.node_status == "active"
+        env.run(until=3)  # t=2 fires: draw 0.001 hits, status flips
+        assert node.node_status == "inactive"
+
+
+class TestLinkDisruptionProbabilisticIsTimePaced(unittest.TestCase):
+    """Regression mirror of the Node test: ``Link.disruption`` with only
+    ``link_failure_p`` set must poll once per simulation tick. Same
+    underlying bug, same fix, same shape of regression test.
+    """
+
+    def _build_link(self, env, rng, failure_p):
+        # Minimal source→sink topology. The link itself owns the disruption
+        # process; the nodes' own disruption loops stay dormant because
+        # neither failure_p nor disrupt_time is set on them.
+        sup = scm.Supplier(
+            env=env, ID="S1", name="S1", node_type="supplier",
+            capacity=100, initial_level=100, inventory_holding_cost=0,
+            raw_material=scm.RawMaterial(
+                ID="R1", name="R1", cost=1,
+                extraction_quantity=10, extraction_time=1, mining_cost=1,
+            ),
+        )
+        snk = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=50, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+        )
+        return scm.Link(
+            env=env, ID="L1", source=sup, sink=snk,
+            cost=0, lead_time=lambda: 1,
+            link_failure_p=failure_p, link_recovery_time=lambda: 3,
+            rng=rng,
+        )
+
+    def test_misses_do_not_busy_spin_and_link_stays_active(self):
+        env = _fresh_env()
+        rng = _StubRng(value=0.99)
+        link = self._build_link(env, rng, failure_p=0.01)
+        env.run(until=20)
+        assert rng.calls == 20
+        assert link.status == "active"
+
+    def test_hit_after_misses_flips_status_at_the_hitting_tick(self):
+        env = _fresh_env()
+        rng = _StubRng(seq=[0.9, 0.9, 0.001])
+        link = self._build_link(env, rng, failure_p=0.01)
+        env.run(until=2)
+        assert link.status == "active"
+        env.run(until=3)
+        assert link.status == "inactive"

@@ -1853,11 +1853,21 @@ class Node(NamedEntity, InfoMixin):
                     # per-tick polling here would re-create the §5.1 wake storm.
                     if self._disruption_impact_fn is not None:
                         self._disruption_impact_fn(self)
-                elif(self.rng.random() < self.node_failure_p):
-                    self.node_status = "inactive"
-                    self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
-                    if self._disruption_impact_fn is not None:
-                        self._disruption_impact_fn(self)
+                else:
+                    # Probabilistic disruption: poll once per time unit so
+                    # ``node_failure_p`` is interpreted as a per-tick failure
+                    # probability. The ``yield env.timeout(1)`` MUST be
+                    # unconditional on this branch — without it, a missed
+                    # draw would loop back to ``while True`` with no
+                    # simulation time advanced, busy-spinning in real time
+                    # until a draw landed under failure_p (which makes the
+                    # node disrupt almost immediately at t=0 regardless of
+                    # how small failure_p is).
+                    if(self.rng.random() < self.node_failure_p):
+                        self.node_status = "inactive"
+                        self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
+                        if self._disruption_impact_fn is not None:
+                            self._disruption_impact_fn(self)
                     yield self.env.timeout(1)
             else:
                 recovery_time = self.node_recovery_time() # get the recovery time
@@ -2122,9 +2132,16 @@ class Link(NamedEntity, InfoMixin):
                     yield self.env.timeout(disrupt_time)
                     self.status = "inactive" # change the link status to inactive
                     global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
-                elif(self.rng.random() < self.link_failure_p):
-                    self.status = "inactive"
-                    global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
+                else:
+                    # Probabilistic disruption: poll once per time unit. The
+                    # unconditional ``yield env.timeout(1)`` below mirrors the
+                    # fix in ``Node.disruption`` — without it, a missed draw
+                    # busy-spins through ``while True`` without advancing
+                    # simulation time, making ``link_failure_p`` collapse to
+                    # near-certain disruption at t=0.
+                    if(self.rng.random() < self.link_failure_p):
+                        self.status = "inactive"
+                        global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
                     yield self.env.timeout(1)
             else:
                 recovery_time = self.link_recovery_time() # get the recovery time
