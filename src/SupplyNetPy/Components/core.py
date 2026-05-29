@@ -2343,12 +2343,23 @@ class Inventory(NamedEntity, InfoMixin):
                 Callers that track ``on_hand`` must reconcile any shortfall
                 (``requested - accepted``) against their bookkeeping.
         """
-        if self.inventory.level == float('inf') or amount <= 0 or self.inventory.level == self.capacity:
+        # ``>=`` not ``==``: SimPy's Container._do_put does ``_level += amount``,
+        # and a fill-to-capacity put (``amount = capacity - level``) can float-round
+        # the result one ULP ABOVE capacity (e.g. level becomes 99.99000000000001
+        # for a capacity of 99.99). An exact ``== capacity`` guard misses that state,
+        # so ``>=`` is needed to recognise an already-full (or over-the-wall) node.
+        if self.inventory.level == float('inf') or amount <= 0 or self.inventory.level >= self.capacity:
             return 0
 
         if amount + self.inventory.level > self.capacity: # adjust amount if it exceeds capacity
             old_amount = amount
             amount = self.capacity - self.inventory.level
+            # Backstop: if the float-overshoot above slipped through (level sitting
+            # one ULP over capacity), this clamp is <= 0. Passing a non-positive
+            # amount to SimPy's Container.put raises "amount(=...) must be > 0.",
+            # so treat it as "already full" and accept nothing instead of crashing.
+            if amount <= 0:
+                return 0
             self.node.logger.warning(f"Inventory capacity exceeded. Only {amount} of {old_amount} units added to inventory.")
 
         if self.inv_type == "perishable":

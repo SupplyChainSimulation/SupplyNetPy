@@ -476,6 +476,24 @@ class TestInventory(unittest.TestCase):
         assert callable(inv.get_info)
         assert callable(inv.get_statistics)
 
+    def test_put_at_capacity_wall_does_not_crash(self):
+        # Regression for the "Known bugs" float-overshoot crash (CLAUDE.md).
+        # capacity=99.99 with this initial level is a pair where the
+        # fill-to-capacity put makes SimPy's container _level round to one ULP
+        # ABOVE capacity (99.99000000000001). The exact-equality "full" guard
+        # then missed that state, and the *next* put recomputed a negative
+        # fill-to-capacity amount and fed it to SimPy, raising
+        # "amount(=-1.42e-14) must be > 0.". The fix must instead treat the
+        # over-the-wall node as full and accept 0.
+        inv = scm.Inventory(env=self.node.env, capacity=99.99, initial_level=17.29320252118375,
+                            node=self.node, replenishment_policy=None, holding_cost=0.1)
+        # Put #1: fills right onto the wall; container _level overshoots by 1 ULP.
+        inv.put(82.69679747881625)
+        self.assertGreaterEqual(inv.level, 99.99)
+        # Put #2: used to crash. Must be a no-op that reports nothing accepted.
+        accepted = inv.put(10)
+        self.assertEqual(accepted, 0)
+
 class TestSupplier(unittest.TestCase):
     rawmat = scm.RawMaterial(ID="RM1", name="Raw Material 1", extraction_quantity=10, extraction_time=2, mining_cost=1, cost=2)
     def setUp(self):
