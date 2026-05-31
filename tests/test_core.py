@@ -1705,6 +1705,132 @@ class TestEndToEndIntegration(unittest.TestCase):
         assert sc["profit"] == -4435.0
 
 
+def _scripted_seq(values, tail):
+    """Zero-arg callable that yields ``values`` in order, then ``tail`` forever.
+
+    ``Demand.__init__`` samples each of its callables twice before the
+    simulation starts (once in ``ensure_numeric_callable``, once in the explicit
+    ``validate_number`` line), so callers prepend two harmless padding values to
+    ``values`` to absorb those construction-time samples.
+    """
+    seq = list(values)
+    state = {"i": 0}
+
+    def _next():
+        i = state["i"]
+        state["i"] += 1
+        return seq[i] if i < len(seq) else tail
+
+    return _next
+
+
+class TestReplenishmentDropAndDiscard(unittest.TestCase):
+    """Replenishment-shipment drop handling (CLAUDE.md drop-loop conventions).
+
+    Two scenarios where an arriving replenishment shipment used to be dropped
+    silently are addressed here:
+
+    * **Scenario A** — a backordered customer's patience runs out and it leaves
+      before the over-capacity shipment lands, so there is no one to hand the
+      surplus to. The surplus is still legitimately dropped, but now a warning
+      is logged flagging that the node's capacity may be too small.
+    * **Scenario B** — a customer orders more than the node's whole shelf can
+      hold and accepts no partial delivery, so it can never be served. That
+      order is now discarded up front (recorded as lost demand, no backorder,
+      no replenishment) instead of driving a doomed over-capacity order that
+      would only be dropped on arrival.
+    """
+
+    def _build_distributor_net(self, env, lead_time, arrival_model,
+                               quantity_model, tolerance, min_split=1.0):
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        d1 = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="distributor",
+            capacity=100, initial_level=100, inventory_holding_cost=0.1,
+            replenishment_policy=scm.SSReplenishment, policy_param={"s": 90, "S": 100},
+            product_buy_price=10, product_sell_price=12,
+        )
+        link = scm.Link(env=env, ID="L1", source=s1, sink=d1, cost=1,
+                        lead_time=lambda lt=lead_time: lt)
+        dem = scm.Demand(
+            env=env, ID="dem", name="dem", demand_node=d1,
+            order_arrival_model=arrival_model, order_quantity_model=quantity_model,
+            tolerance=tolerance, order_min_split_ratio=min_split,
+        )
+        return d1
+
+    def test_scenario_a_drop_logs_capacity_warning(self):
+        # A full shelf (100/100), a 60-unit sale then an 80-unit order whose
+        # customer's tolerance (2 days) expires before the 5-day-lead shipment
+        # lands. The order placed to cover that backorder arrives to a full
+        # shelf with no one waiting -> surplus dropped, with a warning.
+        scm.set_seed(42)
+        env = simpy.Environment()
+        d1 = self._build_distributor_net(
+            env, lead_time=5,
+            arrival_model=_scripted_seq([0, 0, 0, 1], tail=100),   # 2 padding + script
+            quantity_model=_scripted_seq([1, 1, 60, 80], tail=1),  # 2 padding + script
+            tolerance=2,
+        )
+        with self.assertLogs("sim_trace", level="WARNING") as cm:
+            env.run(until=10)
+        dropped_lines = [m for m in cm.output if "Dropped" in m and "D1" in m]
+        assert dropped_lines, f"expected a drop warning, got: {cm.output}"
+        assert any("capacity" in m for m in dropped_lines)
+        # The shelf ends full and never overshoots its capacity.
+        assert d1.inventory.level == d1.inventory.capacity
+
+    def test_scenario_b_over_capacity_order_is_discarded(self):
+        # One customer wants 130 units from a node whose shelf holds 100 and
+        # who accepts no partial delivery: it can never be served. The order
+        # must be discarded (recorded as lost demand) — no backorder, no
+        # replenishment, and therefore no later drop.
+        scm.set_seed(42)
+        env = simpy.Environment()
+        d1 = self._build_distributor_net(
+            env, lead_time=3,
+            # One customer at t=0 (wants 130), then the next arrival is pushed
+            # past the run so no trailing customer touches the shelf.
+            arrival_model=_scripted_seq([0, 0, 1000], tail=1000),
+            quantity_model=_scripted_seq([1, 1, 130], tail=1),
+            tolerance=1000, min_split=1.0,
+        )
+        with self.assertLogs("sim_trace", level="WARNING") as cm:
+            env.run(until=8)
+        stats = d1.stats.get_statistics()
+        # No backorder was ever created for the unservable order.
+        assert stats["backorder"] == [0, 0]
+        # The node never placed a replenishment order off the back of it.
+        assert stats["demand_placed"] == [0, 0]
+        # The lost demand is recorded as a shortage and a warning was logged.
+        assert stats["shortage"] == [1, 130]
+        assert any("discarded" in m for m in cm.output)
+        # Nothing was delivered, so the shelf is untouched (no drop).
+        assert d1.inventory.level == 100
+
+    def test_servable_partial_order_is_not_discarded(self):
+        # Guard against over-eager discarding: an order larger than capacity is
+        # still servable when partial delivery (min_split < 1) lets it arrive in
+        # chunks the shelf can hold. Such an order must NOT be discarded — it
+        # keeps its backorder and drives replenishment as before.
+        scm.set_seed(42)
+        env = simpy.Environment()
+        d1 = self._build_distributor_net(
+            env, lead_time=2,
+            arrival_model=_scripted_seq([0, 0, 1000], tail=1000),
+            quantity_model=_scripted_seq([1, 1, 130], tail=1),
+            tolerance=1000, min_split=0.5,   # 65-unit chunks fit on a 100 shelf
+        )
+        # Stop before the shipment arrives (lead time 2): we only need to see
+        # that the order was accepted into the system, not discarded.
+        env.run(until=1)
+        stats = d1.stats.get_statistics()
+        # A backorder was created (the order was enqueued, not discarded), and
+        # the node placed a replenishment order off the back of it.
+        assert stats["backorder"][0] >= 1
+        assert stats["demand_placed"][0] >= 1
+
+
 class TestInventoryInvariants(unittest.TestCase):
     """§7: invariant checks for ``Inventory`` that property-based tests
     would have caught the original ``remove_expired`` bug. Hand-rolled here

@@ -2975,6 +2975,17 @@ class InventoryNode(Node):
                     if self.inventory.level >= prev_level:
                         # The pause freed nothing, so nothing more can be stored.
                         # Drop the leftover and correct the inventory position.
+                        # Warn the user: the node paid for these units but has
+                        # nowhere to put them and no waiting customer to hand
+                        # them to. This usually means the node's storage
+                        # capacity is too small for the order sizes flowing
+                        # through it.
+                        self.logger.warning(
+                            f"{self.env.now:.4f}:{self.ID}:Dropped {remaining} units from the "
+                            f"delivered shipment — the shelf is full and no waiting customer "
+                            f"could take them. The node's storage capacity "
+                            f"({self.inventory.capacity}) may be too small for this order size."
+                        )
                         self.inventory.on_hand -= remaining
                         remaining = 0
                         break
@@ -3638,6 +3649,30 @@ class Demand(Node):
         return
         yield  # pragma: no cover — keeps this a generator so the dispatcher can ``yield from`` uniformly.
 
+    def _discard_unservable(self, order_quantity, customer_id):
+        """Order is too big for the upstream node to ever hold — discard it.
+
+        The smallest piece the customer will accept (the whole order when no
+        partial delivery is allowed, otherwise the minimum split chunk) is
+        larger than the upstream node's total shelf capacity. Even a completely
+        full shelf could not cover it, so this order can never be served. We
+        record it as lost demand (a shortage) and log a warning, but we do
+        **not** create a backorder and do **not** trigger a replenishment
+        order. Backordering it would only make the node order stock from its
+        own supplier that, once delivered, would not fit on the shelf and would
+        simply be thrown away."""
+        capacity = self.demand_node.inventory.capacity
+        self.logger.warning(
+            f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:"
+            f"{order_quantity} is larger than {self.demand_node.name}'s storage "
+            f"capacity ({capacity}) and can never be delivered (no partial delivery "
+            f"would help). Order discarded — recorded as lost demand, no backorder "
+            f"and no replenishment placed."
+        )
+        self.demand_node.stats.update_stats(shortage=[1, order_quantity])
+        return
+        yield  # pragma: no cover — keeps this a generator (see _enqueue_for_tolerance).
+
     def _serve_no_tolerance(self, order_quantity, available, customer_id):
         """Zero-tolerance path — log shortage and leave without a wait."""
         self.logger.info(
@@ -3669,12 +3704,23 @@ class Demand(Node):
         """
         available = self.demand_node.inventory.level
         self.stats.update_stats(demand_placed=[1, order_quantity])
+        # The smallest piece this customer will take: the whole order when no
+        # partial delivery is allowed (min_split >= 1), otherwise the minimum
+        # split chunk. This mirrors how ``wait_for_order`` computes ``partial``.
+        min_chunk = order_quantity if self.min_split >= 1 else int(order_quantity * self.min_split)
         if order_quantity <= available:
             yield from self._serve_in_full(order_quantity, customer_id)
         elif self.consume_available and available > 0:
             yield from self._serve_partial_consume(order_quantity, available, customer_id)
         elif self.customer_tolerance > 0:
-            yield from self._enqueue_for_tolerance(order_quantity, available, customer_id)
+            if min_chunk > self.demand_node.inventory.capacity:
+                # Order can never be served — even a full shelf cannot cover
+                # the smallest acceptable piece. Discard it rather than create
+                # a backorder that would drive a replenishment the shelf can't
+                # hold.
+                yield from self._discard_unservable(order_quantity, customer_id)
+            else:
+                yield from self._enqueue_for_tolerance(order_quantity, available, customer_id)
         else:
             yield from self._serve_no_tolerance(order_quantity, available, customer_id)
     
