@@ -2914,30 +2914,76 @@ class InventoryNode(Node):
             validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
             yield self.env.timeout(lead_time) # lead time for the order
 
-            accepted = 0
-            if(man_date_ls):
-                for ele in man_date_ls: # get manufacturing date from the supplier
-                    accepted += self.inventory.put(ele[1],ele[0])
-            elif(self.inventory.inv_type=="perishable"): # if self inventory is perishable but manufacture date is not provided
-                if(self.manufacture_date): # calculate the manufacturing date using the function if provided
-                    accepted = self.inventory.put(reorder_quantity,self.manufacture_date(self.env.now))
-                else: # else put the product in the inventory with current time as manufacturing date
-                    accepted = self.inventory.put(reorder_quantity,self.env.now)
-            else:
-                accepted = self.inventory.put(reorder_quantity)
+            # Add the delivered units to the shelf, one fitting chunk at a time.
+            #
+            # Why loop instead of a single put()? A replenishment order can be
+            # bigger than the free space on the shelf. This is normal, not a
+            # mistake: when the node owes units to waiting customers (backorders),
+            # the (s, S) policy orders enough to BOTH refill the shelf AND cover
+            # those backorders. That combined amount can be larger than the shelf
+            # can hold at once, because the backordered units are meant to pass
+            # straight through to customers, not to sit on the shelf. A single
+            # put() would simply drop whatever did not fit — and the node would
+            # still have paid for those dropped units.
+            #
+            # So we add what fits right now, then pause for one instant of
+            # simulation time. `env.timeout(0)` does not advance the clock; it just
+            # lets other events scheduled for this same instant run. During that
+            # pause, the units we just shelved are handed to the waiting customers,
+            # which empties shelf space again. We then add the next chunk, and
+            # repeat until the whole order has been shelved or handed out.
+            #
+            # Safety stop: if a pause frees no shelf space at all, the shelf is
+            # genuinely full and the leftover cannot be stored. We stop there (so
+            # the loop can never run forever inside a single instant) and drop the
+            # leftover. `on_hand` is the node's inventory position (units on the
+            # shelf plus units still in transit); it was increased by the full
+            # order amount when the order was placed, so we subtract the
+            # undeliverable leftover back out to keep it correct.
+            if man_date_ls:                                  # supplier sent dated batches (perishable goods)
+                batches = [(ele[0], ele[1]) for ele in man_date_ls]
+            elif self.inventory.inv_type == "perishable":    # perishable, but we set the made-on date ourselves
+                mfg = self.manufacture_date(self.env.now) if self.manufacture_date else self.env.now
+                batches = [(mfg, reorder_quantity)]
+            else:                                            # ordinary (non-perishable) goods
+                batches = [(None, reorder_quantity)]
 
-            # Reconcile on_hand with what put() actually accepted: the pre-increment
-            # at line ~2014 assumed the full reorder_quantity would land, but put() may
-            # clamp at capacity or refuse at capacity/inf/non-positive. Without this,
-            # on_hand drifts permanently higher than the physical+in-transit total.
-            shortfall = reorder_quantity - accepted
-            if shortfall > 0:
-                self.inventory.on_hand -= shortfall
+            accepted = 0  # how many units actually made it onto the shelf
+            for mfg_date, qty in batches:
+                # `remaining > 1e-9` rather than `> 0`: a tiny tolerance so
+                # floating-point rounding dust never triggers one extra loop.
+                remaining = qty
+                while remaining > 1e-9:
+                    # put() returns how many units it actually accepted — it
+                    # never overfills the shelf, so this can be less than asked.
+                    if mfg_date is None:
+                        put_now = self.inventory.put(remaining)
+                    else:
+                        put_now = self.inventory.put(remaining, mfg_date)
+                    accepted += put_now
+                    remaining -= put_now
+                    if remaining <= 1e-9:
+                        break  # the whole chunk is shelved; done
+                    # Shelf is full. Pause one instant so the units we just added
+                    # can be handed to waiting customers (freeing space), then retry.
+                    prev_level = self.inventory.level
+                    yield self.env.timeout(0)
+                    if self.inventory.level >= prev_level:
+                        # The pause freed nothing, so nothing more can be stored.
+                        # Drop the leftover and correct the inventory position.
+                        self.inventory.on_hand -= remaining
+                        remaining = 0
+                        break
 
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, Inventory levels:{self.inventory.level}")
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, accepted={accepted}, Inventory levels:{self.inventory.level}")
 
-            self.stats.update_stats(fulfillment_received=[1,reorder_quantity],inventory_spend_cost=reorder_quantity*self.buy_price)
-            supplier.source.stats.update_stats(demand_fulfilled=[1,reorder_quantity])
+            # Record what actually arrived (`accepted`), not what was ordered.
+            # In the normal case these are equal. They differ only when part of an
+            # order could not be stored (the "safety stop" above), and in that case
+            # the node should be billed for, and credited with, only the units it
+            # truly received.
+            self.stats.update_stats(fulfillment_received=[1,accepted],inventory_spend_cost=accepted*self.buy_price)
+            supplier.source.stats.update_stats(demand_fulfilled=[1,accepted])
         else:
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted. Order not placed.")
         self.pending_orders -= 1
