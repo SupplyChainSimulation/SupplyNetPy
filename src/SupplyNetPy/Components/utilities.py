@@ -1,8 +1,9 @@
 import simpy
 import networkx as nx
 import matplotlib.pyplot as plt
-# Named imports only — no wildcards. ``global_logger`` is internal plumbing and
-# is deliberately pulled in by name here rather than re-exported.
+# Import only the names we need (no ``*`` wildcard imports). ``global_logger``
+# is an internal helper, so we pull it in by name here instead of making it
+# part of the public API.
 from SupplyNetPy.Components.core import (
     Node,
     NodeType,
@@ -14,12 +15,12 @@ from SupplyNetPy.Components.core import (
     global_logger,
 )
 
-# Dispatch table: ``NodeType`` → (constructor class, counter key, drop
-# ``node_type`` from kwargs?). The enum is the single source of truth for
-# which node types exist; adding a new one is a single-site change here plus
-# the entry on ``NodeType``. The boolean flag covers ``Manufacturer``, whose
-# ``__init__`` does not accept a ``node_type`` parameter (it is hard-coded to
-# ``"manufacturer"`` inside the class).
+# Lookup table that maps each ``NodeType`` to the class used to build that
+# node, the counter to increase, and whether to drop ``node_type`` from the
+# keyword arguments. ``NodeType`` is the one place that lists which node types
+# exist, so adding a new type means changing only this table and ``NodeType``.
+# The last flag is needed for ``Manufacturer`` alone: its ``__init__`` does not
+# take a ``node_type`` argument (it always uses ``"manufacturer"``).
 _NODE_DISPATCH = {
     NodeType.INFINITE_SUPPLIER: (Supplier,      "num_suppliers",      False),
     NodeType.SUPPLIER:          (Supplier,      "num_suppliers",      False),
@@ -72,9 +73,9 @@ def check_duplicate_id(used_ids, new_id, entity_type="ID"):
     if new_id in used_ids:
         global_logger.error(f"Duplicate {entity_type} {new_id}")
         raise ValueError(f"Duplicate {entity_type}")
-    # ``set`` exposes ``.add``; ``list`` exposes ``.append``. Pick whichever
-    # the caller's container actually supports rather than gating on isinstance,
-    # so any other ``MutableSet`` / ``MutableSequence`` works too.
+    # A ``set`` adds items with ``.add`` and a ``list`` with ``.append``. We
+    # use whichever method the passed-in container has, instead of checking its
+    # exact type, so other set-like or list-like containers work too.
     insert = getattr(used_ids, "add", None) or used_ids.append
     insert(new_id)
 
@@ -92,10 +93,10 @@ def process_info_dict(info_dict, logger):
     Returns:
         str: A string representation of the processed information.
     """
-    # Build via list + join instead of repeated ``+=`` concatenation. Each
-    # ``+=`` on a Python str allocates a new string and copies the prefix,
-    # making the loop O(n^2) in total bytes — a real cost for networks with
-    # 100+ nodes whose info dicts each accumulate dozens of lines.
+    # Collect the lines in a list and join them once at the end. Repeatedly
+    # adding to a string with ``+=`` is slow, because Python has to rebuild the
+    # whole string every time — which adds up for networks with 100+ nodes that
+    # each produce dozens of lines.
     parts = []
     for key, value in info_dict.items():
         if isinstance(value, object):
@@ -106,12 +107,12 @@ def process_info_dict(info_dict, logger):
         logger.info(f"{key}: {value}")
     return "\n".join(parts) + ("\n" if parts else "")
 
-# Tier ordering for ``multipartite_layout`` (§8). Map every NodeType to a
-# horizontal column so the layout reads left-to-right as raw → finished, which
-# is the natural reading order for a supply chain. ``spectral_layout`` (the
-# previous default) often degenerates for small directed graphs and can
-# produce embeddings that overlap suppliers and retailers; the tiered layout
-# avoids that and is also more interpretable.
+# Column position for each NodeType when drawing the network with
+# ``multipartite_layout``. Putting each type in its own column makes the
+# picture read left-to-right from raw materials to finished goods, which is the
+# natural order for a supply chain. The old default (``spectral_layout``) often
+# placed nodes badly for small networks, overlapping suppliers and retailers;
+# this column layout avoids that and is easier to read.
 _TIER_INDEX = {
     "infinite_supplier": 0,
     "supplier": 0,
@@ -130,10 +131,10 @@ def visualize_sc_net(supplychainnet):
     """
     Visualize the supply chain network as a graph.
 
-    Uses :func:`networkx.multipartite_layout` keyed by node tier so the
-    drawing reads left-to-right (suppliers → manufacturers → distributors →
-    retailers → demand). The previous default ``spectral_layout`` often
-    produced degenerate embeddings for small directed graphs (§8).
+    Lays the nodes out in columns by type (using
+    :func:`networkx.multipartite_layout`) so the drawing reads left-to-right
+    (suppliers → manufacturers → distributors → retailers → demand). The old
+    default, ``spectral_layout``, often placed nodes badly for small networks.
 
     Parameters:
         supplychainnet (dict): The supply chain network containing nodes and edges.
@@ -186,9 +187,9 @@ def get_sc_net_info(supplychainnet):
     """
     logger = global_logger
     global_logger.enable_logging(log_to_screen=True)
-    # Accumulate into a list and join once at the end — O(n) instead of the
-    # quadratic ``sc_info += ...`` chain (str is immutable; every ``+=``
-    # allocates a new string and copies the prefix).
+    # Collect the lines in a list and join them once at the end. Repeatedly
+    # growing a string with ``+=`` is slow, because Python rebuilds the whole
+    # string each time.
     parts = ["Supply chain configuration: "]
     info_keys = ['num_of_nodes', 'num_of_links', 'num_suppliers','num_manufacturers', 'num_distributors', 'num_retailers']
     for key in info_keys:
@@ -217,16 +218,17 @@ def get_sc_net_info(supplychainnet):
 
 def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment = None):
     """
-    This functions inputs the nodes, links and demand netlists and creates supply chain nodes, links and demand objects.
-    It then creates a supply chain network by putting all the objects in a dictionary.
+    Takes the node, link, and demand descriptions, builds the matching supply
+    chain node, link, and demand objects, and gathers them all into one
+    dictionary that represents the network.
 
-    Each of ``nodes``, ``links``, and ``demands`` must be homogeneous — either
-    entirely dicts (netlist style) or entirely pre-built domain objects
-    (``Node`` / ``Link`` / ``Demand`` instances). Mixing the two within a single
-    list is rejected, because a fresh ``simpy.Environment`` created for the
-    dict items would not match the one the object items were built against.
-    When any list contains pre-built objects, ``env`` must be passed explicitly
-    and each object's own ``env`` must match it.
+    Each of ``nodes``, ``links``, and ``demands`` must be all one kind — either
+    all dicts (the description style) or all ready-made objects (``Node`` /
+    ``Link`` / ``Demand`` instances). You cannot mix the two in a single list,
+    because the fresh ``simpy.Environment`` made for the dict items would not
+    match the one the ready-made objects were built with. If any list contains
+    ready-made objects, you must pass ``env`` yourself, and each object's own
+    ``env`` must be that same environment.
 
     Parameters:
         nodes (list): A netlist of nodes in the supply chain network.
@@ -254,12 +256,12 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
     Returns:
         dict: A dictionary representing the supply chain network.
     """
-    # Reject mixed dict-and-object lists up-front. Scanning every element means
-    # we no longer fall for the old first-element-only trap: a list like
-    # ``[dict, Node_instance, ...]`` used to pass the env-required check
-    # (because ``nodes[0]`` was a dict) and then silently fall into the
-    # ``isinstance(node, Node)`` branch at a later index with a fresh env,
-    # dropping the object's real env on the floor.
+    # Reject lists that mix dicts and pre-built objects, right at the start. We
+    # check every element, not just the first one. An earlier version only
+    # looked at element 0, so a list like ``[dict, Node_instance, ...]`` slipped
+    # past the "env required" check (because ``nodes[0]`` was a dict) and then
+    # built the later object with a fresh env, throwing away the env that object
+    # was actually created with.
     def _check_homogeneous(items, obj_cls, list_name):
         has_dict = any(isinstance(x, dict) for x in items)
         has_obj = any(isinstance(x, obj_cls) for x in items)
@@ -313,14 +315,14 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
     _check_env_match(links, Link, "links")
     _check_env_match(demands, Demand, "demands")
     supplychainnet = {"nodes":{},"links":{},"demands":{}} # create empty supply chain network
-    # Set rather than list: ``in`` is O(1) and ``.add``/``.remove`` are O(1) too,
-    # so building a network with N nodes is O(N) instead of O(N^2). The
-    # ``check_duplicate_id`` helper duck-types its insert call, so passing a
-    # set just works.
+    # Use a set, not a list: checking membership and adding/removing items are
+    # all fast (constant time), so building a network with many nodes stays
+    # fast. ``check_duplicate_id`` works with either a set or a list.
     used_ids = set()
-    # Counters keyed by the category name used in ``_NODE_DISPATCH``. A dict
-    # replaces the four separate ``num_*`` locals so dispatch is a single
-    # ``counters[category] += 1`` instead of an if/elif ladder.
+    # Counts of each node category, keyed by the names used in
+    # ``_NODE_DISPATCH``. Using one dict (instead of four separate ``num_*``
+    # variables) lets us count with a single ``counters[category] += 1`` rather
+    # than a long if/else chain.
     counters = {"num_suppliers": 0, "num_manufacturers": 0, "num_distributors": 0, "num_retailers": 0}
     for node in nodes:
         if isinstance(node, dict):
@@ -333,9 +335,9 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
                 global_logger.error(f"Invalid node type {node['node_type']}")
                 raise ValueError("Invalid node type")
             cls, counter_key, drop_node_type = _NODE_DISPATCH[nt]
-            # ``Manufacturer.__init__`` does not accept ``node_type`` — every
-            # other constructor does. The ``drop_node_type`` flag is the one
-            # place this asymmetry is encoded.
+            # ``Manufacturer.__init__`` is the only constructor that does not
+            # accept ``node_type``, so for it we drop that key. The
+            # ``drop_node_type`` flag records this one difference.
             kwargs = {k: v for k, v in node.items() if not (drop_node_type and k == "node_type")}
             supplychainnet["nodes"][f"{node_id}"] = cls(env=env, **kwargs)
             counters[counter_key] += 1
@@ -418,9 +420,10 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
     logger = global_logger
     env = supplychainnet["env"]
 
-    # Back-compat shim: the original API allowed ``logging=(start, stop)`` to
-    # request a window. Honour that spelling but route it onto ``log_window``
-    # so the rest of this function only sees one shape per parameter.
+    # For backward compatibility: the original API let you pass
+    # ``logging=(start, stop)`` to ask for a logging window. We still accept
+    # that, but convert it to ``log_window`` here so the rest of this function
+    # only deals with one form of each argument.
     if isinstance(logging, tuple) and len(logging) == 2:
         if log_window is not None:
             logger.warning("simulate_sc_net: both logging=tuple and log_window= were provided; log_window takes precedence.")
@@ -548,12 +551,12 @@ def get_node_wise_performance(nodes_object_list):
     """
     Collect per-node performance statistics into a structured form.
 
-    A library should return data, not print it (§6.3) — this function gathers
+    A library should return data rather than print it, so this function gathers
     each node's ``stats.get_statistics()`` dict and returns the rows as a list
-    of dicts keyed by the metric name. Callers that want a tabular display can
-    feed the result to ``pandas.DataFrame.from_records``; callers that want
-    the previous text dump can pass it to :func:`format_node_wise_performance`
-    or :func:`print_node_wise_performance`.
+    of dicts keyed by the metric name. Callers who want a table can feed the
+    result to ``pandas.DataFrame.from_records``; callers who want the plain-text
+    layout can pass it to :func:`format_node_wise_performance` or
+    :func:`print_node_wise_performance`.
 
     Parameters:
         nodes_object_list (list): List of supply chain node objects.
@@ -580,8 +583,8 @@ def format_node_wise_performance(nodes_object_list, col_width: int = 25) -> str:
     """
     Format the per-node performance table as a fixed-width text block.
 
-    Pure string helper — does not print. Build with a list and ``"\\n".join``
-    to keep the formatter O(n) in total bytes (§5.4).
+    Builds a string only — it does not print. The lines are collected in a list
+    and joined once at the end, which keeps it fast even for many nodes.
 
     Parameters:
         nodes_object_list (list): List of supply chain node objects.
@@ -630,17 +633,16 @@ def print_node_wise_performance(nodes_object_list):
 
 
 # ---------------------------------------------------------------------------
-# §6.1: object-oriented wrapper around the netlist dict.
+# An object-oriented wrapper around the plain network dict.
 # ---------------------------------------------------------------------------
-# ``create_sc_net`` / ``simulate_sc_net`` return / mutate a plain ``dict`` that
-# mixes construction metadata (``nodes``, ``links``, ``env``, ``num_*``) with
-# simulation results (``revenue``, ``profit``, ``shortage``). The two
-# free-functions plus the dict have served the library well, but have the
-# downsides flagged in REVIEW.md §6.1: no autocomplete, no typed getters, no
-# clean separation between "before run" and "after run". ``Network`` is a thin
-# additive wrapper that exposes the same data through attributes / methods,
-# while keeping the underlying dict reachable as ``network.as_dict()`` so the
-# legacy free-function API and the new OO API stay equivalent.
+# ``create_sc_net`` / ``simulate_sc_net`` return and update a plain ``dict``
+# that mixes setup information (``nodes``, ``links``, ``env``, ``num_*``) with
+# simulation results (``revenue``, ``profit``, ``shortage``). That dict works
+# well, but it has downsides: no editor autocomplete, no typed accessors, and
+# no clear split between "before the run" and "after the run". ``Network`` is a
+# thin wrapper that exposes the same data through attributes and methods, while
+# still giving access to the underlying dict via ``network.as_dict()`` — so the
+# older function-based API and this object-based API stay equivalent.
 # ---------------------------------------------------------------------------
 class Network:
     """
@@ -671,9 +673,9 @@ class Network:
     keeps a reference to it continues to see the latest values.
     """
 
-    # Keys that ``simulate_sc_net`` writes onto the dict after a run. Used
-    # to project the post-run KPIs into ``Network.results`` without having
-    # to enumerate them at every call site.
+    # Keys that ``simulate_sc_net`` writes onto the dict after a run. Listed
+    # here once so ``Network.results`` can pull them out without repeating the
+    # list in several places.
     _RESULT_KEYS = (
         "available_inv", "avg_available_inv", "inventory_carry_cost",
         "inventory_spend_cost", "inventory_waste", "transportation_cost",
@@ -782,10 +784,10 @@ class Network:
         """
         Aggregated KPIs from the most recent :meth:`simulate` call.
 
-        Empty dict before ``simulate`` runs. The values share storage with
-        the underlying ``supplychainnet`` dict — :class:`Network` projects
-        the result keys here so callers do not have to know which dict keys
-        are construction metadata vs run output.
+        Empty dict before ``simulate`` runs. The values come straight from the
+        underlying ``supplychainnet`` dict — :class:`Network` simply picks out
+        the result keys here, so callers do not have to know which dict keys are
+        setup information and which are run output.
         """
         return {k: self._sc[k] for k in self._RESULT_KEYS if k in self._sc}
 
@@ -794,7 +796,7 @@ class Network:
         """Whether :meth:`simulate` has been called at least once."""
         return self._has_run
 
-    # ---- Escape hatch -----------------------------------------------------
+    # ---- Access to the underlying dict ------------------------------------
     def as_dict(self) -> dict:
         """
         Return the underlying ``supplychainnet`` dict.

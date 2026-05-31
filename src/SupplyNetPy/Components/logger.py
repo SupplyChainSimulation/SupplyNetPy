@@ -2,22 +2,24 @@ import logging
 
 __all__ = ["GlobalLogger"]
 
-# Library root logger name. Per-node loggers in ``core.py`` are created as
-# ``f"{_LIBRARY_LOGGER_NAME}.{node.ID}"`` so they propagate to this single
-# logger; handlers are attached only here, never per-node. The
-# ``_ShortNameFilter`` strips the prefix when records are formatted, so
-# ``INFO sim_trace.D1 - ...`` displays as ``INFO D1 - ...`` — preserving the
-# log-line shape users have always seen.
+# Name of the library's one main logger. Each node in ``core.py`` makes its
+# own logger named ``f"{_LIBRARY_LOGGER_NAME}.{node.ID}"``. Python's logging
+# system automatically passes every message from those per-node loggers up to
+# this one main logger ("propagation"), so we attach the real output handlers
+# (file / screen) only here, never on each node. The ``_ShortNameFilter``
+# below trims the ``sim_trace.`` prefix when a line is printed, so
+# ``INFO sim_trace.D1 - ...`` shows up as ``INFO D1 - ...`` — the same line
+# format users have always seen.
 _LIBRARY_LOGGER_NAME = "sim_trace"
 _LOG_FORMAT = "%(levelname)s %(short_name)s - %(message)s"
 
 
 class _ShortNameFilter(logging.Filter):
-    """Adds ``record.short_name`` (``record.name`` without the ``sim_trace.``
-    prefix) so per-node child loggers display as ``D1`` rather than
-    ``sim_trace.D1``. Doing this in a filter — not by mutating ``record.name``
-    in a custom Formatter — keeps the original name intact for any other
-    handler that might be reading it."""
+    """Adds a ``record.short_name`` field — the logger name with the
+    ``sim_trace.`` prefix removed — so a per-node logger prints as ``D1``
+    instead of ``sim_trace.D1``. We do this in a filter (which only adds the
+    extra field) rather than by editing ``record.name`` in a formatter, so the
+    full original name is still available to any other handler that wants it."""
 
     _PREFIX = _LIBRARY_LOGGER_NAME + "."
 
@@ -35,12 +37,13 @@ class GlobalLogger(logging.LoggerAdapter):
 
     Subclasses :class:`logging.LoggerAdapter` so callers can write
     ``node.logger.info(...)`` (and ``debug`` / ``warning`` / ``error`` /
-    ``critical``) directly — no more ``node.logger.logger.info(...)`` double-hop.
-    The underlying :class:`logging.Logger` is still reachable as
-    ``self.logger`` (the standard adapter attribute), so older code that
-    reaches through that attribute keeps working.
+    ``critical``) directly. (Older code had to write
+    ``node.logger.logger.info(...)`` with two ``.logger`` steps; that is no
+    longer needed.) The underlying :class:`logging.Logger` is still reachable
+    as ``self.logger`` (the standard adapter attribute), so older code that
+    goes through that attribute keeps working.
 
-    **The wrapper is inert by default.** ``GlobalLogger()`` attaches only a
+    **The wrapper does nothing by default.** ``GlobalLogger()`` attaches only a
     :class:`logging.NullHandler` and does not open any file — output is opt-in.
     Call :meth:`enable_logging` (or pass ``log_to_file=True`` /
     ``log_to_screen=True`` to the constructor) to attach real handlers. This is
@@ -76,7 +79,8 @@ class GlobalLogger(logging.LoggerAdapter):
     Functions:
         debug/info/warning/error/critical/log/exception: Inherited from
             :class:`logging.LoggerAdapter` — call them directly on the
-            adapter instead of routing through ``.logger``.
+            adapter (e.g. ``logger.info(...)``) instead of going through
+            ``.logger``.
         set_log_file(filename): Set the destination file and re-attach handlers.
         get_log_file(): Return the current log file path.
         set_logger(logger_name): Rebind ``self.logger`` to a different name.
@@ -94,17 +98,18 @@ class GlobalLogger(logging.LoggerAdapter):
                  log_to_screen=False):
         logger = logging.getLogger(logger_name)
         logger.setLevel(logging.DEBUG)
-        # The library root logger should not leak records up to Python's root
-        # logger — that would dump our logs into whatever the host application
-        # has configured. Per-node child loggers keep ``propagate=True`` so
-        # their records still reach the handlers attached here.
+        # Stop this main logger from passing its messages further up to
+        # Python's own root logger — otherwise our log lines would also land in
+        # whatever logging the host application has set up. (Per-node loggers
+        # still pass their messages up to this one; only this top logger stops
+        # here.)
         if logger_name == _LIBRARY_LOGGER_NAME:
             logger.propagate = False
-        # Fresh GlobalLogger == fresh slate: a previous instance may have set
-        # disabled=True on the same underlying Python logger.
+        # Start clean: an earlier GlobalLogger may have muted this same
+        # underlying Python logger by setting disabled=True.
         logger.disabled = False
-        # extra=None: we don't inject any contextual fields. The base
-        # LoggerAdapter.process() returns (msg, kwargs) unchanged in that case.
+        # extra=None: we add no extra fields to each message, so the base
+        # LoggerAdapter passes the message through unchanged.
         super().__init__(logger, extra=None)
 
         self.log_to_file = log_to_file

@@ -7,14 +7,14 @@ import random
 import numbers
 from typing import Callable
 
-# Public API — names re-exported by Components/__init__.py. Module-level
-# constants ``_rng``, ``_LOGGER_KWARGS`` and ``_NODE_KWARGS`` are internal and
-# intentionally omitted. ``global_logger`` IS exported: the docs advertise
-# ``scm.global_logger.enable_logging() / disable_logging()`` as a bulk
-# logging-control handle, so it is supported surface (even though day-to-day
-# users should prefer per-node ``logging=False`` or ``node.logger.*``).
-# ``set_seed`` is the sanctioned entry point for seeding the default RNG;
-# per-instance RNG injection lives behind the ``rng=`` constructor kwarg.
+# Public API — the names re-exported by Components/__init__.py. The module-level
+# values ``_rng``, ``_LOGGER_KWARGS`` and ``_NODE_KWARGS`` are internal and are
+# left out on purpose. ``global_logger`` IS exported: the docs offer
+# ``scm.global_logger.enable_logging() / disable_logging()`` as a single switch
+# for all logging, so it is part of the supported API (though for everyday use
+# prefer per-node ``logging=False`` or ``node.logger.*``). ``set_seed`` is the
+# intended way to seed the default random-number generator; to give one
+# component its own generator, pass ``rng=`` when building it.
 __all__ = [
     "set_seed",
     "validate_positive",
@@ -69,16 +69,18 @@ def set_seed(seed):
     """
     _rng.seed(seed)
 
-# Whitelist of kwargs accepted by GlobalLogger. Node.__init__ forwards only these to
-# the logger, and Node subclasses strip them out before forwarding the rest to
-# Inventory — which has a strict signature (no **kwargs), so unknown keys like
-# typo'd parameter names raise TypeError at the Inventory boundary.
+# The keyword arguments that GlobalLogger accepts. Node.__init__ passes only
+# these on to the logger, and Node subclasses remove them before passing the
+# rest on to Inventory. Inventory takes a fixed set of arguments (no catch-all
+# ``**kwargs``), so a misspelled parameter name raises a clear TypeError there
+# instead of being quietly ignored.
 _LOGGER_KWARGS = {"log_to_file", "log_file", "log_to_screen"}
 
-# Node-level kwargs that Node.__init__ consumes. Node subclasses (Supplier,
-# InventoryNode, Manufacturer, Demand) use **kwargs, so these leak into the
-# subclass's local kwargs even after being forwarded to super(); they must be
-# stripped before that kwargs dict is forwarded onward to Inventory.
+# The keyword arguments that Node.__init__ itself uses. The Node subclasses
+# (Supplier, InventoryNode, Manufacturer, Demand) take a catch-all ``**kwargs``,
+# so these names are still present in the subclass's kwargs even after being
+# passed up to Node; they must be removed before the remaining kwargs are passed
+# on to Inventory.
 _NODE_KWARGS = {"failure_p", "node_disrupt_time", "node_recovery_time", "logging", "rng", "logger_name", "stats_period", "periodic_stats", "disruption_impact", "disruption_loss_fraction"}
 
 
@@ -172,22 +174,23 @@ def validate_number(name: str, value) -> None:
 
 def ensure_numeric_callable(name: str, value):
     """
-    Normalise a scalar-or-callable parameter to a zero-arg numeric callable.
+    Turn a value that is "a number, or a zero-arg function returning a number"
+    into a zero-arg function.
 
-    Many constructors accept either a number or a zero-arg callable (lead
-    times, arrival intervals, recovery times). The previous auto-wrap was
+    Many constructors accept either a plain number or a zero-arg function (lead
+    times, arrival intervals, recovery times). The earlier version simply did
 
     .. code-block:: python
 
         if not callable(value):
             value = lambda val=value: val
 
-    which silently accepted any callable — including a class like ``int`` or
-    a generator function — turning the eventual ``value()`` call into a
-    runtime explosion deep inside a SimPy process (§6.4). This helper fixes
-    that by invoking the callable once at validation time and asserting the
-    result is a real number; non-numeric returns surface immediately at
-    construction with a clear error message naming the offending parameter.
+    which accepted any function at all — even a class like ``int`` or a
+    generator function — so the later ``value()`` call could fail deep inside a
+    running simulation, far from where the mistake was made. This helper avoids
+    that by calling the function once when it is set up and checking the result
+    is a real number, so a bad value is reported right away, at construction,
+    with a clear message naming the parameter at fault.
 
     Parameters:
         name (str): Parameter name used in error messages.
@@ -474,8 +477,8 @@ class Statistics(InfoMixin):
                 setattr(self, key, [0, 0])
             elif isinstance(current, (int, float)):
                 setattr(self, key, 0)
-        # Pass 2 — back-stop for any non-tracked instance attribute that
-        # used to be reset by the historical ``vars(self)`` sweep.
+        # Pass 2 — a safety net for any counter that is not in the tracked list
+        # but used to be reset by the old "reset everything" sweep.
         for key, value in vars(self).items():
             if key.startswith("_") or key in self._stats_keys:
                 continue
@@ -483,17 +486,17 @@ class Statistics(InfoMixin):
                 setattr(self, key, [0, 0])
             elif isinstance(value, (int, float)):
                 setattr(self, key, 0)
-        # Inventory-side counters live on Inventory, not on Statistics, so
-        # they need an explicit reset here. Adding a new metric on Inventory
-        # that should reset means appending to this guarded block (or
-        # promoting the metric to Statistics via _stats_keys).
+        # Some counters live on the Inventory object, not on Statistics, so they
+        # have to be reset here by hand. If you add a new Inventory counter that
+        # should reset, add it to this block (or move the counter onto
+        # Statistics by listing it in _stats_keys).
         if hasattr(self.node, 'inventory'):
             self.node.inventory.carry_cost = 0
             self.node.inventory.waste = 0
 
     @property
     def orders_shortage(self):
-        """Back-compat alias for :attr:`shortage`. Returns the same list (mutating it mutates ``shortage``)."""
+        """Old name kept for compatibility — same as :attr:`shortage`. Returns the same list, so changing it also changes ``shortage``."""
         return self.shortage
 
     @orders_shortage.setter
@@ -506,8 +509,8 @@ class Statistics(InfoMixin):
 
         Parameters:
             **kwargs: keyword arguments containing the statistics to update.
-                ``orders_shortage=`` is accepted as a back-compat alias for
-                ``shortage=`` (§6.6 renamed the attribute).
+                ``orders_shortage=`` is still accepted as the old name for
+                ``shortage=`` (the attribute was renamed).
 
         Attributes:
             None
@@ -515,10 +518,10 @@ class Statistics(InfoMixin):
         Returns:
             None
         """
-        # Back-compat: ``orders_shortage`` was renamed to ``shortage`` in §6.6.
-        # External code (and historical examples) still pass the old kwarg —
-        # fold it onto the new key here so both spellings drive the same
-        # bookkeeping. If a caller passes both, the new spelling wins.
+        # ``orders_shortage`` was renamed to ``shortage``. Older code (and some
+        # examples) still pass the old name, so map it onto the new one here and
+        # let both names update the same counter. If a caller passes both, the
+        # new name wins.
         if "orders_shortage" in kwargs and "shortage" not in kwargs:
             kwargs["shortage"] = kwargs.pop("orders_shortage")
         elif "orders_shortage" in kwargs:
@@ -748,19 +751,19 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
     the SimPy environment to support time-driven inventory management. The `inventory_drop` event is used to signal stock
     depletion, enabling the replenishment process to respond to changes in inventory levels in real time.
 
-    **Node contract for custom subclasses.** A policy should speak to its owning node through four helpers rather than
-    reaching into node internals:
+    **How a custom policy should talk to its node.** A policy should use these four helper methods instead of reaching
+    into the node's internal attributes:
 
-    - `self.node.position()` — backorder-aware inventory position (`on_hand - stats.backorder[1]`).
-    - `self.node.place_order(quantity)` — selects a supplier via the node's selection policy and spawns the dispatch
-      process. Replaces the `selection_policy.select(...)` + `env.process(process_order(...))` pair.
-    - `self.node.wait_for_drop()` — generator used as `yield from self.node.wait_for_drop()` to block until the
-      inventory drops; rotates the `inventory_drop` event atomically on wake-up.
-    - `Link.available_quantity()` — for any supplier-selection policy, compares upstream stock without reading
+    - `self.node.position()` — the inventory position, counting backorders (`on_hand - stats.backorder[1]`).
+    - `self.node.place_order(quantity)` — picks a supplier using the node's selection policy and starts the order. This
+      replaces calling `selection_policy.select(...)` and `env.process(process_order(...))` yourself.
+    - `self.node.wait_for_drop()` — a generator used as `yield from self.node.wait_for_drop()` to wait until the
+      inventory drops; on wake-up it safely replaces the `inventory_drop` event with a fresh one.
+    - `Link.available_quantity()` — lets a supplier-selection policy check a supplier's stock without reading
       `link.source.inventory.level` directly.
 
-    Staying inside this contract keeps a policy subclass independent of the concrete node layout and makes it
-    compatible with any future `Node` subclass that provides the same methods.
+    Sticking to these helpers keeps a policy from depending on how a particular node is built, so it works with any
+    future `Node` type that offers the same methods.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
@@ -1179,34 +1182,36 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
 
     def _active_suppliers(self):
         """
-        Return the subset of ``self.node.suppliers`` whose transport link is
-        currently active. If every link is disrupted, fall back to the full
-        supplier list so subclasses always have a non-empty candidate set —
-        the dispatch gate in ``process_order`` will then block the inactive
-        choice and the policy will retry on the next replenishment trigger.
+        Return only the suppliers whose transport link is working right now. If
+        every link is down, return the full supplier list instead, so the
+        calling policy always has at least one option to choose from. In that
+        case ``process_order`` will refuse to send the order over the down link
+        and the policy will try again the next time replenishment is triggered.
 
         Returns:
-            list: Active suppliers (``Link`` objects), or all suppliers if none are active.
+            list: Suppliers with a working link (``Link`` objects), or all
+                suppliers if none are working.
         """
         active = [s for s in self.node.suppliers if s.status == "active"]
         return active if active else self.node.suppliers
 
     def _apply_mode(self, selected):
         """
-        Apply the fixed / dynamic mode semantics to a dynamically chosen supplier.
+        Apply the "fixed" or "dynamic" behavior to a freshly chosen supplier.
 
-        In ``"fixed"`` mode the first selection is locked for all subsequent
-        calls, but if the locked supplier's link is currently inactive the
-        policy temporarily routes around it (returning ``selected`` for this
-        call without changing the lock) — "fixed" means *prefer this one*,
-        not *stop shipping if it's down*. The lock is restored as soon as
-        the supplier's link recovers.
+        In ``"fixed"`` mode the first chosen supplier is remembered and reused on
+        later calls. But if that remembered supplier's link is currently down,
+        the policy temporarily uses ``selected`` for this call (without
+        forgetting the remembered one) — "fixed" means *prefer this supplier*,
+        not *stop shipping when it is down*. The remembered supplier is used
+        again as soon as its link comes back.
 
         Parameters:
-            selected (Link): The supplier chosen by the subclass's selection logic.
+            selected (Link): The supplier chosen by the subclass's own logic.
 
         Returns:
-            Link: ``self.fixed_supplier`` in fixed mode (or ``selected`` if the lock is inactive); ``selected`` in dynamic mode.
+            Link: the remembered supplier in fixed mode (or ``selected`` if the
+                remembered one's link is down); ``selected`` in dynamic mode.
         """
         if self.mode == "fixed":
             if self.fixed_supplier is None:
@@ -1260,17 +1265,17 @@ class SelectFirst(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the first supplier whose transport link is currently active.
+        Selects the first supplier whose transport link is working right now.
 
-        Disrupted links are filtered out; if every link is inactive, the policy
-        falls back to the first supplier in the list (the dispatch gate in
-        ``process_order`` then blocks it and the policy retries on the next
-        replenishment trigger).
+        Suppliers with a down link are skipped. If every link is down, the
+        policy falls back to the first supplier in the list (``process_order``
+        then refuses to send over the down link, and the policy tries again the
+        next time replenishment is triggered).
 
-        In dynamic mode, the selection is evaluated for each order.
-        In fixed mode, the first active supplier is locked for all subsequent
-        selections. If the locked link later goes inactive, the policy
-        temporarily routes around it without changing the lock.
+        In dynamic mode, the choice is made fresh for each order. In fixed mode,
+        the first working supplier is remembered and reused; if its link later
+        goes down, the policy temporarily uses another working one without
+        forgetting the remembered supplier.
 
         Parameters:
             order_quantity (float): The quantity to order.
@@ -1328,18 +1333,18 @@ class SelectAvailable(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the first active supplier with sufficient available inventory.
+        Selects the first working supplier that has enough stock available.
 
-        Disrupted links are filtered out first. Among the active candidates the
-        first one whose upstream inventory can cover ``order_quantity`` is
-        chosen; if none can, the policy falls back to the first active
-        candidate (inventory shortage is then recorded by ``process_order`` as
-        a supplier backorder). If every link is inactive, falls back to the
-        first supplier in the list — the dispatch gate will block it.
+        Suppliers with a down link are skipped first. Among those left, it
+        chooses the first one whose stock can cover ``order_quantity``; if none
+        can, it falls back to the first working supplier (``process_order`` then
+        records the shortage as a supplier backorder). If every link is down, it
+        falls back to the first supplier in the list — which ``process_order``
+        will refuse to send to.
 
-        In fixed mode, the first selection is locked for all subsequent orders.
-        If the locked link later goes inactive, the policy temporarily routes
-        around it without changing the lock.
+        In fixed mode, the first choice is remembered and reused for later
+        orders. If its link later goes down, the policy temporarily uses another
+        working one without forgetting the remembered supplier.
 
         Parameters:
             order_quantity (float): The quantity to order.
@@ -1397,16 +1402,16 @@ class SelectCheapest(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the active supplier with the lowest transportation cost.
+        Selects the working supplier with the lowest transportation cost.
 
-        Disrupted links are filtered out first; if every link is inactive,
-        the policy falls back to the cheapest among all suppliers (the dispatch
-        gate in ``process_order`` will block it and the policy retries on the
-        next trigger).
+        Suppliers with a down link are skipped first; if every link is down, the
+        policy falls back to the cheapest of all suppliers (``process_order``
+        then refuses to send over the down link, and the policy tries again on
+        the next trigger).
 
-        In fixed mode, the first selection is locked for all subsequent orders.
-        If the locked link later goes inactive, the policy temporarily routes
-        around it without changing the lock.
+        In fixed mode, the first choice is remembered and reused for later
+        orders. If its link later goes down, the policy temporarily uses another
+        working one without forgetting the remembered supplier.
 
         Parameters:
             order_quantity (float): The quantity to order.
@@ -1464,16 +1469,16 @@ class SelectFastest(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the active supplier with the shortest lead time.
+        Selects the working supplier with the shortest lead time.
 
-        Disrupted links are filtered out first; if every link is inactive,
-        the policy falls back to the fastest among all suppliers (the dispatch
-        gate in ``process_order`` will block it and the policy retries on the
+        Suppliers with a down link are skipped first; if every link is down, the
+        policy falls back to the fastest of all suppliers (``process_order`` then
+        refuses to send over the down link, and the policy tries again on the
         next trigger).
 
-        In fixed mode, the first selection is locked for all subsequent orders.
-        If the locked link later goes inactive, the policy temporarily routes
-        around it without changing the lock.
+        In fixed mode, the first choice is remembered and reused for later
+        orders. If its link later goes down, the policy temporarily uses another
+        working one without forgetting the remembered supplier.
 
         Parameters:
             order_quantity (float): The quantity to order.
@@ -1489,25 +1494,25 @@ class SelectFastest(SupplierSelectionPolicy):
 # ---------------------------------------------------------------------------
 # Disruption impact helpers
 #
-# A disruption can take many physical forms (natural disaster, power outage,
-# political event, contamination); their effect on stored inventory differs.
-# ``Node`` exposes a single ``disruption_impact`` knob that accepts either a
-# string preset (resolved here) or a user-supplied callable taking the node
-# itself. The callback fires once at the active→inactive edge inside
-# ``Node.disruption`` — not on every tick — so effects that should accrue
-# *during* the outage (slow spoilage, ongoing theft) belong in a custom
-# callable that spawns its own SimPy process. Per-tick polling here would
-# re-create the §5.1 wake-storm pattern.
+# A disruption can happen in many ways (natural disaster, power outage,
+# political event, contamination), and each can affect stored inventory
+# differently. ``Node`` offers a single ``disruption_impact`` setting that
+# takes either a built-in name (handled here) or a function you supply that
+# receives the node. The effect runs once, at the moment the node switches from
+# active to inactive inside ``Node.disruption`` — not on every time step. So an
+# effect that should build up *during* the outage (slow spoilage, ongoing
+# theft) belongs in your own function that starts its own process; running an
+# effect on every time step here would flood the simulation with needless
+# wake-ups.
 #
-# Built-in presets:
-#   - "none" / None       — no inventory effect; status flip only.
-#   - "destroy_all"       — wipe the node's primary inventory (and a
-#                           Manufacturer's raw_inventory_counts as well —
-#                           the spirit of "all physical stock at this site
-#                           is gone" is one event, not two).
-#   - "destroy_fraction"  — wipe ``loss_fraction × current level``. The
-#                           fraction may itself be a zero-arg callable so the
-#                           magnitude of each disruption can vary.
+# Built-in options:
+#   - "none" / None       — no effect on inventory; only the status changes.
+#   - "destroy_all"       — remove all of the node's stock (and, for a
+#                           Manufacturer, its raw_inventory_counts too — losing
+#                           "all physical stock at this site" is one event).
+#   - "destroy_fraction"  — remove ``loss_fraction × current level``. The
+#                           fraction can itself be a zero-arg function, so each
+#                           disruption can destroy a different amount.
 # ---------------------------------------------------------------------------
 
 def _unit_destroyed_value(node) -> float:
@@ -1536,11 +1541,11 @@ def _unit_destroyed_value(node) -> float:
 
 def _destroy_all_impact(node) -> None:
     """
-    Built-in handler for ``disruption_impact="destroy_all"``: wipe every
-    physical inventory at the node and record the loss in stats. For a
-    :class:`Manufacturer` this includes the ``raw_inventory_counts`` dict
-    in addition to the finished-goods :class:`Inventory`. Infinite suppliers
-    (``level == inf``) are a no-op — there is no physical pile to destroy.
+    Built-in handler for ``disruption_impact="destroy_all"``: remove all of the
+    node's stock and record the loss in the stats. For a :class:`Manufacturer`
+    this also clears the ``raw_inventory_counts`` dict in addition to the
+    finished-goods :class:`Inventory`. For an infinite supplier
+    (``level == inf``) this does nothing — there is no real pile to destroy.
     """
     inv = getattr(node, "inventory", None)
     unit_value = _unit_destroyed_value(node)
@@ -1847,22 +1852,22 @@ class Node(NamedEntity, InfoMixin):
                     yield self.env.timeout(disrupt_time)
                     self.node_status = "inactive" # change the node status to inactive
                     self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
-                    # Disruption impact fires on the active→inactive edge only.
-                    # Effects that should accrue *during* the outage belong in
-                    # a custom callback that spawns its own SimPy process —
-                    # per-tick polling here would re-create the §5.1 wake storm.
+                    # The disruption-impact effect runs once, at the moment the
+                    # node switches from active to inactive. Effects that should
+                    # build up *during* the outage belong in a custom callback
+                    # that starts its own process; checking on every time step
+                    # here would flood the simulation with needless wake-ups.
                     if self._disruption_impact_fn is not None:
                         self._disruption_impact_fn(self)
                 else:
-                    # Probabilistic disruption: poll once per time unit so
-                    # ``node_failure_p`` is interpreted as a per-tick failure
-                    # probability. The ``yield env.timeout(1)`` MUST be
-                    # unconditional on this branch — without it, a missed
-                    # draw would loop back to ``while True`` with no
-                    # simulation time advanced, busy-spinning in real time
-                    # until a draw landed under failure_p (which makes the
-                    # node disrupt almost immediately at t=0 regardless of
-                    # how small failure_p is).
+                    # Random disruption: check once per time unit, so
+                    # ``node_failure_p`` acts as the chance of failing in any one
+                    # time step. The ``yield env.timeout(1)`` below MUST run
+                    # whether or not this check succeeds. If it were skipped on a
+                    # miss, the ``while True`` loop would spin without advancing
+                    # simulation time, repeating the check over and over until one
+                    # finally succeeds — which would disrupt the node almost
+                    # immediately at t=0 no matter how small ``failure_p`` is.
                     if(self.rng.random() < self.node_failure_p):
                         self.node_status = "inactive"
                         self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
@@ -2133,12 +2138,12 @@ class Link(NamedEntity, InfoMixin):
                     self.status = "inactive" # change the link status to inactive
                     global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
                 else:
-                    # Probabilistic disruption: poll once per time unit. The
-                    # unconditional ``yield env.timeout(1)`` below mirrors the
-                    # fix in ``Node.disruption`` — without it, a missed draw
-                    # busy-spins through ``while True`` without advancing
-                    # simulation time, making ``link_failure_p`` collapse to
-                    # near-certain disruption at t=0.
+                    # Random disruption: check once per time unit. The
+                    # ``yield env.timeout(1)`` below must run whether or not the
+                    # check succeeds (same as in ``Node.disruption``). Without
+                    # it, a miss would spin through ``while True`` without
+                    # advancing simulation time, making ``link_failure_p`` turn
+                    # into near-certain disruption at t=0.
                     if(self.rng.random() < self.link_failure_p):
                         self.status = "inactive"
                         global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
@@ -2290,10 +2295,10 @@ class Inventory(NamedEntity, InfoMixin):
             self.shelf_life = shelf_life
             self.perish_queue = [(0, initial_level)]
             self.waste = 0
-            # Event-driven wake-up for ``remove_expired``. ``put`` succeeds this
-            # event when an inserted batch displaces the heap head (so the next
-            # expiry moves earlier), and the daemon rotates a fresh event in on
-            # wake-up — same idiom as ``Node.wait_for_drop``.
+            # Wake-up signal for the ``remove_expired`` helper. ``put`` fires
+            # this event when a newly added batch becomes the oldest one (so the
+            # next expiry comes sooner), and the helper makes a fresh event each
+            # time it wakes — the same pattern as ``Node.wait_for_drop``.
             self.perish_changed = self.env.event()
             self.env.process(self.remove_expired())
 
@@ -2343,21 +2348,21 @@ class Inventory(NamedEntity, InfoMixin):
                 Callers that track ``on_hand`` must reconcile any shortfall
                 (``requested - accepted``) against their bookkeeping.
         """
-        # ``>=`` not ``==``: SimPy's Container._do_put does ``_level += amount``,
-        # and a fill-to-capacity put (``amount = capacity - level``) can float-round
-        # the result one ULP ABOVE capacity (e.g. level becomes 99.99000000000001
-        # for a capacity of 99.99). An exact ``== capacity`` guard misses that state,
-        # so ``>=`` is needed to recognise an already-full (or over-the-wall) node.
+        # Use ``>=``, not ``==``. When we fill the shelf exactly to capacity,
+        # floating-point rounding can leave the level a hair ABOVE capacity
+        # (e.g. 99.99000000000001 for a capacity of 99.99). A plain
+        # ``== capacity`` check would miss that case, so ``>=`` is used to
+        # correctly spot an already-full shelf.
         if self.inventory.level == float('inf') or amount <= 0 or self.inventory.level >= self.capacity:
             return 0
 
         if amount + self.inventory.level > self.capacity: # adjust amount if it exceeds capacity
             old_amount = amount
             amount = self.capacity - self.inventory.level
-            # Backstop: if the float-overshoot above slipped through (level sitting
-            # one ULP over capacity), this clamp is <= 0. Passing a non-positive
-            # amount to SimPy's Container.put raises "amount(=...) must be > 0.",
-            # so treat it as "already full" and accept nothing instead of crashing.
+            # Safety net: if the rounding above left the level just over
+            # capacity, this leftover space comes out as zero or negative.
+            # SimPy's Container.put rejects a non-positive amount with an error,
+            # so we treat the shelf as already full and simply accept nothing.
             if amount <= 0:
                 return 0
             self.node.logger.warning(f"Inventory capacity exceeded. Only {amount} of {old_amount} units added to inventory.")
@@ -2366,16 +2371,17 @@ class Inventory(NamedEntity, InfoMixin):
             if manufacturing_date is None:
                 self.node.logger.error("Manufacturing date must be provided for perishable inventory.")
                 raise ValueError("Manufacturing date must be provided for perishable inventory.")
-            # ``perish_queue`` is a min-heap keyed by manufacturing date — the
-            # oldest (earliest-to-expire) batch is always at index 0. heappush
-            # is O(log n); the previous manual sorted-insert was O(n).
+            # ``perish_queue`` is a heap ordered by manufacturing date, so the
+            # oldest batch (the first to expire) is always at position 0. Adding
+            # a batch with ``heapq.heappush`` is fast; the earlier hand-sorted
+            # insert was slower.
             new_batch = (manufacturing_date, amount)
             heapq.heappush(self.perish_queue, new_batch)
-            # Wake the ``remove_expired`` daemon only when this push moves the
-            # head — i.e. an empty→non-empty transition or an older batch that
-            # displaces the prior head. With monotonic mfg_dates (the common
-            # case) the head changes only on the empty→non-empty transition,
-            # so the daemon is undisturbed for routine restocks.
+            # Only wake the ``remove_expired`` helper when this new batch becomes
+            # the oldest one (position 0) — either because the queue was empty,
+            # or because this batch is older than everything already stored. For
+            # ordinary restocks (newer dates than what's there) the oldest batch
+            # does not change, so the helper is left alone.
             if self.perish_queue[0] is new_batch and not self.perish_changed.triggered:
                 self.perish_changed.succeed()
         self.update_carry_cost()  # Update carrying cost based on the amount added
@@ -2405,13 +2411,12 @@ class Inventory(NamedEntity, InfoMixin):
                 if qty <= x_amount:
                     man_date_ls.append((mfg_date, qty))
                     x_amount -= qty
-                    heapq.heappop(self.perish_queue)  # O(log n) — was pop(0): O(n)
+                    heapq.heappop(self.perish_queue)  # remove the oldest batch (fast)
                 else:
                     man_date_ls.append((mfg_date, x_amount))
-                    # Partial consumption: replace the head with the same
-                    # mfg_date and a smaller qty. Heap invariant is preserved
-                    # because (mfg_date, qty - x_amount) <= (mfg_date, qty),
-                    # which was already the smallest tuple in the heap.
+                    # We only need part of this oldest batch. Replace it with the
+                    # same date and the smaller leftover quantity. It is still the
+                    # oldest batch, so the heap order stays correct.
                     self.perish_queue[0] = (mfg_date, qty - x_amount)
                     x_amount = 0
         self.update_carry_cost()
@@ -2426,13 +2431,14 @@ class Inventory(NamedEntity, InfoMixin):
         """
         Remove expired items from perishable inventory.
 
-        Event-driven: sleeps until the head batch's expiry rather than polling
-        every simulation tick. Wakes early via ``perish_changed`` when ``put``
-        inserts a batch that displaces the heap head (or arrives into an empty
-        queue), so a fresher head with an earlier expiry is honoured without
-        waiting for the previous timer to elapse. The rotation-event idiom
-        (``self.perish_changed = self.env.event()`` after each wake) mirrors
-        ``Node.wait_for_drop`` and avoids re-firing on a stale event.
+        This runs as a background helper. Instead of checking on every time
+        step, it sleeps exactly until the oldest batch is due to expire. It
+        wakes up early through the ``perish_changed`` event when ``put`` adds a
+        batch that becomes the new oldest one (or arrives into an empty queue),
+        so a batch that expires sooner is handled without waiting for the old
+        timer. After each wake-up it creates a fresh ``perish_changed`` event so
+        an already-used one cannot fire again by mistake — the same pattern as
+        ``Node.wait_for_drop``.
         """
         while True:
             if not self.perish_queue:
@@ -2440,32 +2446,32 @@ class Inventory(NamedEntity, InfoMixin):
                 yield self.perish_changed
                 self.perish_changed = self.env.event()
                 continue
-            # ``perish_queue`` is a min-heap by mfg_date: the oldest batch is
-            # at index 0, so a single peek is enough to compute the next
-            # expiry deadline. ``max(0, ...)`` guards against stale batches
-            # whose deadline has already passed (e.g. backdated mfg_date).
+            # The oldest batch sits at position 0 of the heap, so one look is
+            # enough to find when the next expiry is due. ``max(0, ...)`` keeps
+            # the sleep time from going negative for a batch whose expiry time
+            # has already passed (e.g. one given an old made-on date).
             next_expiry = self.perish_queue[0][0] + self.shelf_life
             sleep_dt = max(0, next_expiry - self.env.now)
             timer = self.env.timeout(sleep_dt)
             result = yield timer | self.perish_changed
             if self.perish_changed in result:
-                # The head moved earlier (older batch arrived, or queue went
-                # empty→non-empty). Rotate the event and recompute from the
-                # new head — even if the timer also fired, the next iteration
-                # will see sleep_dt == 0 and drain on the spot.
+                # A new oldest batch arrived (or the queue went from empty to
+                # non-empty). Make a fresh event and start over from the new
+                # oldest batch — even if the timer also fired, the next loop will
+                # see a sleep time of 0 and remove expired items right away.
                 self.perish_changed = self.env.event()
                 continue
-            # Timer fired — drain everything now expired. The drain test uses
-            # the additive form ``env.now >= mfg_date + shelf_life`` to match
-            # how ``next_expiry`` was computed above; the subtractive form
-            # ``env.now - mfg_date >= shelf_life`` is FP-unstable for
-            # non-integer shelf lives (e.g. ``9.2 - 8`` rounds to
-            # ``1.1999999999999993`` and fails the >= 1.2 check), which would
-            # cause the daemon to skip the drain and re-enter with sleep_dt=0
-            # forever at the same simulated time. ``self.get(qty)`` does the
-            # heappop on the consumed batch (or the partial-consumption update
-            # on the head), so the explicit heappop here only handles the
-            # rare qty == 0 sentinel left over from prior partial consumption.
+            # The timer fired — remove every batch that has now expired. The
+            # test is written as ``env.now >= mfg_date + shelf_life`` to match
+            # how the expiry time was worked out above. The other form,
+            # ``env.now - mfg_date >= shelf_life``, is unreliable with
+            # fractional shelf lives because of floating-point rounding (e.g.
+            # ``9.2 - 8`` becomes ``1.1999999999999993`` and fails a ``>= 1.2``
+            # check), which could make this helper skip the removal and loop
+            # forever at the same time. ``self.get(qty)`` removes the consumed
+            # batch from the heap, so the explicit ``heappop`` below is only for
+            # the rare leftover empty (qty == 0) batch from an earlier partial
+            # take.
             while self.perish_queue and self.env.now >= self.perish_queue[0][0] + self.shelf_life:
                 mfg_date, qty = self.perish_queue[0]  # peek at oldest batch
                 if qty > 0:
@@ -2489,32 +2495,30 @@ class Inventory(NamedEntity, InfoMixin):
         Wipe inventory at the current sim time, modeling physical loss from a
         disruption event (natural disaster, contamination, theft, etc.).
 
-        Synchronous: drains the underlying ``simpy.Container`` immediately so the
-        caller (typically a ``Node`` disruption hook) can observe the new
-        ``level`` on the next line. The method does **not** signal
-        ``inventory_drop`` — that event is the trigger for replenishment
-        policies, and the dispatch gate already blocks new orders while the
-        node is ``"inactive"``. Re-introducing the signal here would queue
-        replenishment orders that fire as soon as the node recovers (a wake
-        storm) and is the kind of coupling §4.3 removed.
+        Removes the stock right away, so the caller (usually a ``Node``
+        disruption handler) sees the new ``level`` on the very next line. The
+        method does **not** fire ``inventory_drop`` — that event is what triggers
+        replenishment policies, and new orders are already blocked while the node
+        is ``"inactive"``. Firing it here would line up replenishment orders that
+        all go out the moment the node recovers, which is exactly the kind of
+        unwanted coupling we removed earlier.
 
-        For perishable inventories the oldest batches in ``perish_queue`` are
-        consumed first (FIFO), mirroring ``get``: a partial destruction at the
-        head shortens the head batch's quantity rather than dropping its
-        ``mfg_date``. ``waste`` (which tracks shelf-life expiry only) is left
-        untouched — destruction is a separate KPI exposed via
-        ``Statistics.destroyed_qty`` / ``destroyed_value``, populated by the
-        caller.
+        For perishable inventory the oldest batches in ``perish_queue`` are used
+        up first (oldest-out), the same as ``get``: destroying only part of the
+        oldest batch lowers its quantity but keeps its made-on date. ``waste``
+        (which counts only shelf-life expiry) is left unchanged — destruction is
+        tracked separately, via ``Statistics.destroyed_qty`` /
+        ``destroyed_value``, which the caller fills in.
 
-        Infinite inventories (``level == float('inf')``) are a no-op: an
-        ``infinite_supplier`` represents a logical, unbounded stream of raw
-        material rather than a physical pile that can be destroyed.
+        For infinite inventory (``level == float('inf')``) this does nothing: an
+        ``infinite_supplier`` stands for an endless supply of raw material, not a
+        real pile that can be destroyed.
 
         Parameters:
             amount (float, optional): Quantity to destroy. ``None`` (default)
-                wipes the entire current ``level``. Values larger than the
-                current level are clamped down. Non-positive values are a
-                no-op.
+                removes the entire current ``level``. Values larger than the
+                current level are reduced to it. Zero or negative values do
+                nothing.
             reason (str, optional): Free-form label written to the per-node
                 logger so the trace makes the distinction between expiry,
                 consumption, and destruction visible. Default ``"disruption"``.
@@ -2841,11 +2845,11 @@ class InventoryNode(Node):
         self.sell_price = product_sell_price # set the sell price of the product
         self.buy_price = product_buy_price # set the buy price of the product
         if product is not None:
-            # Deep-copy so each InventoryNode that "sells" the same Product
-            # can override sell_price / buy_price independently without
-            # mutating the original (or every other node's copy). Without
-            # this, two nodes sharing a Product reference would clobber each
-            # other's prices via the assignments below.
+            # Make a full copy so each InventoryNode that "sells" the same
+            # Product can set its own sell_price / buy_price without changing the
+            # original (or any other node's copy). Without the copy, two nodes
+            # sharing one Product would overwrite each other's prices in the
+            # assignments below.
             self.product = copy.deepcopy(product)
             self.product.sell_price = product_sell_price
             self.product.buy_price = product_buy_price # set the buy price of the product to the product buy price
@@ -2881,13 +2885,13 @@ class InventoryNode(Node):
         if reorder_quantity <= 0:
             return  # no need to place an order if reorder quantity is zero
 
-        # A new order cannot be placed while the physical transport link is down.
-        # Ongoing shipments that already cleared this gate are not interrupted —
-        # Link.disruption only blocks *new* dispatches. Guarding here (before the
-        # shortage bookkeeping and before pending_orders increments) means a
-        # blocked order does not count as in-flight or create a phantom
-        # backorder on the supplier. The replenishment policy re-triggers when
-        # inventory drops again or on the next periodic tick.
+        # A new order cannot be sent while the transport link is down. Shipments
+        # that already passed this check are not interrupted — a down link only
+        # blocks *new* orders. Checking here (before the shortage bookkeeping and
+        # before pending_orders is increased) means a blocked order is not
+        # counted as in transit and does not create a fake backorder on the
+        # supplier. The replenishment policy tries again when inventory drops
+        # again or on the next periodic check.
         if supplier.status == "inactive":
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Order not placed.")
             return
@@ -3232,11 +3236,11 @@ class Manufacturer(Node):
         if(len(self.suppliers)<len(self.product.raw_materials)):
             self.logger.warning(f"{self.ID}: {self.name}: The number of suppliers are less than the number of raw materials required to manufacture the product! This leads to no products being manufactured.")
 
-        # Event-driven production loop: produce whenever raw material arrives,
-        # then block on ``raw_material_arrived`` until the next delivery. The
-        # ``production_cycle`` re-entry guard from the polling version is no
-        # longer needed because we await ``manufacture_product`` directly, so
-        # at most one production cycle is in flight at any time.
+        # Production loop: make product whenever raw material arrives, then wait
+        # on ``raw_material_arrived`` for the next delivery. Because we wait for
+        # each ``manufacture_product`` call to finish before starting the next,
+        # only one production run happens at a time — so the old re-entry guard
+        # flag is no longer needed.
         while len(self.suppliers) >= len(self.product.raw_materials): # check if required number of suppliers are connected
             yield self.env.process(self.manufacture_product()) # produce the product (no-op if max_producible == 0)
             yield self.raw_material_arrived
@@ -3327,11 +3331,11 @@ class Manufacturer(Node):
         if reorder_quantity <= 0:
             return # no need to place an order if reorder quantity is zero
 
-        # Commit the intended production up-front on on_hand (mirroring
-        # InventoryNode.process_order). Without this commit, the replenishment
-        # policy can re-trigger between dispatch here and the next
-        # manufacture_product run, see a stale on_hand, and place a duplicate
-        # raw-material order for the same product units. See §3.11.
+        # Count the planned production in on_hand right away (the same thing
+        # InventoryNode.process_order does). Without this, the replenishment
+        # policy could run again before the next production cycle, see an
+        # out-of-date on_hand, and order raw materials a second time for product
+        # units that are already on the way.
         self.inventory.on_hand += reorder_quantity
 
         for raw_mat in self.product.raw_materials: # place order for all raw materials required to produce the product
@@ -3341,12 +3345,13 @@ class Manufacturer(Node):
                 if(supplier.source.raw_material.ID == raw_mat_id and self.ongoing_order_raw[raw_mat_id] == False): # check if the supplier has the raw material and order is not already placed
                     self.ongoing_order_raw[raw_mat_id] = True # set the order status to True
                     self.env.process(self.process_order_raw(raw_mat_id, supplier, raw_mat_reorder_sz)) # place the order for the raw material
-        # Zero-duration yield: this method is called via ``env.process`` so it
-        # has to be a generator, but it has no real wait — every raw-material
-        # dispatch is itself spawned as a sibling process and not awaited
-        # here (the production loop wakes via ``raw_material_arrived``). The
-        # historical ``timeout(1)`` was an arbitrary one-tick stall called
-        # out as §8's "process_order trailing tick" nit.
+        # This method runs via ``env.process``, so it must be a generator and
+        # therefore must yield at least once — but it has nothing to wait for.
+        # Each raw-material order is started as its own separate process and is
+        # not awaited here (the production loop wakes up via
+        # ``raw_material_arrived``). So we yield a zero-length timeout, which
+        # satisfies that requirement without pausing for any real time. (An
+        # earlier version waited one time unit here for no real reason.)
         yield self.env.timeout(0)
 
 class Demand(Node):
@@ -3589,20 +3594,18 @@ class Demand(Node):
         if order_quantity > 0: # if the order quantity is still greater than 0, it means the order was not fulfilled
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available!")
 
-    # ---- Customer-fulfilment helpers (§6.5) -------------------------------
-    # ``customer`` used to inline four different fulfilment paths with
-    # different yield idioms (``yield from`` vs ``env.process`` vs no yield
-    # at all) and stats updates baked into each branch. Factoring them into
-    # named helpers makes the intent of each branch explicit and keeps
-    # ``customer`` itself a one-glance dispatcher. Each helper is a SimPy
-    # generator returning ``None`` so the dispatcher can use a uniform
-    # ``yield from`` form; ``_serve_no_tolerance`` is a degenerate generator
-    # (``return; yield``) so the call site does not need a special case.
-    # The third helper deliberately spawns ``wait_for_order`` as its own
-    # process — preserving the historical fire-and-forget semantics so the
-    # customer's enclosing ``customer`` call returns promptly even when the
-    # tolerance window is large; KPIs accrue inside ``wait_for_order`` no
-    # matter when the parent process exits.
+    # ---- Customer-order helpers -------------------------------------------
+    # ``customer`` used to handle four different ways of filling an order all in
+    # one method, each with its own style and its own stats updates. Splitting
+    # them into separate, named helpers makes each case clear and lets
+    # ``customer`` read as a simple router. Every helper is written as a SimPy
+    # generator so the router can call them all the same way with ``yield
+    # from``; ``_serve_no_tolerance`` does no waiting, but is still written as a
+    # generator (``return; yield``) so the router needs no special case for it.
+    # The tolerance helper starts ``wait_for_order`` as its own separate process
+    # on purpose, so the ``customer`` call returns promptly even when the
+    # customer is willing to wait a long time; the stats are still recorded
+    # inside ``wait_for_order`` whenever the order is eventually settled.
 
     def _serve_in_full(self, order_quantity, customer_id):
         """Inventory has the full requested quantity — record demand and deliver."""
