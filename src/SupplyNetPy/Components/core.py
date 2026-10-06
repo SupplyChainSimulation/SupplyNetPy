@@ -2167,6 +2167,23 @@ class Link(NamedEntity, InfoMixin):
         """
         return self.source.inventory.level
 
+class _Shelf(simpy.Container):
+    """A SimPy ``Container`` that reports every granted request to its ``Inventory`` at the
+    exact moment it is granted (stock leaves the shelf), including requests that had to wait
+    in the queue. ``Inventory`` uses this to hand out dated batches in strict request order and
+    to signal freed shelf space."""
+
+    def __init__(self, env, capacity, init, on_granted):
+        super().__init__(env=env, capacity=capacity, init=init)
+        self._on_granted = on_granted
+
+    def _do_get(self, event):
+        granted = super()._do_get(event)
+        if event.triggered:
+            self._on_granted(event)
+        return granted
+
+
 class Inventory(NamedEntity, InfoMixin):
     """
     The Inventory class models stock management within a node in the supply network. 
@@ -2287,7 +2304,10 @@ class Inventory(NamedEntity, InfoMixin):
         self.holding_cost = holding_cost
         self.carry_cost = 0 # initial carrying cost based on the initial inventory level
         self.replenishment_policy = replenishment_policy
-        self.inventory = simpy.Container(env=self.env, capacity=capacity, init=self.init_level) # Inventory container setup
+        self.inventory = _Shelf(self.env, capacity, self.init_level, self._granted) # Inventory container setup
+        # Succeeds whenever stock leaves the shelf (a request is granted, stock expires or is
+        # destroyed). A Manufacturer whose production is blocked only by a full shelf waits on it.
+        self.shelf_freed = self.env.event()
         self.last_update_t = self.env.now # last time the carrying cost was updated
         
         if self.inv_type == "perishable":
@@ -2403,29 +2423,64 @@ class Inventory(NamedEntity, InfoMixin):
         if self.inventory.level == float('inf'):
             return self.inventory.get(amount), []
 
-        man_date_ls = []
-        if self.inv_type == "perishable":
-            x_amount = amount
-            while x_amount > 0 and self.perish_queue:
-                mfg_date, qty = self.perish_queue[0]  # peek at the oldest batch
-                if qty <= x_amount:
-                    man_date_ls.append((mfg_date, qty))
-                    x_amount -= qty
-                    heapq.heappop(self.perish_queue)  # remove the oldest batch (fast)
-                else:
-                    man_date_ls.append((mfg_date, x_amount))
-                    # We only need part of this oldest batch. Replace it with the
-                    # same date and the smaller leftover quantity. It is still the
-                    # oldest batch, so the heap order stays correct.
-                    self.perish_queue[0] = (mfg_date, qty - x_amount)
-                    x_amount = 0
         self.update_carry_cost()
+        # Dated batches are taken when the request is granted (``_granted``), not when it is made:
+        # a request that has to wait for stock would otherwise receive only the batches on the shelf
+        # at this moment (ordering 5 from a site holding 1 delivered 1 unit while 5 left the shelf).
+        # The list is filled in place, so it is complete by the time the caller's ``yield`` returns.
         get_event = self.inventory.get(amount)
+        man_date_ls = getattr(get_event, "dated_batches", None)
+        if man_date_ls is None:
+            man_date_ls = get_event.dated_batches = []
         self.on_hand -= amount  # Update the on-hand inventory level
-        if(self.replenishment_policy):
+        # A finite ``Supplier`` has no replenishment policy, but its extraction loop sleeps on
+        # ``inventory_drop`` while the shelf is full; without this it would never extract again.
+        if self.replenishment_policy or isinstance(self.node, Supplier):
             if(not self.node.inventory_drop.triggered):
                 self.node.inventory_drop.succeed()  # signal that inventory has been dropped
         return get_event, man_date_ls
+
+    def _granted(self, get_event):
+        """Called by ``_Shelf`` the moment ``get_event`` takes stock off the shelf."""
+        if self.inv_type == "perishable":
+            out = getattr(get_event, "dated_batches", None)
+            if out is None:  # granted synchronously, before ``get`` could attach its list
+                out = get_event.dated_batches = []
+            self._take_batches(get_event.amount, out)
+        self._notify_shelf_freed()
+
+    def _notify_shelf_freed(self):
+        if not self.shelf_freed.triggered:
+            self.shelf_freed.succeed()
+
+    def _remove_now(self, amount):
+        """Take ``amount`` units off the shelf immediately, ahead of any queued requests (expiry,
+        destruction). Going through ``Container.get`` would queue behind a waiting order that the
+        shelf cannot fill, leaving expired or destroyed goods on the shelf to be shipped later."""
+        self.update_carry_cost()
+        self.inventory._level -= amount
+        self.on_hand -= amount
+        self.inventory._trigger_put(None)  # freed space may let a waiting put proceed
+        self._notify_shelf_freed()
+
+    def _take_batches(self, amount, out):
+        """Remove ``amount`` units from the perishable batch queue, oldest first, appending
+        ``(manufacture_date, quantity)`` pairs to ``out``."""
+        x_amount = amount
+        while x_amount > 0 and self.perish_queue:
+            mfg_date, qty = self.perish_queue[0]  # peek at the oldest batch
+            if qty <= x_amount:
+                if qty > 0:  # skip empty batches (e.g. the initial batch of a site that starts empty)
+                    out.append((mfg_date, qty))
+                x_amount -= qty
+                heapq.heappop(self.perish_queue)  # remove the oldest batch (fast)
+            else:
+                out.append((mfg_date, x_amount))
+                # We only need part of this oldest batch. Replace it with the
+                # same date and the smaller leftover quantity. It is still the
+                # oldest batch, so the heap order stays correct.
+                self.perish_queue[0] = (mfg_date, qty - x_amount)
+                x_amount = 0
 
     def remove_expired(self):
         """
@@ -2475,8 +2530,11 @@ class Inventory(NamedEntity, InfoMixin):
             while self.perish_queue and self.env.now >= self.perish_queue[0][0] + self.shelf_life:
                 mfg_date, qty = self.perish_queue[0]  # peek at oldest batch
                 if qty > 0:
-                    get_event, _ = self.get(qty) # get/remove expired items from the inventory
-                    yield get_event
+                    # Remove the expired batch and its units at once, ahead of any queued order.
+                    heapq.heappop(self.perish_queue)
+                    self._remove_now(qty)
+                    if self.replenishment_policy and not self.node.inventory_drop.triggered:
+                        self.node.inventory_drop.succeed()  # a real drop: let the policy re-check
                     self.waste += qty  # update waste statistics
                     self.node.logger.info(f"{self.env.now:.4f}: {qty} units expired (Mgf date:{mfg_date}).")
                 else:
@@ -2554,13 +2612,11 @@ class Inventory(NamedEntity, InfoMixin):
                     self.perish_queue[0] = (mfg_date, qty - x)
                     x = 0
 
-        # Drain the underlying simpy.Container. ``Container.get(amount)``
-        # decrements ``_level`` synchronously when ``level >= amount``
-        # (BaseResource._trigger_get runs at construction time and calls
-        # _do_get, which succeeds the event and subtracts in place), so the
-        # next read of ``self.inventory.level`` reflects the destruction.
-        self.inventory.get(amount)
-        self.on_hand -= amount
+        # Remove the stock at once, ahead of any queued order (a ``Container.get``
+        # would wait behind an order the shelf cannot fill, so the destroyed
+        # units would stay on the shelf and ship later). The dated batches were
+        # already taken above, so this must not go through ``get``.
+        self._remove_now(amount)
         self.node.logger.info(
             f"{self.env.now:.4f}:{self.node.ID}: {amount} units destroyed ({reason}). "
             f"Level={self.inventory.level}, on_hand={self.on_hand}."
@@ -2698,7 +2754,7 @@ class Supplier(Node):
                 yield self.env.timeout(self.raw_material.extraction_time)
             else:
                 # Inventory is full — wait for a downstream draw (Inventory.get
-                # succeeds inventory_drop) instead of polling every tick.
+                # succeeds inventory_drop for Suppliers too) instead of polling every tick.
                 yield from self.wait_for_drop()
             self.logger.info(f"{self.env.now:.4f}:{self.ID}: Inventory level:{self.inventory.level}") # log on each event-driven wake-up
 
@@ -2898,13 +2954,22 @@ class InventoryNode(Node):
 
         self.pending_orders += 1  # count this order as in flight; decremented when delivery completes (or supplier disrupted)
 
-        if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
-            shortage = reorder_quantity - supplier.source.inventory.level
-            supplier.source.stats.update_stats(shortage=[1,shortage], backorder=[1,reorder_quantity])
-            if(not supplier.source.inventory_drop.triggered):
-                supplier.source.inventory_drop.succeed()  # signal that inventory has been dropped (since backorder is created)
-
         if(supplier.source.node_status == "active"):
+            if supplier.source.inventory.level < reorder_quantity:  # record the shortage only for an order that is actually placed (not for a disrupted supplier)
+                shortage = reorder_quantity - supplier.source.inventory.level
+                # Record the shortage only. The order must NOT also be added to the
+                # supplier's ``backorder``: ``supplier.source.inventory.get`` below
+                # already lowers the supplier's ``on_hand`` by the full order while the
+                # request waits in the queue, so the supplier's ``position()``
+                # (``on_hand - backorder[1]``) already reflects this backlog. Adding it
+                # to ``backorder`` as well counted the backlog twice (the supplier
+                # over-ordered), and because nothing releases a site-to-site backorder,
+                # the supplier kept that extra amount in its targets for the rest of the
+                # run. ``backorder`` is reserved for waiting *customer* orders
+                # (``Demand.wait_for_order``), which do not touch ``on_hand``.
+                supplier.source.stats.update_stats(shortage=[1,shortage])
+                if(not supplier.source.inventory_drop.triggered):
+                    supplier.source.inventory_drop.succeed()  # the supplier's position just dropped; let its policy react
             self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
             supplier.source.stats.update_stats(demand_received=[1,reorder_quantity])
 
@@ -2972,6 +3037,14 @@ class InventoryNode(Node):
                     # can be handed to waiting customers (freeing space), then retry.
                     prev_level = self.inventory.level
                     yield self.env.timeout(0)
+                    # Waiting customers need up to two more zero-time steps to resume (they wake
+                    # through a "stock arrived or patience ran out" condition), so allow a few
+                    # before deciding nothing was freed. Bounded: two shelves overflowing at the
+                    # same instant would otherwise keep yielding to each other forever.
+                    for _ in range(3):
+                        if self.inventory.level < prev_level or self.env.peek() > self.env.now:
+                            break
+                        yield self.env.timeout(0)
                     if self.inventory.level >= prev_level:
                         # The pause freed nothing, so nothing more can be stored.
                         # Drop the leftover and correct the inventory position.
@@ -3155,7 +3228,10 @@ class Manufacturer(Node):
         
         self.production_cycle = False # production cycle status
         self.raw_inventory_counts = {} # dictionary to store inventory counts for raw products inventory
-        self.ongoing_order_raw = {} # dictionary to store order status
+        self.ongoing_order_raw = {} # raw material ID -> True while at least one order of it is in transit
+        self.raw_in_transit = {} # raw material ID -> units ordered from suppliers but not yet received
+        self._raw_retry_pending = set() # raw materials with a re-plan scheduled after a blocked order
+        self.units_in_production = 0 # units of the current production cycle (raw already consumed, not yet on the shelf)
         self.pending_orders = 0 # count of raw-material orders currently in flight (dispatched but not yet delivered)
 
         if(self.product.buy_price <= 0): # if the product buy price is not given, calculate it
@@ -3172,10 +3248,29 @@ class Manufacturer(Node):
         self.stats._stats_keys.extend(["total_products_manufactured", "total_manufacturing_cost"])
         self.stats._cost_components.append("total_manufacturing_cost")
 
+    def committed_production(self):
+        """
+        Units this manufacturer has committed to produce (via ``process_order``) but not yet produced.
+
+        ``process_order`` adds every reorder to ``on_hand`` and production adds to ``level``, so the
+        gap between them is the outstanding production, except that ``Inventory.get`` also lowers
+        ``on_hand`` as soon as a downstream site places an order, even while that order is still
+        waiting in the queue for stock. Those queued units are added back here.
+
+        Returns:
+            float: committed but unproduced units (never negative in a consistent state).
+        """
+        queued = sum(get.amount for get in self.inventory.inventory.get_queue)
+        return self.inventory.on_hand - self.inventory.level + queued
+
     def manufacture_product(self):
         """
         Manufacture the product.
-        This method handles the production of the product, consuming raw materials and adding the manufactured product to the inventory.
+        Runs production cycles of at most ``product.batch_size`` units, each taking
+        ``product.manufacturing_time``, for as long as committed orders remain and every raw
+        material is on hand. Raw materials are consumed at the start of each cycle and the
+        finished units are added to the inventory at its end. Afterwards, any raw material still
+        needed for the remaining committed production is ordered (see ``order_raw_materials``).
 
         Parameters:
             None
@@ -3186,28 +3281,48 @@ class Manufacturer(Node):
         Returns:
             None
         """
-        max_producible_units = self.product.batch_size 
-        for raw_material in self.product.raw_materials:
-            raw_mat_id = raw_material[0].ID
-            required_amount = raw_material[1]
-            current_raw_material_level = self.raw_inventory_counts[raw_mat_id]
-            max_producible_units = min(max_producible_units,int(current_raw_material_level/required_amount))
-        if((self.inventory.level + max_producible_units)>self.inventory.capacity): # check if the inventory can accommodate the maximum producible units
-            max_producible_units = self.inventory.capacity - self.inventory.level
-        # Don't produce more than what's been committed via process_order.
-        # on_hand already accounts for pending production (§3.11); producing
-        # beyond (on_hand - level) would grow level past on_hand, breaking
-        # the invariant level <= on_hand and masking true inventory position.
-        pending = self.inventory.on_hand - self.inventory.level
-        if pending < max_producible_units:
-            max_producible_units = max(pending, 0)
-        if(max_producible_units>0):
+        cont = self.inventory.inventory
+        while True:
+            max_producible_units = self.product.batch_size
+            for raw_material in self.product.raw_materials:
+                raw_mat_id = raw_material[0].ID
+                required_amount = raw_material[1]
+                current_raw_material_level = self.raw_inventory_counts[raw_mat_id]
+                # 1e-9 tolerance: with fractional recipes, float rounding can leave e.g.
+                # 0.29999999 of a 0.3 requirement, which must still make one unit.
+                max_producible_units = min(max_producible_units,int(current_raw_material_level/required_amount + 1e-9))
+            if((self.inventory.level + max_producible_units)>self.inventory.capacity): # check if the inventory can accommodate the maximum producible units
+                max_producible_units = self.inventory.capacity - self.inventory.level
+            # Don't produce more than what's been committed via process_order (§3.11).
+            # The commitment must count child orders still waiting in the queue:
+            # ``on_hand - level`` alone understates it by exactly that amount and can be
+            # <= 0 while production is owed, which deadlocked the manufacturer.
+            pending = self.committed_production()
+            if pending < max_producible_units:
+                max_producible_units = max(pending, 0)
+            if max_producible_units <= 0:
+                raw_allows = all(self.raw_inventory_counts[rm.ID] + 1e-9 >= q for rm, q in self.product.raw_materials)
+                head = cont.get_queue[0].amount if cont.get_queue else 0
+                if (pending >= 1 and raw_allows and self.inventory.capacity - self.inventory.level < 1
+                        and head <= self.inventory.capacity):
+                    # Only the full shelf blocks production. Wait until stock leaves the shelf
+                    # (raw deliveries and new orders do not free space, so the usual wake-up
+                    # would never come). A queued order larger than the whole shelf can never
+                    # be served, so production does not wait for it.
+                    freed = self.inventory.shelf_freed
+                    yield freed
+                    if self.inventory.shelf_freed is freed:
+                        self.inventory.shelf_freed = self.env.event()
+                    continue
+                break
             self.production_cycle = True # produce the product
             for raw_material in self.product.raw_materials: # consume raw materials
                 raw_mat_id = raw_material[0].ID
                 required_amount = raw_material[1]
-                self.raw_inventory_counts[raw_mat_id] -= raw_material[1]*max_producible_units
+                self.raw_inventory_counts[raw_mat_id] = max(0, self.raw_inventory_counts[raw_mat_id] - raw_material[1]*max_producible_units)
+            self.units_in_production = max_producible_units  # their raw is consumed: raw planning must not buy it again
             yield self.env.timeout(self.product.manufacturing_time) # take manufacturing time to produce the product
+            self.units_in_production = 0
             accepted = self.inventory.put(max_producible_units, manufacturing_date=self.env.now)
             shortfall = max_producible_units - accepted
             if shortfall > 0:
@@ -3216,6 +3331,63 @@ class Manufacturer(Node):
             self.logger.info(f"{self.env.now:.4f}:{self.ID}: Product inventory levels:{self.inventory.level}")
             self.stats.update_stats(total_products_manufactured=max_producible_units, total_manufacturing_cost=max_producible_units*self.product.manufacturing_cost) # update statistics
             self.production_cycle = False
+        # Buy whatever raw material the remaining commitment still lacks (e.g. after an order
+        # was blocked by a disruption). A no-op in the normal case.
+        self.order_raw_materials()
+
+    def order_raw_materials(self, raw_mat_id=None):
+        """
+        Order the raw materials still needed for the committed production.
+
+        For each raw material (or only ``raw_mat_id`` when given): ``needed = units_per_product *
+        (committed_production() - units_in_production) - on hand - in transit``. Units of the
+        cycle currently being manufactured are excluded: their raw material is already consumed. A positive amount is ordered from the first matching supplier
+        whose link and node are active (or the first matching supplier if none is). Netting
+        against stock and in-transit quantities means concurrent replenishment orders each get
+        their raw material (no order is skipped because another is in flight) and raw that is
+        on hand, in transit or already consumed by the running cycle is not bought again.
+
+        Parameters:
+            raw_mat_id (str, optional): re-plan only this raw material (used when one order is retried).
+
+        Returns:
+            None
+        """
+        committed = self.committed_production() - self.units_in_production
+        only = raw_mat_id
+        for raw_mat, units_per_product in self.product.raw_materials:
+            raw_mat_id = raw_mat.ID
+            if only is not None and raw_mat_id != only:
+                continue
+            needed = (units_per_product * committed - self.raw_inventory_counts.get(raw_mat_id, 0)
+                      - self.raw_in_transit.get(raw_mat_id, 0))
+            if needed <= 1e-9:  # tolerance: float rounding must not trigger dust orders
+                continue
+            candidates = [link for link in self.suppliers if link.source.raw_material.ID == raw_mat_id]
+            if not candidates:
+                continue
+            active = [link for link in candidates if link.status == "active" and link.source.node_status == "active"]
+            # Reserve the quantity now: ``process_order_raw`` only starts at the next event
+            # step, and a second planning call in the same instant must not buy it again.
+            self.raw_in_transit[raw_mat_id] = self.raw_in_transit.get(raw_mat_id, 0) + needed
+            self.ongoing_order_raw[raw_mat_id] = True
+            self.env.process(self.process_order_raw(raw_mat_id, (active or candidates)[0], needed))
+
+    def _retry_raw_later(self, raw_mat_id):
+        """Re-plan a raw material one time unit after an order for it was blocked by a disruption.
+        At most one re-plan per material is pending: every commitment made during an outage
+        would otherwise start its own retry chain, and the work would grow with each one."""
+        if raw_mat_id in self._raw_retry_pending:
+            return
+        self._raw_retry_pending.add(raw_mat_id)
+        yield self.env.timeout(1)
+        self._raw_retry_pending.discard(raw_mat_id)
+        self.order_raw_materials(raw_mat_id)
+
+    def _release_raw_reservation(self, raw_mat_id, quantity):
+        """Undo the in-transit reservation of a raw order that was delivered or not placed."""
+        self.raw_in_transit[raw_mat_id] -= quantity
+        self.ongoing_order_raw[raw_mat_id] = self.raw_in_transit[raw_mat_id] > 0
 
     def behavior(self):
         """
@@ -3243,12 +3415,14 @@ class Manufacturer(Node):
                     raise ValueError(f"Supplier {supplier.source.ID} does not have a raw material.")
                 self.raw_inventory_counts[supplier.source.raw_material.ID] = 0 # store initial levels
                 self.ongoing_order_raw[supplier.source.raw_material.ID] = False # store order status
+                self.raw_in_transit[supplier.source.raw_material.ID] = 0
                 
         if(len(self.suppliers)<len(self.product.raw_materials)):
             self.logger.warning(f"{self.ID}: {self.name}: The number of suppliers are less than the number of raw materials required to manufacture the product! This leads to no products being manufactured.")
 
-        # Production loop: make product whenever raw material arrives, then wait
-        # on ``raw_material_arrived`` for the next delivery. Because we wait for
+        # Production loop: run production (as many cycles as raw material and
+        # committed orders allow), then wait on ``raw_material_arrived`` until a
+        # raw delivery lands or a new order is committed. Because we wait for
         # each ``manufacture_product`` call to finish before starting the next,
         # only one production run happens at a time — so the old re-entry guard
         # flag is no longer needed.
@@ -3273,25 +3447,26 @@ class Manufacturer(Node):
         """
         # Link-disruption gate: mirrors the one in InventoryNode.process_order.
         # A disrupted physical link blocks new raw-material dispatches; ongoing
-        # shipments already past this point keep flowing. We clear ongoing_order_raw
-        # so the per-material flag does not stick and the manufacturer can retry
-        # the order on the next replenishment tick, once the link recovers.
+        # shipments already past this point keep flowing. The in-transit reservation
+        # is released and the raw requirement is re-planned a tick later, so the
+        # order goes to another active supplier or out once the link recovers.
         if supplier.status == "inactive":
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Raw-material order not placed.")
-            self.ongoing_order_raw[raw_mat_id] = False
-            yield self.env.timeout(1) # wait a tick before the policy retries
+            self._release_raw_reservation(raw_mat_id, reorder_quantity)
+            yield from self._retry_raw_later(raw_mat_id)  # another supplier or the recovered link may serve it
             return
 
-        if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
-            shortage = reorder_quantity - supplier.source.inventory.level
-            supplier.source.stats.update_stats(shortage=[1,shortage], backorder=[1,reorder_quantity])
-
-        if(supplier.source.node_status == "active"): # check if the supplier is active and has enough inventory
-            if(self.raw_inventory_counts[raw_mat_id]>= reorder_quantity): # dont order if enough inventory is available (reorder_quantity depends on the number of product units that needs to be manufactured, there is no capcacity defined for raw material inventory)
-                self.logger.info(f"{self.env.now:.4f}:{self.ID}:Sufficient raw material inventory for {supplier.source.raw_material.name}, no order placed. Current inventory level: {self.raw_inventory_counts}.")
-                self.ongoing_order_raw[raw_mat_id] = False
-                return
-
+        if(supplier.source.node_status == "active"): # check if the supplier is active
+            if supplier.source.inventory.level < reorder_quantity:  # record the shortage for an order that is actually placed
+                shortage = reorder_quantity - supplier.source.inventory.level
+                # Shortage only; see InventoryNode.process_order for why a site-to-site
+                # order is not added to the supplier's ``backorder`` (never released).
+                supplier.source.stats.update_stats(shortage=[1,shortage])
+            # ``reorder_quantity`` is already net of raw stock and raw in transit
+            # (``order_raw_materials``), so there is no "sufficient raw" early return here:
+            # that check compared stock against this order alone and ignored stock already
+            # earmarked for earlier commitments, and it skipped the order without waking
+            # production, which could stall the manufacturer for good.
             self.pending_orders += 1  # count this raw-material order as in flight
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
             event, man_date_ls = supplier.source.inventory.get(reorder_quantity)
@@ -3306,7 +3481,7 @@ class Manufacturer(Node):
 
             self.stats.update_stats(fulfillment_received=[1,reorder_quantity],inventory_spend_cost=reorder_quantity*supplier.source.sell_price)
             supplier.source.stats.update_stats(demand_fulfilled=[1,reorder_quantity]) # update the supplier statistics for demand fulfilled
-            self.ongoing_order_raw[raw_mat_id] = False
+            self._release_raw_reservation(raw_mat_id, reorder_quantity)
             self.raw_inventory_counts[raw_mat_id] += reorder_quantity
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
             self.pending_orders -= 1
@@ -3315,9 +3490,8 @@ class Manufacturer(Node):
                 self.raw_material_arrived.succeed()
         else:
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted.")
-            yield self.env.timeout(1) # wait for 1 time unit before checking again
-
-        self.ongoing_order_raw[raw_mat_id] = False
+            self._release_raw_reservation(raw_mat_id, reorder_quantity)
+            yield from self._retry_raw_later(raw_mat_id)
     
     def process_order(self, supplier, reorder_quantity):
         """
@@ -3349,13 +3523,16 @@ class Manufacturer(Node):
         # units that are already on the way.
         self.inventory.on_hand += reorder_quantity
 
-        for raw_mat in self.product.raw_materials: # place order for all raw materials required to produce the product
-            raw_mat_id = raw_mat[0].ID
-            raw_mat_reorder_sz = raw_mat[1]*reorder_quantity
-            for supplier in self.suppliers:
-                if(supplier.source.raw_material.ID == raw_mat_id and self.ongoing_order_raw[raw_mat_id] == False): # check if the supplier has the raw material and order is not already placed
-                    self.ongoing_order_raw[raw_mat_id] = True # set the order status to True
-                    self.env.process(self.process_order_raw(raw_mat_id, supplier, raw_mat_reorder_sz)) # place the order for the raw material
+        # Buy the raw material this commitment needs, net of raw stock and raw in transit.
+        # Previously a raw order was placed only if none of that material was already in
+        # transit (``ongoing_order_raw``), so a reorder committed while a shipment was in
+        # flight never got its raw material: the units stayed in on_hand ("phantom" stock)
+        # forever. Concurrent in-flight orders are intended behaviour (§3.12).
+        self.order_raw_materials()
+        # Wake production: raw material for this commitment may already be on hand, in which
+        # case no delivery will arrive to do it.
+        if not self.raw_material_arrived.triggered:
+            self.raw_material_arrived.succeed()
         # This method runs via ``env.process``, so it must be a generator and
         # therefore must yield at least once — but it has nothing to wait for.
         # Each raw-material order is started as its own separate process and is
@@ -3521,13 +3698,15 @@ class Demand(Node):
         self.env.process(self.behavior())
         self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the demand node
 
-    def _process_delivery(self, order_quantity, customer_id):
+    def _process_delivery(self, order_quantity, customer_id, get_event=None):
         """
         Process the delivery of the order, including lead time and delivery cost updates.
 
         Parameters:
             order_quantity (float): The quantity of the product ordered.
             customer_id (int): Customer ID for logging purposes.
+            get_event (optional): an inventory ``get`` already issued by the caller for this order.
+                ``wait_for_order`` passes one so the stock is taken at the moment it is checked.
 
         Attributes:
             order_quantity (float): The quantity of the product ordered.
@@ -3540,7 +3719,8 @@ class Demand(Node):
         validate_non_negative(name="delivery_cost", value=del_cost) # check if delivery_cost is non-negative
         self.stats.update_stats(transportation_cost=del_cost)
         
-        get_event, _ = self.demand_node.inventory.get(order_quantity)
+        if get_event is None:
+            get_event, _ = self.demand_node.inventory.get(order_quantity)
         yield get_event
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity}, available.")
 
@@ -3577,18 +3757,28 @@ class Demand(Node):
         if self.min_split < 1:
             partial = int(order_quantity * self.min_split)
         
-        waited = 0
-        available = 0
-        while order_quantity>0 and waited<=self.customer_tolerance:
-            waiting_time = self.env.now
-            available = self.demand_node.inventory.level
+        # The customer leaves ``tolerance`` time units from now. It wakes when stock arrives
+        # (``inventory_raised``) or when its patience runs out, whichever comes first; waiting
+        # only on stock arrivals kept it waiting (and backordered) indefinitely past its tolerance.
+        deadline = self.env.now + self.customer_tolerance
+        # One timer per customer: creating a new timeout at every wake-up left an unbounded
+        # number of pending timeouts in the event queue until each customer's deadline.
+        patience = None if deadline == float('inf') else self.env.timeout(self.customer_tolerance)
+        while order_quantity > 0:
+            available = self._available()
+            # Take the stock now, in the same step as the check. ``_process_delivery`` only starts at
+            # the next event step, so several waiting customers woken by the same ``inventory_raised``
+            # would otherwise all see the same level and claim more stock than exists; the extra
+            # requests then wait in the inventory queue past their tolerance and block later orders.
             if order_quantity <= available: # check if remaining order quantity is available 
-                self.env.process(self._process_delivery(order_quantity, customer_id))
+                get_event, _ = self.demand_node.inventory.get(order_quantity)
+                self.env.process(self._process_delivery(order_quantity, customer_id, get_event))
                 self.demand_node.stats.update_stats(backorder=[-1,-order_quantity])
                 order_quantity = 0
                 break
-            elif available >= partial: # or else at least min required 'partial' is available
-                self.env.process(self._process_delivery(available, customer_id))
+            elif available > 0 and available >= partial: # or else at least min required 'partial' is available (``partial`` can round to 0)
+                get_event, _ = self.demand_node.inventory.get(available)
+                self.env.process(self._process_delivery(available, customer_id, get_event))
                 # Partial shipment: backorder count stays 1 (one outstanding customer order)
                 # while its quantity ticks down. fulfillment_received and demand_fulfilled
                 # each get a compensating -1 on the count so the single eventual completion
@@ -3598,12 +3788,33 @@ class Demand(Node):
                 order_quantity -= available # update order quantity
             else: 
                 self.demand_node.stats.update_stats(shortage=[1,order_quantity-available])
-            yield self.demand_node.inventory_raised # wait until inventory is replenished
-            self.demand_node.inventory_raised = self.env.event()  # reset the event for the next iteration
-            waited += self.env.now - waiting_time # update the waited time
-        
+            if order_quantity <= 0 or self.env.now >= deadline:
+                break
+            raised = self.demand_node.inventory_raised
+            if patience is None:
+                yield raised # wait until inventory is replenished
+            else:
+                yield raised | patience # stock arrives, or patience runs out
+            # Several waiting customers share this event. Only the first one woken replaces it;
+            # if every waiter replaced it, earlier waiters would sleep on an event nobody fires
+            # any more and stay unserved even with stock on the shelf.
+            if raised.triggered and self.demand_node.inventory_raised is raised:
+                self.demand_node.inventory_raised = self.env.event()  # reset the event for the next iteration
+
         if order_quantity > 0: # if the order quantity is still greater than 0, it means the order was not fulfilled
+            # The customer leaves: release what is left of its backorder, otherwise the node's
+            # position() would keep counting demand that no longer exists for the rest of the run.
+            self.demand_node.stats.update_stats(backorder=[-1,-order_quantity])
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available!")
+
+    def _available(self):
+        """
+        Stock a customer can take right now. Requests are served first come, first served, so
+        while an earlier request (e.g. a downstream site's order the shelf cannot fill yet) waits
+        in the queue, a new request would wait behind it rather than be served: none is available.
+        """
+        inventory = self.demand_node.inventory
+        return 0 if inventory.inventory.get_queue else inventory.level
 
     # ---- Customer-order helpers -------------------------------------------
     # ``customer`` used to handle four different ways of filling an order all in
@@ -3702,7 +3913,7 @@ class Demand(Node):
         Returns:
             None
         """
-        available = self.demand_node.inventory.level
+        available = self._available()
         self.stats.update_stats(demand_placed=[1, order_quantity])
         # The smallest piece this customer will take: the whole order when no
         # partial delivery is allowed (min_split >= 1), otherwise the minimum

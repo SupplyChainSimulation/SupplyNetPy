@@ -15,11 +15,21 @@ scm.Supplier(env=env, ID="S1", name="S1", node_type=scm.NodeType.SUPPLIER)
 
 The built-in replenishment policies (_SSReplenishment_, _RQReplenishment_, _PeriodicReplenishment_) communicate with the node they belong to through a small set of helper methods on _Node_, rather than reading or writing the node's internal attributes directly. A user-defined `InventoryReplenishment` subclass should use the same helpers so that it stays decoupled from the internal layout of `Node`:
 
-- `node.position()` — current backorder-aware inventory position (`on_hand - stats.backorder[1]`). Use this in place of reading `node.inventory.on_hand` and `node.stats.backorder[1]` separately.
+- `node.position()` — current backorder-aware inventory position (`on_hand - stats.backorder[1]`). Use this in place of reading `node.inventory.on_hand` and `node.stats.backorder[1]` separately. `on_hand` already includes stock in transit and is lowered as soon as a downstream site places an order (even while that order waits for stock), so `stats.backorder` counts only waiting *customer* orders (`Demand` with a `tolerance`); a shortage on a site-to-site order is recorded in `stats.shortage` and is not added to the supplier's `backorder`.
 - `node.place_order(quantity)` — picks a supplier via the node's supplier-selection policy and spawns the dispatch process. Use this in place of `selection_policy.select(...)` + `env.process(process_order(...))`.
 - `node.wait_for_drop()` — generator that blocks until the inventory drops and rotates the drop event atomically. Use `yield from node.wait_for_drop()` in the policy's `run()` loop.
 
 On the supplier-selection side, _Link_ exposes `link.available_quantity()` (returns `source.inventory.level`), so a custom `SupplierSelectionPolicy` subclass can compare candidate suppliers without reaching past the link.
+
+#### How a Manufacturer produces and buys raw materials
+
+A `Manufacturer` commits every replenishment order it places (the order is added to `inventory.on_hand` immediately). `manufacturer.committed_production()` returns the units committed but not yet produced. Production then runs in cycles: each cycle makes at most `product.batch_size` units and takes `product.manufacturing_time`, and cycles repeat back to back while committed units remain and every raw material is on hand. Raw materials are bought by `order_raw_materials()` for the committed quantity net of the raw stock already on hand and in transit (`manufacturer.raw_in_transit`), from the first matching supplier whose link and node are active (or the first matching supplier if none is active, in which case the order is retried one time unit later). So a reorder placed while an earlier raw shipment is still in transit gets its own raw material, and a raw order blocked by a disrupted link or supplier is re-planned one time unit later. If only a full shelf (finite `capacity`) blocks production, the manufacturer waits until stock leaves the shelf (`inventory.shelf_freed`).
+
+#### Perishable stock and waiting customers
+
+For perishable inventory, the dated batches a request receives are taken at the moment the request is granted, oldest first and in request order, so a request that waits for stock receives the batches that actually arrive. Expired and destroyed stock leaves the shelf immediately, ahead of any waiting request.
+
+A customer with `tolerance > 0` waits until stock arrives or its tolerance runs out, whichever comes first; when it leaves, the rest of its order is removed from the node's `backorder`. Stock counts as available to a new customer only when no earlier request is waiting in the queue, since requests are served first come, first served.
 
 #### Modeling what a disruption does to stored inventory
 

@@ -388,6 +388,75 @@ Both call sites carry an inline comment explaining why the yield is on the *oute
 
 ---
 
+### 3.17 Site-to-site orders, Manufacturer production, perishable batches and waiting customers ✅ Resolved
+`core.py`: `Inventory`, `Supplier`, `InventoryNode.process_order`, `Manufacturer`, `Demand` (line numbers below are at commit 00c2363)
+
+These defects were found while generating a large dataset of tree-shaped networks (suppliers → manufacturers → chains of inventory nodes → customers). Each one is reproduced in a tiny deterministic network in `TestMultiEchelonReplenishment` (23 tests; 19 fail on 00c2363, the other 4 guard against regressions found while reviewing the fix).
+
+**A. Site-to-site ordering**
+
+1. **Supplier backlog counted twice and never released** (`core.py:2901–2905`, raw side `3285–3287`).
+   - When the supplier's `level < reorder_quantity`, the whole order was added to `supplier.source.stats.backorder`.
+   - `Inventory.get` (`2423–2424`) has already lowered the supplier's `on_hand` by the full order while the get waits in the queue, so `position() = on_hand - backorder[1]` (`1944`) subtracted the backlog twice and the supplier over-ordered.
+   - Only `Demand.wait_for_order` releases backorders (`3587`, `3596`), so the inflated amount stayed for the whole run. The supplier behaved as an `(s+B, S+B)` policy, and every further shortage raised `B` again.
+   - Example: a site holding 10 (s=5, S=10) that receives one 50-unit order orders **100** instead of 50, then settles at **60** instead of 10, with `backorder == [1, 50]` forever.
+   - The bookkeeping was also inconsistent: an order that fits the level but queues behind a short one (the SimPy `Container` get queue is strict FIFO) was never backordered.
+   - **Fix:** record `shortage` only. `backorder` now means waiting customer orders, which is what `position()`'s docstring already says. Also record the shortage only when the order is actually placed (previously it was recorded even when the supplier was disrupted and the order was never placed).
+
+**B. Manufacturer production and raw-material buying**
+
+2. **Production cap ignored queued child orders** (`3201–3203`).
+   - §3.11 capped production at `pending = on_hand - level` and assumed `level <= on_hand`. That does not hold while child orders wait in the get queue.
+   - The cap could therefore be `<= 0` while production was owed, which deadlocked the plant.
+   - On 00c2363 this was mostly masked by item 1; it deadlocks every time once item 1 is fixed.
+   - **Fix:** `committed_production()` = `on_hand - level + Σ queued get amounts`.
+3. **One batch per raw delivery, and no wake-up when raw is already on hand** (`3255–3258`, `3290–3293`).
+   - With `batch_size` below the committed quantity, leftover raw made every later raw order "sufficient". No delivery arrived, so production stopped for good.
+   - This was a regression of the event-driven `behavior` rewrite. `batch_size` is documented as "units per cycle", not as a limit on order size.
+   - **Fix:** run cycles back to back while committed units and raw material remain; wake production on every commitment.
+4. **Raw order skipped while another was in transit** (`3350–3358`).
+   - A reorder committed while `ongoing_order_raw[raw]` was True never got its raw material, leaving permanent phantom stock. This contradicts §3.12.
+   - **Fix:** `order_raw_materials()` buys `units_per_product × (committed − units in the running cycle) − raw on hand − raw in transit` from the first matching supplier whose link and node are active:
+     - in-transit quantities are reserved synchronously, so two planning calls in one instant cannot both buy;
+     - a raw order blocked by a disruption re-plans only that material one tick later, with at most one pending re-plan per material (otherwise retries multiplied per material and per commitment);
+     - a 1e-9 tolerance stops fractional recipes from stranding the last unit.
+5. **Production paused at a full shelf never resumed.** `put()` raises the level before queued requests are served (later in the same instant), and freed shelf space woke nothing.
+   - **Fix:** a manufacturer blocked only by its shelf capacity waits on the new `Inventory.shelf_freed` event. That event fires whenever stock leaves the shelf, so there is no polling.
+
+**C. Inventory**
+
+6. **A finite `Supplier` never restarted extraction after being full.** `Inventory.get` signalled `inventory_drop` only to nodes with a replenishment policy, but the supplier's extraction loop sleeps on it.
+   - Example: a full supplier ships its stock, mines nothing more, and the next order is never filled.
+   - **Fix:** signal it for `Supplier` nodes too.
+7. **Perishable requests that waited lost goods** (`2406`).
+   - Dated batches were taken when the request was made, so ordering 5 from a site holding 1 delivered 1 unit while 5 left the shelf, and the receiver's `on_hand` counted 5.
+   - **Fix:** `_Shelf`, a `Container` subclass, reports each request at the instant it is granted. Batches are taken then, in request order.
+   - For the same reason, expiry and `destroy()` now remove stock directly (`_remove_now`) instead of through a get that could wait behind an unfillable order. Previously expired units stayed on the shelf, shipped later, and fresh stock was written off instead.
+
+**D. Waiting customers (`tolerance > 0`)**
+
+8. **Several waiting customers claimed the same stock.** Each saw the same level and spawned a delivery that took the stock a step later; the surplus requests then waited in the queue past their tolerance.
+   - **Fix:** take the stock in the same step as the check.
+9. **Lost wake-up.** Every waiter replaced the shared `inventory_raised` event when it went back to sleep, so earlier waiters slept on events nobody fired.
+   - Example: three customers waiting for 5 units each; 3 arrive, then 12; only 5 units are ever served.
+   - **Fix:** only the first waiter woken replaces the event.
+10. **Tolerance was not enforced, and leavers were never removed from `backorder`.** A customer only re-checked when stock arrived, so it could wait (and be served) long past its tolerance. Once it gave up, its backorder stayed in `position()` for the rest of the run.
+    - In addition, a customer whose order fits the level could queue behind an earlier, unfillable request and be served far past its tolerance (or, with `tolerance=0`, wait indefinitely).
+    - **Fix:** wake on stock arrival or at the deadline, whichever comes first; release the remaining backorder on leaving; count stock as available only when no earlier request is queued (`Demand._available`).
+    - Each waiting customer uses one patience timer for its whole wait (a new timer per wake-up left an unbounded number of pending events). Because it resumes through a condition event (one extra zero-time step), `InventoryNode.process_order`'s drain loop allows up to three zero-time steps before concluding that no shelf space was freed; otherwise surplus meant for waiting customers would be discarded. The bound matters: two shelves overflowing at the same instant would otherwise keep yielding to each other forever.
+11. **Zero-unit partial delivery crashed the run.** With `order_min_split_ratio < 1`, a small order's minimum chunk rounds to 0, an empty shelf passed `available >= partial`, and `get(0)` raised `amount(=0) must be > 0`.
+    - **Fix:** take a partial delivery only when `available > 0`.
+
+**Behaviour changes for existing users:** `stats.backorder` and `get_sc_net_info()["backorders"]` no longer include site-to-site orders (see `stats.shortage`), and customers who leave are removed from `backorder`. While an earlier request waits in a node's queue, a new customer is refused (or waits, per its tolerance) instead of silently queuing behind it, which changes results wherever a downstream site's order is waiting at a node that also serves customers.
+
+**Verified:**
+- Full suite 229/229 (Python 3.11, as in CI).
+- `examples/py/intro_simple.py`, `sc_with_factory.py`: output unchanged; `newsvendor.py` runs as before (it prints no figures).
+- `examples/py/hybrid_big_sc.py`:
+  - On 00c2363 the bakery stops for good around day 30, after making 2,215 units, with 16,200 flour / 8,100 sugar / 8,100 yeast on hand and 11 orders queued (the example is unseeded; the stall day and quantities vary slightly by run). Customers received 500–800 of about 23,000 units over the year in our runs.
+  - With the fix the bakery keeps producing and customers receive about 12,000 units. The rest is lost to the example's own settings: bread with a 5-day shelf life reaches the shops near expiry, and the customers do not accept partial orders.
+- Stress check: 40 random tree networks (6–125 nodes, several manufacturers, chains of inventory nodes, 5-year runs). Networks with permanently stuck sites went from 20/40 on 00c2363 to 0/40; mean customer fill in years 4–5 went from 0.339 to 0.868.
+
 ## 4. Design / architecture issues
 
 ### 4.1 `core.py` is a god-file

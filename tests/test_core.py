@@ -2400,3 +2400,423 @@ class TestLinkDisruptionProbabilisticIsTimePaced(unittest.TestCase):
         assert link.status == "active"
         env.run(until=3)
         assert link.status == "inactive"
+
+class TestMultiEchelonReplenishment(unittest.TestCase):
+    """Regression tests for site-to-site ordering through InventoryNode and Manufacturer chains.
+
+    Each network is tiny and deterministic (constant demand and lead times). Before the fix:
+    a site's shortage was counted twice in its supplier's position and never released;
+    Manufacturer production ignored child orders waiting in the queue, made one batch per raw
+    delivery, and skipped raw orders while another was in transit (each of which could stop
+    production permanently).
+    """
+
+    @staticmethod
+    def _raw():
+        return scm.RawMaterial(ID="rm1", name="rm1", extraction_quantity=1, extraction_time=1,
+                               mining_cost=0, cost=1)
+
+    @staticmethod
+    def _site(ID, s, S, init, period=1, capacity=float("inf")):
+        return dict(ID=ID, name=ID, node_type="warehouse", capacity=capacity, initial_level=init,
+                    inventory_holding_cost=0.0, replenishment_policy=scm.SSReplenishment,
+                    policy_param=dict(s=s, S=S, period=period), product_buy_price=1.0, product_sell_price=2.0)
+
+    @classmethod
+    def _factory(cls, ID, s, S, init, batch, period=1, capacity=float("inf")):
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1, sell_price=5,
+                              buy_price=0, batch_size=batch, raw_materials=[(cls._raw(), 1)])
+        return dict(ID=ID, name=ID, node_type="manufacturer", capacity=capacity, initial_level=init,
+                    inventory_holding_cost=0.0, replenishment_policy=scm.SSReplenishment,
+                    policy_param=dict(s=s, S=S, period=period), product_sell_price=5, product=product)
+
+    @staticmethod
+    def _link(src, dst, lt, **kw):
+        return dict(ID=f"{src}-{dst}", source=src, sink=dst, cost=0, lead_time=lambda: lt, **kw)
+
+    @staticmethod
+    def _demand(node, qty, every=1.0):
+        return dict(ID=f"d_{node}", name=f"d_{node}", demand_node=node, order_arrival_model=lambda: every,
+                    order_quantity_model=lambda: qty, consume_available=True)
+
+    @staticmethod
+    def _uncovered(m):
+        """Committed-but-unproduced units with no raw material on hand or in transit (raw needs 1/unit)."""
+        return m.committed_production() - m.raw_inventory_counts["rm1"] - m.raw_in_transit["rm1"]
+
+    def _run(self, nodes, links, demands, until):
+        net = scm.create_sc_net(nodes=nodes, links=links, demands=demands)
+        scm.simulate_sc_net(net, sim_time=until, logging=False)
+        return net
+
+    def test_site_shortage_is_not_double_counted(self):
+        # W1 (10 on hand, s=5, S=10) receives one 50-unit order. Its true position is -40, so it must
+        # order S - (-40) = 50 and settle back at S once the backlog is served.
+        net = self._run([dict(ID="S1", name="S1", node_type="infinite_supplier"),
+                         self._site("W1", s=5, S=10, init=10), self._site("R1", s=40, S=50, init=0)],
+                        [self._link("S1", "W1", 2), self._link("W1", "R1", 1)],
+                        [self._demand("R1", 1, every=1e6)], until=40)
+        w1 = net["nodes"]["W1"]
+        assert w1.stats.demand_placed[1] == 50
+        assert w1.stats.backorder == [0, 0]
+        assert w1.position() == 10 and w1.inventory.level == 10
+        assert w1.stats.shortage == [1, 40]
+        assert net["nodes"]["R1"].stats.fulfillment_received[1] == 50
+
+    def test_manufacturer_serves_an_order_larger_than_its_stock(self):
+        # The 50-unit order waits in M1's queue; production must count it as owed.
+        net = self._run([dict(ID="S1", name="S1", node_type="infinite_supplier", raw_material=self._raw()),
+                         self._factory("M1", s=5, S=10, init=10, batch=1000), self._site("W1", s=40, S=50, init=0)],
+                        [self._link("S1", "M1", 1), self._link("M1", "W1", 1)],
+                        [self._demand("W1", 1, every=1e6)], until=200)
+        m1, w1 = net["nodes"]["M1"], net["nodes"]["W1"]
+        assert w1.stats.fulfillment_received[1] == 50
+        assert m1.stats.total_products_manufactured == 50
+        assert m1.raw_inventory_counts["rm1"] == 0 and m1.committed_production() == 0
+
+    def test_manufacturer_serves_orders_queued_behind_each_other(self):
+        # W2's 20-unit order fits M1's stock but queues behind W1's 50-unit order (FIFO).
+        net = self._run([dict(ID="S1", name="S1", node_type="infinite_supplier", raw_material=self._raw()),
+                         self._factory("M1", s=5, S=30, init=30, batch=1000),
+                         self._site("W1", s=40, S=50, init=0), self._site("W2", s=15, S=20, init=0)],
+                        [self._link("S1", "M1", 1), self._link("M1", "W1", 1), self._link("M1", "W2", 1)],
+                        [self._demand("W1", 1, every=1e6), self._demand("W2", 1, every=1e6)], until=200)
+        m1 = net["nodes"]["M1"]
+        assert net["nodes"]["W1"].stats.fulfillment_received[1] == 50
+        assert net["nodes"]["W2"].stats.fulfillment_received[1] == 20
+        assert m1.raw_inventory_counts["rm1"] == 0  # no raw left idle against unfinished commitments
+        assert m1.committed_production() == 0
+
+    def test_batch_smaller_than_commitment_keeps_producing(self):
+        # batch_size 5 is below the order sizes: production must run cycle after cycle.
+        net = self._run([dict(ID="S1", name="S1", node_type="infinite_supplier", raw_material=self._raw()),
+                         self._factory("M1", s=20, S=40, init=30, batch=5), self._site("W1", s=10, S=15, init=0)],
+                        [self._link("S1", "M1", 1), self._link("M1", "W1", 1)],
+                        [self._demand("W1", 3)], until=300)
+        m1, d = net["nodes"]["M1"], net["demands"]["d_W1"]
+        assert d.stats.fulfillment_received[1] / d.stats.demand_placed[1] > 0.95
+        assert self._uncovered(m1) <= 0
+
+    def test_reorders_while_raw_in_transit_each_get_raw_material(self):
+        # Raw lead time 10 days with frequent reorders: every commitment must be funded with raw.
+        net = self._run([dict(ID="S1", name="S1", node_type="infinite_supplier", raw_material=self._raw()),
+                         self._factory("M1", s=60, S=80, init=80, batch=10_000), self._site("W1", s=5, S=10, init=10)],
+                        [self._link("S1", "M1", 10), self._link("M1", "W1", 1)],
+                        [self._demand("W1", 5)], until=400)
+        m1, d = net["nodes"]["M1"], net["demands"]["d_W1"]
+        # 0.6675 is the fill this W1 policy reaches with an unlimited supplier; the bug gave 0.275
+        assert d.stats.fulfillment_received[1] / d.stats.demand_placed[1] > 0.6
+        assert self._uncovered(m1) <= 0
+        # raw conservation: everything bought was either used or is still on hand (1 raw per unit)
+        assert m1.stats.fulfillment_received[1] == m1.stats.total_products_manufactured + m1.raw_inventory_counts["rm1"]
+
+    def test_raw_order_blocked_by_link_disruption_is_retried(self):
+        # The raw link is down from t=0.5 to t=10.5; the order placed meanwhile must go out on recovery.
+        calls = []
+
+        def disrupt_at():
+            calls.append(1)
+            return 0.5 if len(calls) <= 2 else 1e9  # first call is ensure_numeric_callable's probe
+
+        net = self._run([dict(ID="S1", name="S1", node_type="infinite_supplier", raw_material=self._raw()),
+                         self._factory("M1", s=5, S=10, init=10, batch=1000), self._site("W1", s=40, S=50, init=0)],
+                        [self._link("S1", "M1", 1, link_disrupt_time=disrupt_at, link_recovery_time=lambda: 10),
+                         self._link("M1", "W1", 1)],
+                        [self._demand("W1", 1, every=1e6)], until=60)
+        m1 = net["nodes"]["M1"]
+        assert net["nodes"]["W1"].stats.fulfillment_received[1] == 50
+        assert self._uncovered(m1) <= 0 and m1.committed_production() == 0
+
+    @staticmethod
+    def _bare_factory(env, recipe, mfg_time=1, batch=1000, link_kw=None):
+        """Manufacturer without a policy (orders are placed directly) fed by one infinite supplier per raw."""
+        raws = [scm.RawMaterial(ID=f"rm{k}", name=f"rm{k}", extraction_quantity=1, extraction_time=1,
+                                mining_cost=0, cost=1) for k in range(len(recipe))]
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=mfg_time, sell_price=5,
+                              buy_price=0, batch_size=batch, raw_materials=list(zip(raws, recipe)))
+        m = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=float("inf"), initial_level=0,
+                             inventory_holding_cost=0, product_sell_price=5, replenishment_policy=None,
+                             policy_param={}, product=product)
+        links = []
+        for k, rm in enumerate(raws):
+            sup = scm.Supplier(env=env, ID=f"S{k}", name=f"S{k}", node_type="infinite_supplier", raw_material=rm)
+            links.append(scm.Link(env=env, ID=f"L{k}", source=sup, sink=m, cost=0, lead_time=lambda: 1,
+                                  **(link_kw or {})))
+        return m, links
+
+    def test_blocked_raw_orders_retry_without_multiplying(self):
+        # Two raw links down for 20 ticks: retries must stay one per material, not double every tick.
+        env = _fresh_env()
+        calls = []
+
+        def disrupt_at():
+            calls.append(1)
+            return 0.1 if len(calls) <= 4 else 1e9  # one probe + one real call per link
+
+        m, links = self._bare_factory(env, recipe=[1, 1], link_kw=dict(link_disrupt_time=disrupt_at,
+                                                                       link_recovery_time=lambda: 20))
+        env.run(until=0.5)
+        env.process(m.process_order(links[0], 10))
+        env.run(until=15)
+        assert len(env._queue) < 20
+        env.run(until=40)
+        assert m.stats.total_products_manufactured == 10 and m.committed_production() == 0
+
+    def test_reorder_during_a_production_cycle_buys_no_extra_raw(self):
+        env = _fresh_env()
+        m, links = self._bare_factory(env, recipe=[1], mfg_time=10)
+        env.process(m.process_order(links[0], 10))
+        env.run(until=3)  # the 10-unit cycle is running (its raw already consumed)
+        env.process(m.process_order(links[0], 5))
+        env.run(until=60)
+        assert m.stats.total_products_manufactured == 15
+        assert m.stats.fulfillment_received[1] == 15 and m.raw_inventory_counts["rm0"] == 0
+
+    def test_fractional_recipe_completes_every_committed_unit(self):
+        env = _fresh_env()
+        m, links = self._bare_factory(env, recipe=[0.3], batch=1)
+        env.process(m.process_order(links[0], 3))
+        env.run(until=100)
+        assert m.stats.total_products_manufactured == 3 and m.committed_production() == 0
+
+    @staticmethod
+    def _waiting_customers(env, node, count, qty, start=0.1, tolerance=100, ID="d"):
+        """``count`` customers who wait up to ``tolerance``, arriving every ``start``; one stream."""
+        arrivals = iter([start] * (count + 1) + [1e9] * 10)  # first call is ensure_numeric_callable's probe
+        return scm.Demand(env=env, ID=ID, name=ID, demand_node=node, order_arrival_model=lambda: next(arrivals),
+                          order_quantity_model=lambda: qty, tolerance=tolerance)
+
+    @staticmethod
+    def _plain_site(env, init=0, **kw):
+        return scm.InventoryNode(env=env, ID="W", name="W", node_type="warehouse", capacity=float("inf"),
+                                 initial_level=init, inventory_holding_cost=0, replenishment_policy=None,
+                                 policy_param={}, product_sell_price=2, product_buy_price=1, **kw)
+
+    def test_all_waiting_customers_are_woken(self):
+        # Three customers wait for 5 units each. 3 units arrive (too few for anyone, so all go back to
+        # sleep), then 12 more. Every waiter must be served: each used to replace the shared wake-up
+        # event when going back to sleep, stranding the earlier waiters on events nobody fires.
+        env = _fresh_env()
+        w = self._plain_site(env)
+        d = self._waiting_customers(env, w, count=3, qty=5)
+        env.run(until=1)
+        w.inventory.put(3)
+        env.run(until=2)
+        w.inventory.put(12)
+        env.run(until=20)
+        assert d.stats.fulfillment_received[1] == 15 and w.stats.backorder == [0, 0]
+
+    def test_waiting_customers_do_not_claim_the_same_stock(self):
+        # Three customers wait for 5 units each; only 5 arrive. Exactly one is served now and the
+        # others keep waiting as backorders, with no excess request queued in the inventory.
+        env = _fresh_env()
+        w = self._plain_site(env)
+        d = self._waiting_customers(env, w, count=3, qty=5)
+        env.run(until=1)
+        w.inventory.put(5)
+        env.run(until=5)
+        assert d.stats.fulfillment_received[1] == 5
+        assert len(w.inventory.inventory.get_queue) == 0
+        assert w.stats.backorder == [2, 10]
+
+    def test_production_resumes_when_shelf_space_frees(self):
+        # Shelf capacity 10, customers waiting for 30: production stops at a full shelf and must
+        # resume as the waiting customers empty it.
+        env = _fresh_env()
+        rm = scm.RawMaterial(ID="rm", name="rm", extraction_quantity=1, extraction_time=1, mining_cost=0, cost=1)
+        sup = scm.Supplier(env=env, ID="S", name="S", node_type="infinite_supplier", raw_material=rm)
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1, sell_price=5,
+                              buy_price=0, batch_size=10, raw_materials=[(rm, 1)])
+        m = scm.Manufacturer(env=env, ID="M", name="M", capacity=10, initial_level=0, inventory_holding_cost=0,
+                             product_sell_price=5, replenishment_policy=scm.SSReplenishment,
+                             policy_param={"s": 0, "S": 10}, product=product)
+        scm.Link(env=env, ID="L", source=sup, sink=m, cost=0, lead_time=lambda: 1)
+        d = self._waiting_customers(env, m, count=6, qty=5)
+        env.run(until=50)
+        assert d.stats.fulfillment_received[1] == 30 and m.stats.backorder == [0, 0]
+
+    def test_finite_supplier_resumes_extraction_after_being_full(self):
+        env = _fresh_env()
+        rm = scm.RawMaterial(ID="rm", name="rm", extraction_quantity=5, extraction_time=1, mining_cost=0, cost=1)
+        sup = scm.Supplier(env=env, ID="S", name="S", node_type="supplier", capacity=5, initial_level=5,
+                           raw_material=rm)
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1, sell_price=5,
+                              buy_price=0, batch_size=100, raw_materials=[(rm, 1)])
+        m = scm.Manufacturer(env=env, ID="M", name="M", capacity=float("inf"), initial_level=0,
+                             inventory_holding_cost=0, product_sell_price=5, replenishment_policy=None,
+                             policy_param={}, product=product)
+        link = scm.Link(env=env, ID="L", source=sup, sink=m, cost=0, lead_time=lambda: 1)
+        env.process(m.process_order(link, 5))
+        env.run(until=10)
+        env.process(m.process_order(link, 5))
+        env.run(until=30)
+        assert sup.stats.total_raw_materials_mined > 0
+        assert m.stats.total_products_manufactured == 10
+
+    def test_perishable_order_that_waits_receives_every_unit(self):
+        # B orders 5 from A, which holds 1; A's stock arrives later. B must receive all 5 dated units.
+        env = _fresh_env()
+        kw = dict(inventory_type="perishable", shelf_life=100)
+        a = scm.InventoryNode(env=env, ID="A", name="A", node_type="warehouse", capacity=float("inf"),
+                              initial_level=1, inventory_holding_cost=0, replenishment_policy=None,
+                              policy_param={}, product_sell_price=2, product_buy_price=1, **kw)
+        b = scm.InventoryNode(env=env, ID="B", name="B", node_type="warehouse", capacity=float("inf"),
+                              initial_level=0, inventory_holding_cost=0, replenishment_policy=None,
+                              policy_param={}, product_sell_price=3, product_buy_price=2, **kw)
+        source = scm.Supplier(env=env, ID="I", name="I", node_type="infinite_supplier")
+        scm.Link(env=env, ID="IA", source=source, sink=a, cost=0, lead_time=lambda: 1)
+        link = scm.Link(env=env, ID="AB", source=a, sink=b, cost=0, lead_time=lambda: 1)
+        env.process(b.process_order(link, 5))
+        env.run(until=2)
+        a.inventory.put(10, 2)
+        env.run(until=20)
+        assert b.inventory.level == 5 and b.inventory.on_hand == 5
+        assert sum(q for _, q in b.inventory.perish_queue) == 5
+
+    def _perishable_site(self, env, shelf_life=100, init=0):
+        return self._plain_site(env, init=init, inventory_type="perishable", shelf_life=shelf_life).inventory
+
+    def test_expired_stock_leaves_the_shelf_ahead_of_waiting_orders(self):
+        # One unit (made at t=0, shelf life 2) sits under a waiting 5-unit order. It must expire at
+        # t=2 instead of shipping later; the order must receive fresh stock only.
+        env = _fresh_env()
+        inv = self._perishable_site(env, shelf_life=2, init=1)
+        _, dates = inv.get(5)
+        env.run(until=3)
+        assert inv.level == 0 and inv.waste == 1
+        inv.put(5, 3)
+        env.run(until=4)
+        assert dates == [(3, 5)]
+
+    def test_waiting_orders_receive_batches_in_request_order(self):
+        env = _fresh_env()
+        inv = self._perishable_site(env)
+        _, first = inv.get(5)
+        env.run(until=2)
+        inv.put(5, 0)
+        inv.put(5, 1)
+        _, second = inv.get(5)
+        env.run(until=3)
+        assert first == [(0, 5)] and second == [(1, 5)]
+
+    def test_waiting_customer_leaves_at_its_tolerance(self):
+        # A 10-unit site order waits ahead of the customer, so the 5 units that arrive cannot be
+        # used by it. The customer (tolerance 2) must leave on time, with its backorder released,
+        # and must not be served when stock arrives later.
+        env = _fresh_env()
+        w = self._plain_site(env)
+        w.inventory.get(10)
+        d = scm.Demand(env=env, ID="d", name="d", demand_node=w, order_arrival_model=lambda: 1e6,
+                       order_quantity_model=lambda: 5, tolerance=2)
+        env.run(until=1)
+        w.inventory.put(5)
+        env.run(until=5)
+        assert w.stats.backorder == [0, 0]
+        w.inventory.put(10)
+        env.run(until=6)
+        assert d.stats.fulfillment_received == [0, 0]
+
+    def test_idle_manufacturer_schedules_no_polling(self):
+        # The only customer leaves after its tolerance; the factory has a full shelf and nothing to
+        # serve. It must not keep scheduling events while it waits.
+        net = scm.create_sc_net(
+            nodes=[dict(ID="S", name="S", node_type="infinite_supplier", raw_material=self._raw()),
+                   self._factory("M", s=0, S=10, init=0, batch=10, period=0, capacity=10)],
+            links=[self._link("S", "M", 3)],
+            demands=[dict(ID="d", name="d", demand_node="M", order_arrival_model=lambda: 1e6,
+                          order_quantity_model=lambda: 10, tolerance=1)])
+        env, m = net["env"], net["nodes"]["M"]
+        env.run(until=20)
+        events = 0
+        while env.peek() < 10_020:
+            env.step()
+            events += 1
+        assert events < 10
+        assert m.stats.backorder == [0, 0]
+
+    def _capacity_site_with_customer(self, quantity, tolerance, split=1.0):
+        env = _fresh_env()
+        spec = self._site("W", 0, 10, 0, capacity=10)
+        spec["replenishment_policy"] = None
+        w = scm.InventoryNode(env=env, **spec)
+        source = scm.Supplier(env=env, ID="S", name="S", node_type="infinite_supplier")
+        link = scm.Link(env=env, ID="L", source=source, sink=w, cost=0, lead_time=lambda: 1)
+        d = scm.Demand(env=env, ID="d", name="d", demand_node=w, order_arrival_model=lambda: 1e6,
+                       order_quantity_model=lambda: quantity, tolerance=tolerance, order_min_split_ratio=split)
+        env.run(until=0.1)
+        env.process(w.process_order(link, quantity))
+        env.run(until=3)
+        return w, d
+
+    def test_delivery_larger_than_shelf_is_handed_to_waiting_customer(self):
+        # Shelf holds 10; a 20-unit delivery arrives for a customer waiting (in 10-unit chunks).
+        # The surplus must pass straight to the customer, for finite and infinite tolerance alike.
+        for tolerance in (100, float("inf")):
+            w, d = self._capacity_site_with_customer(quantity=20, tolerance=tolerance, split=0.5)
+            assert d.stats.fulfillment_received[1] == 20, tolerance
+            assert w.stats.backorder == [0, 0]
+
+    def test_partial_split_rounding_to_zero_does_not_crash(self):
+        # A 1-unit order with split ratio 0.5 has a minimum chunk of 0; an empty shelf must not
+        # trigger a zero-unit delivery (SimPy rejects get(0)).
+        w, d = self._capacity_site_with_customer(quantity=1, tolerance=2, split=0.5)
+        assert d.stats.fulfillment_received[1] == 1
+
+    @staticmethod
+    def _steps_until(env, until, limit=10_000):
+        """Step the simulation to ``until``; return the number of steps (stops at ``limit``)."""
+        steps = 0
+        while env.peek() < until and steps < limit:
+            env.step()
+            steps += 1
+        return steps
+
+    def test_two_shelves_overflowing_at_once_do_not_livelock(self):
+        # Two capacity-10 sites receive 20 units each at the same instant; their customers already
+        # left (tolerance 1), so nobody takes the surplus. Each drain loop must give up after a
+        # bounded number of zero-time steps instead of yielding to the other one forever.
+        env = _fresh_env()
+        source = scm.Supplier(env=env, ID="I", name="I", node_type="infinite_supplier")
+        sites = []
+        for k in range(2):
+            spec = self._site(f"W{k}", 0, 10, 0, capacity=10)
+            spec["replenishment_policy"] = None
+            w = scm.InventoryNode(env=env, **spec)
+            link = scm.Link(env=env, ID=f"L{k}", source=source, sink=w, cost=0, lead_time=lambda: 1)
+            self._waiting_customers(env, w, count=1, qty=10, start=0.1, tolerance=1, ID=f"d{k}")
+            sites.append((w, link))
+        env.run(until=0.5)
+        for w, link in sites:
+            env.process(w.process_order(link, 20))
+        assert self._steps_until(env, 5) < 1_000
+        assert all(w.inventory.level == 10 for w, _ in sites)
+
+    def test_waiting_customers_keep_the_event_queue_bounded(self):
+        # 50 patient customers woken every tick must not leave a new pending timer per wake-up.
+        env = _fresh_env()
+        w = self._plain_site(env)
+        d = self._waiting_customers(env, w, count=50, qty=1_000_000, start=0.01, tolerance=1e6)
+        for t in range(1, 201):
+            env.run(until=t)
+            w.inventory.put(1)
+        assert len(env._queue) < 200
+
+    def test_commitments_during_a_raw_outage_share_one_retry(self):
+        # A 50-tick raw-link outage with a new commitment every tick: retries must not pile up,
+        # and every commitment is produced once the link recovers.
+        env = _fresh_env()
+        calls = []
+
+        def disrupt_at():
+            calls.append(1)
+            return 0.1 if len(calls) <= 2 else 1e9
+
+        m, links = self._bare_factory(env, recipe=[1], link_kw=dict(link_disrupt_time=disrupt_at,
+                                                                    link_recovery_time=lambda: 50))
+        for t in range(1, 41):
+            env.run(until=t)
+            env.process(m.process_order(links[0], 1))
+            assert len(env._queue) < 20
+        env.run(until=100)
+        assert m.stats.total_products_manufactured == 40 and m.stats.fulfillment_received[1] == 40
+
