@@ -1924,6 +1924,123 @@ class TestWaitingCustomerLeavesOnTime(unittest.TestCase):
         assert w1.stats.backorder == [0, 0]
 
 
+class TestCustomersOnlyTakeFreeStock(unittest.TestCase):
+    """Customers must only be promised units that are really free for them.
+
+    Two ways this used to go wrong:
+
+    * Several waiting customers woken by the same delivery all checked the
+      shelf before any of them had taken anything, so they all saw the same
+      units and all thought those units were theirs. The extra customers were
+      taken off the backorders but then sat in the shelf's queue of waiting
+      requests, where their patience no longer applied.
+    * Units on the shelf that are already promised to an earlier request
+      still waiting in the queue (for example, a site's order the shelf
+      cannot fill yet) were counted as free. Requests are served strictly in
+      order, so a customer who asked for them would wait behind that request.
+
+    Also covers a small order whose minimum partial delivery rounds down to
+    0 units, which used to crash by asking the shelf for 0 units.
+    """
+
+    def _plain_site(self, env, initial_level=0):
+        # A site with no reorder rule, so stock arrives only when the test adds it.
+        return scm.InventoryNode(
+            env=env, ID="W1", name="W1", node_type="warehouse",
+            capacity=float("inf"), initial_level=initial_level,
+            inventory_holding_cost=0, replenishment_policy=None, policy_param={},
+            product_buy_price=1, product_sell_price=2,
+        )
+
+    def test_waiting_customers_do_not_claim_the_same_stock(self):
+        # Three customers (5 units each) with endless patience wait at an
+        # empty site. 5 units arrive: only one customer can be served.
+        env = simpy.Environment()
+        w1 = self._plain_site(env)
+        arrivals = _scripted_seq([0, 0, 0.1, 0.1], tail=1e9)   # 2 padding + script
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=arrivals, order_quantity_model=lambda: 5,
+                         tolerance=float("inf"))
+        env.run(until=1)
+        assert w1.stats.backorder == [3, 15]
+        w1.inventory.put(5)
+        env.run(until=50)
+        assert dem.stats.fulfillment_received == [1, 5]
+        assert w1.stats.backorder == [2, 10]               # two customers still waiting
+        assert len(w1.inventory.inventory.get_queue) == 0  # and not stuck in the shelf's queue
+
+    def test_restock_shared_among_several_waiting_customers(self):
+        # Six customers (5 units each) with endless patience arrive at an
+        # empty warehouse during days 0 to 1.5. The warehouse's reorder rule
+        # brings 20 units on day 5: enough for four of them. Those four are
+        # served, and the other two keep waiting for the next delivery.
+        env = simpy.Environment()
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        w1 = scm.InventoryNode(
+            env=env, ID="W1", name="W1", node_type="warehouse",
+            capacity=float("inf"), initial_level=0, inventory_holding_cost=0,
+            replenishment_policy=scm.SSReplenishment, policy_param={"s": 0, "S": 20},
+            product_buy_price=1, product_sell_price=2,
+        )
+        scm.Link(env=env, ID="L1", source=s1, sink=w1, cost=0, lead_time=lambda: 5)
+        arrivals = _scripted_seq([0, 0, 0.3, 0.3, 0.3, 0.3, 0.3], tail=1e9)   # 2 padding + script
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=arrivals, order_quantity_model=lambda: 5,
+                         tolerance=float("inf"))
+        env.run(until=4.9)
+        assert w1.stats.backorder == [6, 30]
+        env.run(until=5.1)
+        assert w1.stats.backorder == [2, 10]               # four served, two still waiting
+        assert len(w1.inventory.inventory.get_queue) == 0  # nobody stuck in the shelf's queue
+        env.run(until=30)
+        assert dem.stats.fulfillment_received == [6, 30]
+        assert w1.stats.backorder == [0, 0]
+
+    def test_customer_without_patience_skips_stock_promised_to_a_queued_request(self):
+        # An earlier request for 50 waits at the front of the queue while the
+        # shelf holds 10. A customer who will not wait wants 5: nothing is
+        # free for them, so they leave as a shortage instead of joining the queue.
+        env = simpy.Environment()
+        w1 = self._plain_site(env, initial_level=10)
+        w1.inventory.get(50)
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 5)
+        env.run(until=1)
+        assert w1.stats.shortage == [1, 5]
+        assert dem.stats.fulfillment_received == [0, 0]
+        assert [request.amount for request in w1.inventory.inventory.get_queue] == [50]
+
+    def test_waiting_customer_leaves_at_tolerance_behind_a_queued_request(self):
+        # An earlier request for 10 waits at an empty shelf. A customer wants
+        # 5 and waits at most 2 days. 5 units arrive on day 1, but they belong
+        # to the earlier request, so the customer leaves on day 2 without them.
+        env = simpy.Environment()
+        w1 = self._plain_site(env)
+        w1.inventory.get(10)
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 5,
+                         tolerance=2)
+        env.run(until=1)
+        w1.inventory.put(5)
+        env.run(until=5)
+        assert w1.stats.backorder == [0, 0]
+        w1.inventory.put(10)
+        env.run(until=6)
+        assert dem.stats.fulfillment_received == [0, 0]   # the customer had already left
+
+    def test_partial_delivery_rounding_to_zero_does_not_crash(self):
+        # An order of 1 with a minimum partial delivery of half rounds down
+        # to 0 units. With an empty shelf, the customer must just wait and
+        # then leave, not ask the shelf for 0 units.
+        env = simpy.Environment()
+        w1 = self._plain_site(env)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 1,
+                   tolerance=5, order_min_split_ratio=0.5)
+        env.run(until=10)
+        assert w1.stats.backorder == [0, 0]
+
+
 class TestInventoryInvariants(unittest.TestCase):
     """§7: invariant checks for ``Inventory`` that property-based tests
     would have caught the original ``remove_expired`` bug. Hand-rolled here

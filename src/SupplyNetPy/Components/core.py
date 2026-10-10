@@ -3521,13 +3521,18 @@ class Demand(Node):
         self.env.process(self.behavior())
         self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the demand node
 
-    def _process_delivery(self, order_quantity, customer_id):
+    def _process_delivery(self, order_quantity, customer_id, get_event=None):
         """
         Process the delivery of the order, including lead time and delivery cost updates.
 
         Parameters:
             order_quantity (float): The quantity of the product ordered.
             customer_id (int): Customer ID for logging purposes.
+            get_event (optional): the request that has already taken this order's
+                units off the shelf, if the caller made one. ``wait_for_order``
+                passes one so that the units are taken at the same moment the
+                customer checks the shelf. When it is not given, the units are
+                taken here.
 
         Attributes:
             order_quantity (float): The quantity of the product ordered.
@@ -3540,7 +3545,8 @@ class Demand(Node):
         validate_non_negative(name="delivery_cost", value=del_cost) # check if delivery_cost is non-negative
         self.stats.update_stats(transportation_cost=del_cost)
         
-        get_event, _ = self.demand_node.inventory.get(order_quantity)
+        if get_event is None:
+            get_event, _ = self.demand_node.inventory.get(order_quantity)
         yield get_event
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity}, available.")
 
@@ -3584,14 +3590,26 @@ class Demand(Node):
         # The customer will wait until this moment and no longer.
         deadline = self.env.now + self.customer_tolerance
         while True:
-            available = self.demand_node.inventory.level
-            if order_quantity <= available: # check if remaining order quantity is available 
-                self.env.process(self._process_delivery(order_quantity, customer_id))
+            available = self._available()
+            # When there is enough, the units are taken off the shelf right
+            # here, in the same step as the check, and not later inside
+            # ``_process_delivery``. That process only starts once this step is
+            # over. If one delivery of stock wakes several waiting customers at
+            # the same moment, each of them would otherwise check the shelf
+            # before any of them had taken anything, all would see the same
+            # units, and all would think those units were theirs.
+            if order_quantity <= available: # check if remaining order quantity is available
+                get_event, _ = self.demand_node.inventory.get(order_quantity)
+                self.env.process(self._process_delivery(order_quantity, customer_id, get_event))
                 self.demand_node.stats.update_stats(backorder=[-1,-order_quantity])
                 order_quantity = 0
                 break
-            elif available >= partial: # or else at least min required 'partial' is available
-                self.env.process(self._process_delivery(available, customer_id))
+            # ``partial`` can round down to 0 for a small order, so also check
+            # that there is at least one unit to send. Asking the shelf for 0
+            # units is an error in SimPy.
+            elif available > 0 and available >= partial: # or else at least min required 'partial' is available
+                get_event, _ = self.demand_node.inventory.get(available)
+                self.env.process(self._process_delivery(available, customer_id, get_event))
                 # Partial shipment: backorder count stays 1 (one outstanding customer order)
                 # while its quantity ticks down. fulfillment_received and demand_fulfilled
                 # each get a compensating -1 on the count so the single eventual completion
@@ -3635,6 +3653,23 @@ class Demand(Node):
             # reordering stock for a customer who has already gone.
             self.demand_node.stats.update_stats(backorder=[-1,-order_quantity])
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available! Customer leaves.")
+
+    def _available(self):
+        """
+        How many units a customer can take from the node's shelf right now.
+
+        Requests for stock are served strictly in the order they were made. If
+        an earlier request is still waiting because the shelf cannot fill it yet
+        (for example, a site below this node ordered 50 units while only 10 are
+        on the shelf), every later request waits behind it, even a small one.
+        So while any request is waiting, nothing on the shelf is free for a new
+        customer, even though units can be seen on it.
+
+        Returns:
+            float: the shelf level, or 0 while an earlier request is still waiting.
+        """
+        inventory = self.demand_node.inventory
+        return 0 if inventory.inventory.get_queue else inventory.level
 
     # ---- Customer-order helpers -------------------------------------------
     # ``customer`` used to handle four different ways of filling an order all in
@@ -3733,7 +3768,7 @@ class Demand(Node):
         Returns:
             None
         """
-        available = self.demand_node.inventory.level
+        available = self._available()
         self.stats.update_stats(demand_placed=[1, order_quantity])
         # The smallest piece this customer will take: the whole order when no
         # partial delivery is allowed (min_split >= 1), otherwise the minimum
