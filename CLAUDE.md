@@ -47,6 +47,10 @@ There is no linter or formatter configured; don't add one unless asked.
 
 `validation/` cross-checks SupplyNetPy against anyLogistix (`validation_snp_anylogistix_cmp.csv` / `.ods`, with a write-up in `RESULT_summary.md`). When changing core semantics that affect KPIs (cost, profit, shortage, backorder accounting), check whether the validation numbers still hold — this is the reference for "does the model agree with a commercial sim."
 
+### Case studies
+
+Worked case studies live under `docs/case-studies/`, each a Markdown page wired into the `mkdocs.yml` nav. The national-scale milk supply chain (`docs/case-studies/milk-supply-chain-india.md`) is the flagship one; its large interactive assets (the network map, retailer heatmap, and `profit_surface_*.html` 3D plots) sit beside it in `docs/case-studies/milk-india/` and are embedded via relative `<iframe>` / `<a>` links (`../milk-india/<file>.html`). These HTML assets are pre-generated and committed, not produced by the build. When adding or swapping a plot, edit both the file in `docs/case-studies/milk-india/` and its reference in the page; the copies under `site/` are `mkdocs build` output and are regenerated, so don't hand-edit them. The prose follows the non-programmer docs style described below.
+
 ### REVIEW.md and the §-numbered conventions
 
 Many "Conventions to preserve" bullets below cite section numbers (§4.3, §5.1, §6.6, etc.). Those refer to `REVIEW.md` at the repo root, which logs the ongoing refactor / cleanup work and is the source of the load-bearing rules in this file. When a bullet says "do not reintroduce X (the §4.8 bug)", `REVIEW.md` is where the underlying incident is documented.

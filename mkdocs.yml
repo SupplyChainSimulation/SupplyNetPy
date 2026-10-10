@@ -25,7 +25,9 @@ nav:
       - Estimating Safety Stock: safety_inv_est.md
     - Advanced:
       - Complex Supply Chain: example-complex.md
-      - Pharmacy Supply Chain: case_study_pharma.md
+  - Case Studies:
+    - Pharmacy Supply Chain: case_study_pharma.md
+    - Milk Supply Chain (India): case-studies/milk-supply-chain-india.md
   - API Reference:
       - Introduction: api-reference/api-intro.md
       - Core Components: api-reference/api-ref-core.md
