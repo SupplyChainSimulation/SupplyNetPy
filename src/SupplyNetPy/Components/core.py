@@ -3555,9 +3555,13 @@ class Demand(Node):
     def wait_for_order(self,customer_id,order_quantity):
         """
         Wait for the required number of units based on customer tolerance.
+        While waiting, the customer's order is counted as a backorder at the node.
+        The customer checks again each time new stock arrives at the node.
         If the customer tolerance is infinite, the method waits until the order is fulfilled.
-        Otherwise, it waits for the specified tolerance time and updates the unsatisfied demand if the order is not fulfilled.
-        
+        Otherwise, the customer leaves as soon as their tolerance (patience) runs out,
+        even if no new stock has arrived, and whatever they were still owed is taken
+        off the node's backorders.
+
         Parameters:
             order_quantity (float): The quantity of the product ordered.
             customer_id (int): Customer ID for logging purposes.
@@ -3576,11 +3580,10 @@ class Demand(Node):
         partial = order_quantity
         if self.min_split < 1:
             partial = int(order_quantity * self.min_split)
-        
-        waited = 0
-        available = 0
-        while order_quantity>0 and waited<=self.customer_tolerance:
-            waiting_time = self.env.now
+
+        # The customer will wait until this moment and no longer.
+        deadline = self.env.now + self.customer_tolerance
+        while True:
             available = self.demand_node.inventory.level
             if order_quantity <= available: # check if remaining order quantity is available 
                 self.env.process(self._process_delivery(order_quantity, customer_id))
@@ -3598,12 +3601,40 @@ class Demand(Node):
                 order_quantity -= available # update order quantity
             else: 
                 self.demand_node.stats.update_stats(shortage=[1,order_quantity-available])
-            yield self.demand_node.inventory_raised # wait until inventory is replenished
-            self.demand_node.inventory_raised = self.env.event()  # reset the event for the next iteration
-            waited += self.env.now - waiting_time # update the waited time
-        
-        if order_quantity > 0: # if the order quantity is still greater than 0, it means the order was not fulfilled
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available!")
+
+            if self.env.now >= deadline:
+                break  # the customer's patience has run out
+
+            # Wait for whichever comes first: new stock arriving at the node, or
+            # the end of the customer's patience. Without the second part, a
+            # customer would only notice that their patience had run out when
+            # stock next arrived — and if no stock ever arrived, they would
+            # wait (and stay counted as a backorder) forever.
+            stock_arrived = self.demand_node.inventory_raised
+            if deadline == float('inf'):
+                yield stock_arrived  # endless patience: only new stock can end the wait
+            else:
+                yield stock_arrived | self.env.timeout(deadline - self.env.now)
+
+            # The "stock arrived" signal can fire only once, so after it fires it
+            # is swapped for a fresh one. Several customers may be waiting on the
+            # same signal; only the first one to wake should swap it. If a later
+            # customer swapped it again, the customers who had already moved on
+            # to the first fresh signal would be left waiting on one that never
+            # fires. Hence the check that the node still holds the signal we
+            # waited on. If we woke because our patience ran out instead, the
+            # signal has not fired and must be left alone for the others.
+            if stock_arrived.triggered and self.demand_node.inventory_raised is stock_arrived:
+                self.demand_node.inventory_raised = self.env.event()
+
+        if order_quantity > 0: # the customer gives up and leaves without the rest of the order
+            # They are no longer waiting, so take what they were still owed off
+            # the node's current backorders. (The count drops by 1 even after
+            # partial deliveries: one customer is one backorder until they are
+            # fully served or leave.) Without this, the node would keep
+            # reordering stock for a customer who has already gone.
+            self.demand_node.stats.update_stats(backorder=[-1,-order_quantity])
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available! Customer leaves.")
 
     # ---- Customer-order helpers -------------------------------------------
     # ``customer`` used to handle four different ways of filling an order all in

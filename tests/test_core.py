@@ -1831,6 +1831,99 @@ class TestReplenishmentDropAndDiscard(unittest.TestCase):
         assert stats["demand_placed"][0] >= 1
 
 
+class TestWaitingCustomerLeavesOnTime(unittest.TestCase):
+    """Customers who are willing to wait (``tolerance > 0``).
+
+    A waiting customer must leave as soon as their patience runs out, even if
+    no new stock arrives, and what they were still owed must then be taken off
+    the node's current backorders. Before this fix a customer only noticed
+    that their patience had run out when stock next arrived, so a customer
+    who had already given up stayed counted as a backorder (and kept the node
+    reordering for them) until the next delivery, or forever if none came.
+    """
+
+    def _plain_site(self, env, initial_level=0):
+        # A site with no reorder rule, so stock arrives only when the test adds it.
+        return scm.InventoryNode(
+            env=env, ID="W1", name="W1", node_type="warehouse",
+            capacity=float("inf"), initial_level=initial_level,
+            inventory_holding_cost=0, replenishment_policy=None, policy_param={},
+            product_buy_price=1, product_sell_price=2,
+        )
+
+    def test_backorder_cleared_when_patience_runs_out_before_restock(self):
+        # One customer wants 50 from a shelf of 10 and waits at most 5 days.
+        # The restock takes 20 days, so the customer leaves on day 5.
+        env = simpy.Environment()
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        w1 = scm.InventoryNode(
+            env=env, ID="W1", name="W1", node_type="warehouse",
+            capacity=float("inf"), initial_level=10, inventory_holding_cost=0,
+            replenishment_policy=scm.SSReplenishment, policy_param={"s": 5, "S": 10},
+            product_buy_price=1, product_sell_price=2,
+        )
+        scm.Link(env=env, ID="L1", source=s1, sink=w1, cost=0, lead_time=lambda: 20)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 50,
+                   tolerance=5)
+        env.run(until=4.5)
+        assert w1.stats.backorder == [1, 50]   # still waiting
+        env.run(until=5.5)
+        assert w1.stats.backorder == [0, 0]    # left on day 5, long before the restock
+        assert w1.position() == w1.inventory.on_hand
+
+    def test_backorder_cleared_when_no_stock_ever_arrives(self):
+        env = simpy.Environment()
+        w1 = self._plain_site(env)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 5,
+                   tolerance=2)
+        env.run(until=1.5)
+        assert w1.stats.backorder == [1, 5]
+        env.run(until=50)
+        assert w1.stats.backorder == [0, 0]
+
+    def test_customer_served_if_stock_arrives_in_time(self):
+        env = simpy.Environment()
+        w1 = self._plain_site(env)
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 5,
+                         tolerance=10)
+        env.run(until=3)
+        w1.inventory.put(5)
+        env.run(until=20)
+        assert dem.stats.fulfillment_received == [1, 5]
+        assert w1.stats.backorder == [0, 0]
+
+    def test_endless_patience_keeps_waiting(self):
+        env = simpy.Environment()
+        w1 = self._plain_site(env)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 5,
+                   tolerance=float("inf"))
+        env.run(until=500)
+        assert w1.stats.backorder == [1, 5]
+
+    def test_all_waiting_customers_are_woken(self):
+        # Three customers (5 units each) wait at a site with an empty shelf.
+        # A delivery of 3 serves no one; a later delivery of 12 must still
+        # reach all three, including those who started waiting first.
+        env = simpy.Environment()
+        w1 = self._plain_site(env)
+        arrivals = _scripted_seq([0, 0, 0.1, 0.1], tail=1e9)   # 2 padding + script
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=arrivals, order_quantity_model=lambda: 5,
+                         tolerance=100)
+        env.run(until=1)
+        assert w1.stats.backorder == [3, 15]
+        w1.inventory.put(3)
+        env.run(until=2)
+        w1.inventory.put(12)
+        env.run(until=20)
+        assert dem.stats.fulfillment_received[1] == 15
+        assert w1.stats.backorder == [0, 0]
+
+
 class TestInventoryInvariants(unittest.TestCase):
     """§7: invariant checks for ``Inventory`` that property-based tests
     would have caught the original ``remove_expired`` bug. Hand-rolled here
