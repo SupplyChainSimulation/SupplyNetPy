@@ -17,6 +17,7 @@ nav:
   - Home: index.md
   - SupplyNetPy in 10 Minutes: ten_min.md
   - About: about.md
+  - Release History: changelog.md
   - Examples: 
     - Basic:
       - Supply Chain With Factory: example.md
@@ -34,9 +35,11 @@ nav:
       - Utilities: api-reference/api-ref-utilities.md
       - Logger: api-reference/api-ref-logger.md
       - Known Issues and Planned Work: known-issues.md
+  - SupplyNetPy on GitHub: https://github.com/SupplyChainSimulation/SupplyNetPy
 
 theme:
   name: readthedocs
+  custom_dir: overrides
   highlightjs: true
   hljs_languages:
     - yaml

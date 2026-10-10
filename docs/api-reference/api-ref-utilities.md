@@ -1,3 +1,7 @@
+---
+github_source: https://github.com/SupplyChainSimulation/SupplyNetPy/blob/main/src/SupplyNetPy/Components/utilities.py
+---
+
 The utility module offers various functions to create, simulate, access information, and visualize the supply chain network more effectively.
 
 ::: SupplyNetPy.Components.utilities
