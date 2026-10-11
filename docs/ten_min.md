@@ -2,15 +2,15 @@
 
 ## Installation
 
-SupplyNetPy can be installed using pip:
+SupplyNetPy can be installed using pip.
 
 ```sh
 pip install supplynetpy
 ```
 
-## Quick Start: Building a Simple Three-Node Supply Chain
+## Quick Start, Building a Simple Supply Chain with Three Nodes
 
-Follow these steps to create and simulate a basic supply chain with a supplier and a manufacturer:
+Follow these steps to create and simulate a basic supply chain with an infinite supplier, a distributor and a customer demand.
 
 ![A three node supply chain.](img/img_two_node_sc.png)
 
@@ -20,11 +20,11 @@ Follow these steps to create and simulate a basic supply chain with a supplier a
 import SupplyNetPy.Components as scm
 ```
 
-The `Components` module gives you the building blocks of a supply chain — nodes (suppliers, factories, warehouses, retailers), products and inventory, demand, and the links that connect everything together — which you assemble into a model that fits your scenario.
+The `Components` module gives you the building blocks of a supply chain. These are the nodes (raw-material suppliers, manufacturers, distributors, warehouses and retailers), products and inventories, customer demands, and the links that connect them. You assemble them into a model that fits your scenario. The words used on this page are explained in the [Glossary](glossary.md).
 
 ### Create Nodes
 
-Let us create a supplier node in the supply chain that has infinite inventory and can supply any required quantity of product units to a consumer node. The supplier node requires several parameters, including ID, name, and node type. To set it as an infinite supplier, we must specify the node type as `infinite_supplier`.
+Let us create an infinite supplier, a supplier that never runs out and so can supply any number of units to its buyers. It needs an ID, a name and a node type. To make it an infinite supplier, set the node type to `infinite_supplier`.
 
 ```python
 {% 
@@ -34,7 +34,7 @@ Let us create a supplier node in the supply chain that has infinite inventory an
 %}
 ```
 
-A distributor or warehouse node that purchases products from a supplier is created below by specifying configurable parameters, including ID, name, inventory capacity, replenishment policy, policy parameters, product buy price, and product sell price. 
+Next, a distributor that buys units from the supplier. Its settings include the ID, the name, the capacity, the replenishment policy and its parameters, and the buy and sell prices.
 
 ```python
 {% 
@@ -44,24 +44,25 @@ A distributor or warehouse node that purchases products from a supplier is creat
 %}
 ```
 
-When creating a manufacturer, distributor, wholesaler, or retailer, we must specify the inventory replenishment policy and its parameters.
+For a manufacturer, distributor, warehouse or retailer, we give its replenishment policy (the rule it follows to decide when to place a replenishment order and how many units to order) and the policy's parameters.
 
-The SupplyNetPy Components module includes an `InventoryReplenishment` class that can be customized to define specific replenishment policies. Currently, SupplyNetPy supports the following replenishment policies:
+The policies are subclasses of the `InventoryReplenishment` class, which you can also subclass to define your own. SupplyNetPy has the following replenishment policies.
 
+* [The (s, S) policy](api-reference/api-ref-core.md#SupplyNetPy.Components.core.SSReplenishment). When the inventory position falls to s or below, order enough units to bring it back up to S. Parameters {s, S}, class `SSReplenishment`.
 
-- <p> [Reorder-level (s,S)](api-reference/api-ref-core.md#SupplyNetPy.Components.core.SSReplenishment) — continuously monitor inventory and replenish up to S when the level drops below s. Parameters: {s, S} &nbsp;&nbsp; (class `SSReplenishment`) </p>
+* [The (s, S) policy with a safety stock](api-reference/api-ref-core.md#SupplyNetPy.Components.core.SSReplenishment). The same, with the safety stock added to both s and S. Parameters {s, S, safety_stock}, class `SSReplenishment`.
 
-- <p> [Reorder-level (s,S) with Safety Stock](api-reference/api-ref-core.md#SupplyNetPy.Components.core.SSReplenishment) — reorder-level replenishment that factors in a safety stock buffer. Parameters: {s, S, safety_stock} (`SSReplenishment`) </p>
+* [The (R, Q) policy](api-reference/api-ref-core.md#SupplyNetPy.Components.core.RQReplenishment). When the inventory position falls to R or below, order a fixed Q units. Parameters {R, Q}, class `RQReplenishment`.
 
-- <p> [Replenish Quantity (RQ)](api-reference/api-ref-core.md#SupplyNetPy.Components.core.RQReplenishment) — reorder a fixed quantity Q when placing an order. Parameters: {R, Q} (`RQReplenishment`) </p>
+* [The periodic policy](api-reference/api-ref-core.md#SupplyNetPy.Components.core.PeriodicReplenishment). Every T time units, order Q units. Parameters {T, Q}, class `PeriodicReplenishment`.
 
-- <p> [Periodic (T,Q)](api-reference/api-ref-core.md#SupplyNetPy.Components.core.PeriodicReplenishment) — replenish inventory every T days with Q units. Parameters: {T, Q} (`PeriodicReplenishment`) </p>
+* [The periodic policy with a safety stock](api-reference/api-ref-core.md#SupplyNetPy.Components.core.PeriodicReplenishment). The same, but if the inventory level is below the safety stock, the order also includes the units needed to bring it back up to the safety stock. Parameters {T, Q, safety_stock}, class `PeriodicReplenishment`.
 
-- <p> [Periodic (T,Q) with safety stock](api-reference/api-ref-core.md#SupplyNetPy.Components.core.PeriodicReplenishment) — replenish inventory every T days with Q units. If safety stock is specified, then when the safety stock level is violated, order Q units in addition to the quantity needed to maintain safety stock levels. Parameters: {T, Q, safety_stock} (`PeriodicReplenishment`) </p>
+The inventory position is the inventory level, plus the units in transit, minus the units still owed. By default, the (s, S) and (R, Q) policies check it each time the inventory drops.
 
 ### Create a Link
 
-A link is created as described below. It is configured using parameters such as transportation cost and lead time. The lead time parameter accepts a generative function that produces random lead times based on a specified distribution. Users can create this function according to their needs or define a constant lead time using a Python lambda function.
+A link is created as shown below. Its settings include the transportation cost and the lead time. The lead time can be a number, or a function with no arguments that returns one lead time each time it is called, for example a random one drawn from a distribution of your choice. For a constant lead time, a Python `lambda` such as `lambda: 2` is enough.
 
 ```python
 {% 
@@ -73,7 +74,7 @@ A link is created as described below. It is configured using parameters such as 
 
 ### Specify Demand
 
-A demand is created by specifying an ID, name, the node where the demand occurs, how often orders arrive, and how big each order is. The "how often" and "how big" values are each given as a small zero-argument function that returns a number. If you want randomness — say, customer arrivals drawn from an exponential distribution — write a function that samples from that distribution and returns one number per call. If you want a fixed value, just use a one-line `lambda` such as `lambda: 1`. Demand can be placed at either a distributor or a retailer. The example below sets up a steady demand of 10 units per day at distributor D1.
+A customer demand is created by giving an ID, a name, the site the customers order from, how often orders arrive, and how many units each order is for. The "how often" and "how many" values are each given as a small function with no arguments that returns a number. If you want randomness, for example customer orders arriving at times drawn from an exponential distribution, write a function that samples from that distribution and returns one number per call. If you want a fixed value, just use a `lambda` such as `lambda: 1`. A customer demand can be at any site except a raw-material supplier, usually a retailer or a distributor. The example below sets up a steady demand of 10 units every time unit (read here as a day) at distributor D1.
 
 ```python
 {% 
@@ -85,7 +86,7 @@ A demand is created by specifying an ID, name, the node where the demand occurs,
 
 ### Assemble and Simulate the Network
 
-To create and simulate the supply chain, use the `create_sc_net` function to instantiate the supply chain nodes and assemble them into a network. This function adds metadata to the supply chain, such as the number of nodes, and other relevant information, keeping everything organized. It returns a Python dictionary containing all supply chain components and metadata. The `simulate_sc_net` function then simulates the supply chain network over a specified period and provides a log of the simulation run. It also calculates performance measures such as net profit, throughput, and more. Let's use these functions to build and simulate our supply chain.
+To create and simulate the supply chain, use the `create_sc_net` function to create the nodes and assemble them into a network. This function also records information about the network, such as the number of nodes, and returns a Python dictionary that holds all the parts of the network. The `simulate_sc_net` function then simulates the network up to a given time and writes a log of the run. It also calculates results for the whole network, such as profit and throughput. Let's use these functions to build and simulate our supply chain.
 
 ```python
 {% 
@@ -97,18 +98,20 @@ To create and simulate the supply chain, use the `create_sc_net` function to ins
 
 ### Review Results
 
-After the simulation, inspect `supplychainnet` to view performance metrics for the supply chain nodes. By default, the simulation log is displayed in the console and saved to a local file named `simulation_trace.log`, which is located in the same directory as the Python script. Each node in the simulation has its own logger, and logging can be enabled or disabled by providing an additional parameter: `logging=True` or `logging=False` while creating the node. SupplyNetPy also exposes a package-level handle `scm.global_logger` for bulk toggling all simulation logs at once: call `scm.global_logger.enable_logging()` or `scm.global_logger.disable_logging()`.
+After the simulation, look at `supplychainnet` to see the results. When `simulate_sc_net` runs with `logging=True` (the default), the simulation log is shown in the console and saved to a file named `simulation_trace.log` in the folder you run the script from. Each node has its own logger, and you can switch it on or off with `logging=True` or `logging=False` when you create the node. To switch all simulation logs on or off at once, call `scm.global_logger.enable_logging()` or `scm.global_logger.disable_logging()`.
 
-**Repeating the same run.** Some parts of the simulation involve randomness — for example, when a node or a link fails by chance (`failure_p`, `node_disrupt_time`, and similar settings on `Link`). By default, every run draws different random numbers, so two back-to-back runs may give slightly different results. If you want to repeat *exactly the same run* — for instance, to compare two policies under the same sequence of failures — call `scm.set_seed(n)` once before you build the network. If you want even finer control, you can also create your own random-number generator with `random.Random()` and pass it as the `rng=` argument when you create a node or a link; that node or link will then use its own random stream, independent of the rest.
+**Repeating the same run.** Some parts of the simulation can be random, for example disruptions that start at random (`failure_p` on a node, and the similar settings on a `Link`). By default, every run draws different random numbers, so two runs in a row may give slightly different results. If you want to repeat *exactly the same run*, for instance to compare two policies under the same sequence of disruptions, call `scm.set_seed(n)` once before you build the network. For even finer control, you can also create your own random number generator with `random.Random()` and pass it as the `rng` argument when you create a node or a link. That node or link then uses its own random numbers, independent of the rest.
 
-Below is an example of a simulation log generated by this program. At the end of the log, supply chain-level performance metrics are calculated and printed. These performance measures are computed for each node in the supply chain and include:
+Below is an example of a simulation log from this program. At the end of the log, the results for the whole network are printed. They are added up from every node and include the following.
 
-- Inventory carry cost (holding cost)
-- Inventory spend (replenishment cost)
-- Transportation cost
-- Total cost
-- Revenue
-- Profit
+* Holding cost (`inventory_carry_cost`)
+* What the sites paid for the units they received (`inventory_spend_cost`)
+* Transportation cost
+* Total cost
+* Revenue
+* Profit
+
+What each result means is listed under `simulate_sc_net` in the [API reference](api-reference/api-ref-utilities.md).
 
 <div id="" style="overflow:scroll; height:600px;">
 ```
@@ -120,7 +123,7 @@ Below is an example of a simulation log generated by this program. At the end of
 ```
 </div>
 
-To access node performance metrics easily, call `node.stats.get_statistics()`. In this example, the `D1` node level statistics can be accessed with the following code:
+To see the statistics of one node, call `node.stats.get_statistics()`. In this example, the statistics of node `D1` can be read with the code below.
 
 ```python
 {% 
@@ -129,7 +132,7 @@ To access node performance metrics easily, call `node.stats.get_statistics()`. I
     end="#node-info-en"
 %}
 ```
-Here is the output produced by the code mentioned above.
+Here is the output produced by the code above.
 ```
 {% 
     include "../examples/py/intro_simple.py" 
@@ -139,9 +142,9 @@ Here is the output produced by the code mentioned above.
 ```
 ---
 
-## Alternative Approach: Using Object-Oriented API
+## Another Approach, Creating the Objects Yourself
 
-This approach demonstrates how to build and simulate a supply chain using SupplyNetPy's object-oriented API. Instead of passing dictionaries to utility functions, we instantiate supply chain components as Python objects, providing greater flexibility and extensibility. Each node and link is created as an object, and the simulation is managed within a SimPy environment, allowing for more advanced customization and integration with other SimPy-based processes.
+This approach builds and simulates the same supply chain by creating each node, link and customer demand as a Python object yourself, instead of passing dictionaries to the utility functions. This gives more flexibility. The simulation runs in a SimPy environment that you create, which makes it easy to combine with your own SimPy processes.
 
 ```python
 {% 
@@ -151,7 +154,7 @@ This approach demonstrates how to build and simulate a supply chain using Supply
 %}
 ```
 
-This script generates an identical simulation log because the network configuration and demand are deterministic. Final statistics will not be included in the log, as overall supply chain statistics are calculated by the function `simulate_sc_net`. However, node-level statistics will still be available and can be accessed as mentioned earlier. We can proceed to create and simulate the supply chain network using the same functions, `create_sc_net` and `simulate_sc_net`, as demonstrated below.
+This script produces the same simulation log, because the network and its demand are deterministic. The results for the whole network are not in the log, because they are calculated by the function `simulate_sc_net`. The statistics of each node are still available, as shown earlier. We can also create and simulate the supply chain network with the same functions, `create_sc_net` and `simulate_sc_net`, as shown below.
 
 ```python
 {% 
@@ -161,5 +164,4 @@ This script generates an identical simulation log because the network configurat
 %}
 ```
 
- Note that an additional parameter, `env`, is passed to the function `create_sc_net` to create a supply chain network. This is necessary because the SimPy environment (`env`) is now created by us and the same needs to be used for creating the supply chain network and running the simulations.
- 
+Note that an extra parameter, `env`, is passed to `create_sc_net`. It is needed because we created the SimPy environment (`env`) ourselves, and the same environment must be used to create the supply chain network and to run the simulation.
