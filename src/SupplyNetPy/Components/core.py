@@ -3317,69 +3317,75 @@ class InventoryNode(Node):
 
 class Manufacturer(Node):
     """
-    The Manufacturer class models a production unit in the supply network that consumes raw materials 
-    to manufacture finished products. It maintains separate inventories for raw materials and finished goods, 
-    applies replenishment policies to the product inventory, and places orders to suppliers dynamically.
-
-    The manufacturer can be connected to multiple suppliers and automatically produces products based on 
-    raw material availability. It continuously updates real-time statistics such as production volume, 
-    manufacturing cost, and revenue.
+    The `Manufacturer` class represents a manufacturer: a site that turns raw materials into a product and
+    sells the product to buyers (other sites) and customers. It keeps its raw materials apart from its
+    inventory of the product. Its replenishment policy watches the product's inventory position and decides
+    when to plan production; the manufacturer then orders the raw materials needed from its raw-material
+    suppliers, one for each raw material.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
         ID (str): Unique identifier for the manufacturer.
         name (str): Name of the manufacturer.
-        capacity (float): Maximum capacity of the finished product inventory.
-        initial_level (float): Initial inventory level for finished products.
-        inventory_holding_cost (float): Holding cost per unit for finished products.
-        product_sell_price (float): Selling price per unit of the finished product.
-        replenishment_policy (InventoryReplenishment): Replenishment policy object for the product inventory.
-        policy_param (dict): Parameters for the replenishment policy.
-        product (Product): Product manufactured by the manufacturer.
+        capacity (float): The largest inventory level of the product it can hold.
+        initial_level (float): Inventory level of the product at the start.
+        inventory_holding_cost (float): Holding cost per unit of the product per time unit.
+        product_sell_price (float): Sell price per unit of the product.
+        replenishment_policy (InventoryReplenishment): The replenishment policy **class** (for example
+            ``scm.SSReplenishment``), not an object: the manufacturer creates the policy itself. It decides when
+            to plan production. None for no replenishment policy.
+        policy_param (dict): Parameters for the replenishment policy (for example ``{'s': 20, 'S': 60}``).
+        product (Product): The product it makes (required). If the product's buy price is not set, it is set to
+            the cost of making one unit: the manufacturing cost plus the cost of its raw materials.
         inventory_type (str): Type of inventory ("non-perishable" or "perishable").
-        shelf_life (float): Shelf life of the product.
-        supplier_selection_policy (SupplierSelectionPolicy): Supplier selection policy class.
-        supplier_selection_mode (str): Supplier selection mode (default is "fixed").
-        **kwargs: Additional keyword arguments for the Node class and logger.
+        shelf_life (float): Shelf life of the product, in time units (perishable goods only).
+        supplier_selection_policy (SupplierSelectionPolicy): The supplier-selection policy class (default
+            ``SelectFirst``).
+        supplier_selection_mode (str): "fixed" (default) or "dynamic"; see `SupplierSelectionPolicy`.
+        **kwargs: Additional keyword arguments for the Node class and logger. Also accepts
+            ``periodic_stats`` (bool, default False: if True, its statistics are updated every
+            ``stats_period`` time units) and ``stats_period`` (float, default 1).
 
     Attributes:
         _info_keys (list): List of keys to include in the info dictionary.
-        replenishment_policy (InventoryReplenishment): Replenishment policy object for the product inventory.
-        inventory (Inventory): Inventory object managing finished product stock.
-        inventory_drop (simpy.Event): Event triggered when inventory drops.
-        inventory_raised (simpy.Event): Event triggered when inventory is replenished.
-        product (Product): Product manufactured by the manufacturer.
-        suppliers (list): List of supplier links connected to this manufacturer.
-        sell_price (float): Selling price per unit of the product.
-        production_cycle (bool): Indicates whether the production cycle is currently active.
-        raw_inventory_counts (dict): Inventory levels of raw materials by raw material ID.
-        pending_orders (int): Number of raw-material orders currently in flight (dispatched but not yet delivered).
-        selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
-        stats (Statistics): Statistics tracking object for the manufacturer.
+        replenishment_policy (InventoryReplenishment): The replenishment policy object the manufacturer created (or None).
+        inventory (Inventory): Its inventory of the product.
+        inventory_drop (simpy.Event): Fires when its inventory drops.
+        inventory_raised (simpy.Event): Fires when units are added to its inventory.
+        product (Product): The product it makes.
+        suppliers (list): The links to its raw-material suppliers.
+        sell_price (float): Sell price per unit of the product.
+        production_cycle (bool): True while a production batch is being made.
+        raw_inventory_counts (dict): Units of each raw material it holds, by raw material ID. (Raw materials are
+            counted here, not in ``inventory``.)
+        pending_orders (int): Number of its raw-material replenishment orders placed but not yet arrived.
+        selection_policy (SupplierSelectionPolicy): The supplier-selection policy object.
+        stats (Statistics): Its statistics. Besides the usual ones, ``total_products_manufactured`` (units made so
+            far) and ``total_manufacturing_cost`` (manufacturing cost so far, part of ``node_cost``).
         production_wake (simpy.Event): Event that wakes the production loop when it is waiting (see `wake_production`).
 
     Functions:
         __init__: Initializes the Manufacturer object.
-        manufacture_product: Makes one batch of the product, consuming raw materials and adding the batch to the inventory.
-        behavior: Production loop that keeps making batches while there are planned units left to make.
+        manufacture_product: Makes one production batch, using up raw materials and adding the units made to the inventory.
+        behavior: Production loop that keeps making production batches while there are planned units left to make.
         wake_production: Wakes the production loop if it is waiting.
-        process_order: Places an order for raw materials based on the quantity of products to be manufactured.
-        process_order_raw: Places an individual order for a specific raw material from a supplier.
+        process_order: Plans production and orders the raw materials needed for it.
+        process_order_raw: Places one replenishment order for one raw material with one raw-material supplier.
 
     Behavior:
-        When the replenishment policy asks for more stock, the manufacturer plans that many units and orders the raw
-        materials needed to make them. It then makes the planned units in batches: each batch makes at most
-        `product.batch_size` units and takes `product.manufacturing_time`. Batches follow one another until every
-        planned unit is made. If a batch cannot start (no raw material yet, or no free space on the shelf), the
-        manufacturer waits until raw material arrives, a new plan comes in, or stock leaves the shelf, and then
-        carries on.
+        When the replenishment policy asks for more units, the manufacturer plans that many units and orders the
+        raw materials needed to make them. It then makes the planned units in production batches: each makes at
+        most `product.batch_size` units and takes `product.manufacturing_time`. Production batches follow one
+        another until every planned unit is made. If one cannot start (no raw material yet, or no free
+        capacity), the manufacturer waits until raw material arrives, a new plan comes in, or units leave its
+        inventory, and then carries on.
 
     Assumptions:
-        The manufacturer produces only a single type of product.
-        Separate inventories are maintained for raw materials and finished products.
-        Only the finished product inventory is actively monitored by the replenishment policy.
-        Raw material inventories are replenished based on product inventory requirements.
-        The raw material inventory is initially empty.
+        The manufacturer makes a single product.
+        Raw materials are kept apart from the inventory of the product.
+        Only the product's inventory position is watched by the replenishment policy.
+        Raw materials are ordered when production is planned, for exactly the planned units.
+        The manufacturer starts with no raw materials.
     """
     _info_keys = Node._info_keys + ["replenishment_policy", "product_sell_price"]
 
@@ -3406,40 +3412,49 @@ class Manufacturer(Node):
             env (simpy.Environment): Simulation environment.
             ID (str): Unique identifier for the manufacturer.
             name (str): Name of the manufacturer.
-            capacity (float): Maximum capacity of the finished product inventory.
-            initial_level (float): Initial inventory level for finished products.
-            inventory_holding_cost (float): Holding cost per unit for finished products.
-            product_sell_price (float): Selling price per unit of the finished product.
-            replenishment_policy (InventoryReplenishment): Replenishment policy object for the product inventory.
-            policy_param (dict): Parameters for the replenishment policy.
-            product (Product): Product manufactured by the manufacturer.
+            capacity (float): The largest inventory level of the product it can hold.
+            initial_level (float): Inventory level of the product at the start.
+            inventory_holding_cost (float): Holding cost per unit of the product per time unit.
+            product_sell_price (float): Sell price per unit of the product.
+            replenishment_policy (InventoryReplenishment): The replenishment policy **class** (for example
+                ``scm.SSReplenishment``), not an object: the manufacturer creates the policy itself. It decides when
+                to plan production. None for no replenishment policy.
+            policy_param (dict): Parameters for the replenishment policy (for example ``{'s': 20, 'S': 60}``).
+            product (Product): The product it makes (required). If the product's buy price is not set, it is set to
+                the cost of making one unit: the manufacturing cost plus the cost of its raw materials.
             inventory_type (str): Type of inventory ("non-perishable" or "perishable").
-            shelf_life (float): Shelf life of the product.
-            supplier_selection_policy (SupplierSelectionPolicy): Supplier selection policy class.
-            supplier_selection_mode (str): Supplier selection mode (default is "fixed").
-            **kwargs: Additional keyword arguments for the Node class and logger.
+            shelf_life (float): Shelf life of the product, in time units (perishable goods only).
+            supplier_selection_policy (SupplierSelectionPolicy): The supplier-selection policy class (default
+                ``SelectFirst``).
+            supplier_selection_mode (str): "fixed" (default) or "dynamic"; see `SupplierSelectionPolicy`.
+            **kwargs: Additional keyword arguments for the Node class and logger. Also accepts
+                ``periodic_stats`` (bool, default False: if True, its statistics are updated every
+                ``stats_period`` time units) and ``stats_period`` (float, default 1).
 
         Attributes:
             _info_keys (list): List of keys to include in the info dictionary.
-            replenishment_policy (InventoryReplenishment): Replenishment policy object for the product inventory.
-            inventory (Inventory): Inventory object managing finished product stock.
-            inventory_drop (simpy.Event): Event triggered when inventory drops.
-            inventory_raised (simpy.Event): Event triggered when inventory is replenished.
-            product (Product): Product manufactured by the manufacturer.
-            suppliers (list): List of supplier links connected to this manufacturer.
-            sell_price (float): Selling price per unit of the product.
-            production_cycle (bool): Indicates whether the production cycle is currently active.
-            raw_inventory_counts (dict): Inventory levels of raw materials by raw material ID.
-            pending_orders (int): Number of raw-material orders currently in flight (dispatched but not yet delivered).
-            selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
-            stats (Statistics): Statistics tracking object for the manufacturer.
+            replenishment_policy (InventoryReplenishment): The replenishment policy object the manufacturer created (or None).
+            inventory (Inventory): Its inventory of the product.
+            inventory_drop (simpy.Event): Fires when its inventory drops.
+            inventory_raised (simpy.Event): Fires when units are added to its inventory.
+            product (Product): The product it makes.
+            suppliers (list): The links to its raw-material suppliers.
+            sell_price (float): Sell price per unit of the product.
+            production_cycle (bool): True while a production batch is being made.
+            raw_inventory_counts (dict): Units of each raw material it holds, by raw material ID. (Raw materials are
+                counted here, not in ``inventory``.)
+            pending_orders (int): Number of its raw-material replenishment orders placed but not yet arrived.
+            selection_policy (SupplierSelectionPolicy): The supplier-selection policy object.
+            stats (Statistics): Its statistics. Besides the usual ones, ``total_products_manufactured`` (units made so
+                far) and ``total_manufacturing_cost`` (manufacturing cost so far, part of ``node_cost``).
             production_wake (simpy.Event): Event that wakes the production loop when it is waiting (see `wake_production`).
 
         Returns:
             None
         """
-        # Pull periodic-stats kwargs out before forwarding to Node — exposes
-        # the ``Statistics`` periodic update cadence as a node-level kwarg.
+        # Take the statistics options out of kwargs before passing the rest on
+        # to Node. They belong to Statistics, but are accepted here so users can
+        # ask for regular statistics updates.
         periodic_stats = kwargs.pop('periodic_stats', False)
         stats_period = kwargs.pop('stats_period', 1)
         if periodic_stats:
@@ -3458,28 +3473,30 @@ class Manufacturer(Node):
         
         inventory_kwargs = {k: v for k, v in kwargs.items() if k not in _LOGGER_KWARGS and k not in _NODE_KWARGS}
         self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, inv_type=inventory_type, holding_cost=inventory_holding_cost, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **inventory_kwargs)
-        self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
-        self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
+        self.inventory_drop = self.env.event()  # fires when the inventory drops
+        self.inventory_raised = self.env.event() # fires when units are added
         # Wakes the production loop when it is waiting because it could not
         # make anything. It is set off by anything that may let production go
-        # on: raw material arriving, a new production plan, or stock leaving
-        # the shelf (which frees space). See `wake_production`.
+        # on: raw material arriving, a new production plan, or units leaving
+        # the inventory (which frees capacity). See `wake_production`.
         self.production_wake = self.env.event()
-        self.product = product # product manufactured by the manufacturer
-        # self.suppliers is already initialised to [] in Node.__init__.
+        self.product = product # the product it makes
+        # self.suppliers is already set to [] in Node.__init__.
         self.product.sell_price = product_sell_price
-        self.sell_price = product_sell_price # set the sell price of the product
-        
-        self.production_cycle = False # production cycle status
-        self.raw_inventory_counts = {} # dictionary to store inventory counts for raw products inventory
-        self.pending_orders = 0 # count of raw-material orders currently in flight (dispatched but not yet delivered)
+        self.sell_price = product_sell_price # sell price per unit
 
-        if(self.product.buy_price <= 0): # if the product buy price is not given, calculate it
+        self.production_cycle = False # True while a production batch is being made
+        self.raw_inventory_counts = {} # units of each raw material held, by raw material ID
+        self.pending_orders = 0 # raw-material replenishment orders placed but not yet arrived
+
+        # If no buy price is given, use the cost of making one unit: the
+        # manufacturing cost plus the cost of its raw materials.
+        if(self.product.buy_price <= 0):
             self.product.buy_price = self.product.manufacturing_cost 
             for raw_material in self.product.raw_materials:
-                self.product.buy_price += raw_material[0].cost * raw_material[1] # calculate total cost of the product (per unit)
+                self.product.buy_price += raw_material[0].cost * raw_material[1] # raw-material cost of one unit
 
-        self.env.process(self.behavior()) # start the behavior process
+        self.env.process(self.behavior()) # start the production loop
         self.selection_policy = supplier_selection_policy(self,supplier_selection_mode)
         
         self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the manufacturer
@@ -3490,10 +3507,11 @@ class Manufacturer(Node):
 
     def manufacture_product(self):
         """
-        Make one batch of the product.
-        A batch makes at most `product.batch_size` units and takes `product.manufacturing_time`. It can be smaller
-        when there is only raw material, shelf space, or planned work left for fewer units. The raw materials are
-        used up when the batch starts, and the finished units go on the shelf when it ends.
+        Make one production batch.
+        A production batch makes at most `product.batch_size` units and takes `product.manufacturing_time`. It
+        can be smaller when there is only raw material, free capacity, or planned units left for fewer units. The
+        raw materials are used up when the production batch starts, and the units made are added to the
+        inventory when it ends.
 
         Parameters:
             None
@@ -3502,7 +3520,7 @@ class Manufacturer(Node):
             None
 
         Returns:
-            int: Number of units made in this batch (0 if nothing could be made).
+            int: Number of units made in this production batch (0 if nothing could be made).
         """
         max_producible_units = self.product.batch_size 
         for raw_material in self.product.raw_materials:
@@ -3510,32 +3528,33 @@ class Manufacturer(Node):
             required_amount = raw_material[1]
             current_raw_material_level = self.raw_inventory_counts[raw_mat_id]
             max_producible_units = min(max_producible_units,int(current_raw_material_level/required_amount))
-        if((self.inventory.level + max_producible_units)>self.inventory.capacity): # check if the inventory can accommodate the maximum producible units
+        if((self.inventory.level + max_producible_units)>self.inventory.capacity): # make only what fits within the capacity
             max_producible_units = self.inventory.capacity - self.inventory.level
-        # Don't make more than the factory has planned to make. When the factory
-        # plans a production run, it adds those units to on_hand straight away
-        # (§3.11), so on_hand = shelf + units still to be made - orders from
-        # other sites that are waiting at the shelf (those were taken off
-        # on_hand when they were placed). Units still to be made is therefore
-        # on_hand - shelf + waiting orders.
+        # Don't make more than the manufacturer has planned to make. When it
+        # plans production, it adds those units to on_hand straight away
+        # (§3.11), so on_hand = inventory level + units still to be made -
+        # replenishment orders from other sites that are waiting at its
+        # inventory (those were taken off on_hand when they were placed).
+        # Units still to be made is therefore on_hand - inventory level +
+        # waiting orders.
         #
         # Leaving out the waiting orders makes this number too small, by
-        # exactly the amount the factory owes. Picture a factory with 10 on
-        # the shelf that receives an order for 50. on_hand drops from 10 to
-        # -40, and the factory plans a run of 50 (to fill the order and refill
-        # its shelf), which brings on_hand back to 10. Then on_hand - shelf =
-        # 10 - 10 = 0, so it would make nothing and the order would wait
-        # forever. Adding the 50 waiting units gives the correct 50.
+        # exactly the amount the manufacturer owes. Picture a manufacturer with
+        # an inventory level of 10 that receives an order for 50. on_hand drops
+        # from 10 to -40, and it plans production of 50 (to fill the order and
+        # refill its inventory), which brings on_hand back to 10. Then on_hand -
+        # inventory level = 10 - 10 = 0, so it would make nothing and the order
+        # would wait forever. Adding the 50 waiting units gives the correct 50.
         pending = self.inventory.on_hand - self.inventory.level + self.inventory.waiting_orders()
         if pending < max_producible_units:
             max_producible_units = max(pending, 0)
         if(max_producible_units>0):
-            self.production_cycle = True # produce the product
-            for raw_material in self.product.raw_materials: # consume raw materials
+            self.production_cycle = True # a production batch starts
+            for raw_material in self.product.raw_materials: # use up the raw materials
                 raw_mat_id = raw_material[0].ID
                 required_amount = raw_material[1]
                 self.raw_inventory_counts[raw_mat_id] -= raw_material[1]*max_producible_units
-            yield self.env.timeout(self.product.manufacturing_time) # take manufacturing time to produce the product
+            yield self.env.timeout(self.product.manufacturing_time) # the production batch takes manufacturing_time
             accepted = self.inventory.put(max_producible_units, manufacturing_date=self.env.now)
             shortfall = max_producible_units - accepted
             if shortfall > 0:
@@ -3550,9 +3569,9 @@ class Manufacturer(Node):
     def wake_production(self):
         """
         Wake the production loop if it is waiting because it could not make anything.
-        Called when raw material arrives, when a new production plan comes in, and when stock leaves the shelf
-        (which frees space). Calling it while the loop is busy does no harm: the loop just checks once more
-        when it next stops.
+        Called when raw material arrives, when a new production plan comes in, and when units leave the
+        inventory (which frees capacity). Calling it while the loop is busy does no harm: the loop just checks
+        once more when it next stops.
 
         Returns:
             None
@@ -3562,9 +3581,10 @@ class Manufacturer(Node):
 
     def behavior(self):
         """
-        The manufacturer consumes raw materials and produces the product if raw materials are available.
-        It maintains inventory levels for both raw materials and the product. Depending on the replenishment policy for product inventory,
-        manufacturer decides when to replenish the raw material inventory. The manufacturer can be connected to multiple suppliers.
+        The production loop, for the whole simulation: make one production batch after another while there are
+        planned units left to make; when nothing can be made, wait until something may change that (see
+        `wake_production`). It first checks the manufacturer's suppliers: each must be a raw-material supplier
+        with a raw material, and there should be at least one for each raw material of the product.
 
         Parameters:
             None
@@ -3579,7 +3599,7 @@ class Manufacturer(Node):
             self.logger.error("No suppliers connected to the manufacturer.")
             raise ValueError("No suppliers connected to the manufacturer.")
 
-        if(len(self.suppliers)>0): # create an inventory for storing raw materials as a dictionary. Key: raw material ID, Value: inventory level
+        if(len(self.suppliers)>0): # start a count of 0 units for each raw material (key: raw material ID)
             for supplier in self.suppliers: # iterate over supplier links
                 if(supplier.source.raw_material is None): # check if the supplier has a raw material
                     self.logger.error(f"{self.ID}:Supplier {supplier.source.ID} does not have a raw material. Please provide a raw material for the supplier.")
@@ -3589,17 +3609,19 @@ class Manufacturer(Node):
         if(len(self.suppliers)<len(self.product.raw_materials)):
             self.logger.warning(f"{self.ID}: {self.name}: The number of suppliers are less than the number of raw materials required to manufacture the product! This leads to no products being manufactured.")
 
-        # Production loop: make one batch after another for as long as there
-        # are planned units left to make. The factory makes only one batch at a
-        # time (we wait for each batch to finish before starting the next).
+        # Production loop: make one production batch after another for as long
+        # as there are planned units left to make. The manufacturer makes only
+        # one production batch at a time (we wait for each to finish before
+        # starting the next).
         #
         # When nothing can be made (nothing planned, no raw material yet, or no
-        # free space on the shelf), wait for something that may change that:
-        # raw material arriving, a new production plan, or stock leaving the
-        # shelf. Waking only on raw-material deliveries is not enough. Picture
-        # a factory that plans 25 units with a batch size of 5: one delivery
-        # of raw material covers all 25, but would start only the first batch,
-        # leaving the factory idle with raw material for 20 units on hand.
+        # free capacity), wait for something that may change that: raw
+        # material arriving, a new production plan, or units leaving the
+        # inventory. Waking only on raw-material deliveries is not enough.
+        # Picture a manufacturer that plans 25 units with a batch size of 5:
+        # one delivery of raw material covers all 25, but would start only the
+        # first production batch, leaving the manufacturer idle with raw
+        # material for 20 units.
         while len(self.suppliers) >= len(self.product.raw_materials): # check if required number of suppliers are connected
             made = yield self.env.process(self.manufacture_product())
             if made > 0:
@@ -3610,11 +3632,15 @@ class Manufacturer(Node):
 
     def process_order_raw(self, raw_mat_id, supplier, reorder_quantity):
         """
-        Place an order for given raw material from the given supplier for replenishment.
-        
+        Place a replenishment order for one raw material with one raw-material supplier, and add the units to
+        the manufacturer's raw materials when they arrive. This runs as a SimPy process (``process_order``
+        starts it).
+
         Parameters:
-            supplier (Link): The supplier link from which the order is placed.
-            reorder_quantity (float): The quantity of the raw material to reorder.
+            raw_mat_id (str): ID of the raw material to order.
+            supplier (Link): The **link** to the raw-material supplier, not the supplier itself (the supplier
+                is ``supplier.source``).
+            reorder_quantity (float): Units of the raw material to order.
         
         Attributes:
             None
@@ -3623,26 +3649,26 @@ class Manufacturer(Node):
             None
         """
         # This order is always placed. `process_order` has already checked that
-        # the link and the supplier are working, and has already counted the
-        # units this raw material is for as planned production. This process
-        # starts at the same moment, before the clock moves on, so neither can
-        # have broken down in between.
+        # neither the link nor the supplier's site is disrupted, and has
+        # already counted the units this raw material is for as planned
+        # production. This process starts at the same moment, before the clock
+        # moves on, so neither can have become disrupted in between.
         #
-        # Raw material the factory already holds is not a reason to skip the
-        # order: it is set aside for units planned earlier. Using it for these
-        # new units would leave some planned units with no raw material to make
-        # them from, and the factory would wait for them forever.
+        # Raw material the manufacturer already holds is not a reason to skip
+        # the order: it is set aside for units planned earlier. Using it for
+        # these new units would leave some planned units with no raw material
+        # to make them from, and the manufacturer would wait for them forever.
         if supplier.source.inventory.level < reorder_quantity:  # the supplier cannot fill this order right away: record the shortage
             shortage = reorder_quantity - supplier.source.inventory.level
             supplier.source.stats.update_stats(shortage=[1,shortage])
 
-        self.pending_orders += 1  # count this raw-material order as in flight
+        self.pending_orders += 1  # count this raw-material order as placed
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
         event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
         supplier.source.stats.update_stats(demand_received=[1,reorder_quantity]) # update the supplier statistics for demand received
-        # The supplier owes this order only while it waits for stock: count
-        # it as a backorder now and remove it once it is served (the same
-        # as for orders between sites, see InventoryNode.process_order).
+        # The supplier owes this order only while it waits for units: count
+        # it as a backorder now and remove it once it is served (the same as
+        # for other replenishment orders, see InventoryNode.process_order).
         order_waits = not event.triggered
         if order_waits:
             supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
@@ -3653,7 +3679,7 @@ class Manufacturer(Node):
 
         self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
-        lead_time = supplier.lead_time() # get the lead time from the supplier
+        lead_time = supplier.lead_time() # draw the lead time from the link
         validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
         yield self.env.timeout(lead_time) # lead time for the order
 
@@ -3667,13 +3693,14 @@ class Manufacturer(Node):
     def process_order(self, supplier, reorder_quantity):
         """
         Plan the production of more product units and order the raw materials needed to make them.
-        Each raw material is ordered from the first connected supplier of that raw material whose link and site
-        are both working. If some raw material has no such supplier, nothing is planned and nothing is ordered;
-        the replenishment policy tries again later.
+        Each raw material is ordered from the first raw-material supplier of that raw material whose link and
+        site are both not disrupted. If some raw material has no such supplier, nothing is planned and nothing
+        is ordered; the replenishment policy tries again later. This runs as a SimPy process (``place_order``
+        starts it).
 
         Parameters:
-            supplier (Link): Supplier link picked by the selection policy. Not used: each raw material is ordered
-                from its own supplier, as described above.
+            supplier (Link): The link chosen by the supplier-selection policy. Not used: each raw material is
+                ordered from its own raw-material supplier, as described above.
             reorder_quantity (float): Number of product units to plan.
 
         Attributes:
@@ -3682,10 +3709,10 @@ class Manufacturer(Node):
         Returns:
             None
         """
-        # Check the order against the shelf's capacity using the inventory
-        # position, as InventoryNode.process_order does. Units owed to waiting
-        # customers leave the shelf on the next delivery, so they do not take
-        # up space. See §3.10 for details.
+        # Check the order against the capacity using the inventory position,
+        # as InventoryNode.process_order does. Units owed to waiting customers
+        # leave the inventory as soon as they are made, so they do not take up
+        # space. See §3.10 for details.
         gross = self.position()
         if(gross + reorder_quantity > self.inventory.capacity): # check if the inventory can accommodate the reordered quantity
                 reorder_quantity = self.inventory.capacity - gross # if not, adjust reorder quantity to order only what can fit
@@ -3693,21 +3720,22 @@ class Manufacturer(Node):
             return # no need to place an order if reorder quantity is zero
 
         # Units count as planned only if all their raw materials really get
-        # ordered. Otherwise the factory would count on units it can never
-        # make: its inventory position would include them, so the policy would
-        # not order again, and orders waiting for those units would wait
-        # forever. So first find a working supplier for every raw material,
-        # and plan nothing if any raw material cannot be ordered right now (a
-        # disrupted link or supplier). A distributor does the same: it places
-        # no order while its link is down. The replenishment policy tries
-        # again when stock drops again, or at its next periodic check.
+        # ordered. Otherwise the manufacturer would count on units it can
+        # never make: its inventory position would include them, so the policy
+        # would not order again, and orders waiting for those units would wait
+        # forever. So first find, for every raw material, a raw-material
+        # supplier whose link and site are not disrupted, and plan nothing if
+        # any raw material cannot be ordered right now. A distributor does the
+        # same: it places no order while its link is disrupted. The
+        # replenishment policy tries again when the inventory drops again, or
+        # at its next periodic check.
         raw_orders = [] # (raw material ID, supplier link, quantity to order)
         for raw_mat, qty_per_unit in self.product.raw_materials:
             supplier_link = None
             for link in self.suppliers:
                 if (link.source.raw_material.ID == raw_mat.ID
                         and link.status == "active" and link.source.node_status == "active"):
-                    supplier_link = link # order from the first working supplier only
+                    supplier_link = link # order from the first such supplier only
                     break
             if supplier_link is None:
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:No working supplier for raw material {raw_mat.name} (link or supplier disrupted). No production planned.")
@@ -3716,9 +3744,9 @@ class Manufacturer(Node):
 
         # Count the planned production in on_hand right away (the same thing
         # InventoryNode.process_order does). Without this, the replenishment
-        # policy could run again before the next production cycle, see an
-        # out-of-date on_hand, and order raw materials a second time for product
-        # units that are already on the way.
+        # policy could check again before the next production batch, see an
+        # out-of-date on_hand, and order raw materials a second time for units
+        # that are already planned.
         self.inventory.on_hand += reorder_quantity
         # New units are planned, so let the production loop know. Raw material
         # already on hand may be enough to start on them.
