@@ -3768,71 +3768,83 @@ class Manufacturer(Node):
 
 class Demand(Node):
     """
-    The `Demand` class represents a demand node that generates product orders within the supply network. 
-    It models dynamic demand patterns using user-defined functions for order arrival times and order quantities, and manages 
-    customer tolerance for waiting in case of product unavailability.
-    The demand node automatically places customer orders at configurable intervals and can handle situations where the requested 
-    quantity is not immediately available. Customers can either wait (if tolerance is set) or leave the system unfulfilled.
+    The `Demand` class represents a customer demand: a stream of customer orders arriving at one site (the
+    ``demand_node``). The time between orders and the units in each order are given by functions, so they
+    can be random. When a site cannot fill an order at once, the customer either leaves without the units or,
+    if a tolerance is set, waits for them.
 
-    The class supports: 
-    
-    - Customizable lead time and delivery cost per order, 
-    
-    - Dynamic order splitting based on the minimum split ratio, 
-    
-    - Backorder management and real-time inventory check.
+    It supports:
+
+    - a lead time and a delivery cost for each customer order,
+
+    - partial deliveries for customers who wait (``order_min_split_ratio``),
+
+    - backorders at the site for customers who wait.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
-        ID (str): Unique identifier for the demand node.
-        name (str): Name of the demand node.
-        order_arrival_model (callable): Function that models inter-arrival times between customer orders.
-        order_quantity_model (callable): Function that models the quantity per customer order.
-        demand_node (Node): Upstream node from which the demand node sources products.
-        tolerance (float): Maximum time customers are willing to wait if required quantity is unavailable.
-        order_min_split_ratio (float): Minimum allowable fraction of the order that can be delivered in split deliveries.
-        delivery_cost (callable): Function that models the delivery cost per order.
-        lead_time (callable): Function that models the delivery lead time per order.
-        consume_available (bool): If True, the demand node consumes available inventory immediately and leaves.
-        **kwargs: Additional keyword arguments for Node and GlobalLogger.
+        ID (str): Unique identifier for the customer demand.
+        name (str): Name of the customer demand.
+        order_arrival_model (callable): Time units between one customer order and the next (a number, or a
+            function returning one each time).
+        order_quantity_model (callable): Units in each customer order (a number, or a function returning one
+            each time).
+        demand_node (Node): The site the customers order from. (Despite its name, this is not the customer
+            demand itself.) It cannot be a raw-material supplier.
+        tolerance (float): How long, in time units, a customer is willing to wait for units that are not there.
+            0 (the default) means the customer leaves at once.
+        order_min_split_ratio (float): For a customer who waits: the smallest partial delivery they accept, as a
+            fraction of the order (more than 0, at most 1). 1 (the default) means no partial deliveries.
+        delivery_cost (callable): Cost of delivering each customer order (a number or a function); recorded as
+            this customer demand's transportation cost.
+        lead_time (callable): Lead time of each customer order: time units from the site to the customer (a
+            number or a function).
+        consume_available (bool): If True, a customer whose order cannot be filled in full takes the units that
+            are there and leaves; the rest is recorded as a shortage.
+        **kwargs: Additional keyword arguments for Node and GlobalLogger. Also accepts ``periodic_stats``
+            (bool, default False: if True, its statistics are updated every ``stats_period`` time units) and
+            ``stats_period`` (float, default 1).
 
     Attributes:
         _info_keys (list): List of keys to include in the info dictionary.
-        order_arrival_model (callable): Function defining the order arrival process.
-        order_quantity_model (callable): Function defining the order quantity distribution.
-        demand_node (Node): Upstream node supplying the demand.
-        customer_tolerance (float): Maximum waiting time allowed for customer orders.
-        delivery_cost (callable): Delivery cost function for each order.
-        lead_time (callable): Delivery lead time function for each order.
-        min_split (float): Minimum allowed split ratio for partially fulfilled orders.
-        consume_available (bool): If True, partial fulfillment is allowed and available inventory is consumed immediately.
-        stats (Statistics): Tracks various performance metrics like demand placed, fulfilled, and shortages.
+        order_arrival_model (callable): Function giving the time units between customer orders.
+        order_quantity_model (callable): Function giving the units in each customer order.
+        demand_node (Node): The site the customers order from.
+        customer_tolerance (float): How long a customer is willing to wait (the ``tolerance`` parameter).
+        delivery_cost (callable): Function giving the cost of delivering each customer order.
+        lead_time (callable): Function giving the lead time of each customer order.
+        min_split (float): The smallest partial delivery a waiting customer accepts, as a fraction of the order.
+        consume_available (bool): If True, a customer takes the units that are there when the order cannot be
+            filled in full.
+        stats (Statistics): Its statistics: the customer orders placed (``demand_placed``) and received
+            (``fulfillment_received``), and the delivery costs (``transportation_cost``). Shortages and
+            backorders are recorded at the site (``demand_node``).
 
     Functions:
-        __init__: Initializes the demand node object and validates input models.
-        _process_delivery: Handles the delivery process, including lead time and delivery cost updates.
-        wait_for_order: Waits for required units based on customer tolerance when immediate fulfillment is not possible.
-        customer: Simulates customer order placement and fulfillment behavior.
-        behavior: Generates continuous customer demand based on the arrival and quantity models.
-    
-    Behavior:
-        The demand node generates customer orders at random intervals and quantities using the specified arrival 
-        and quantity models. If the upstream inventory can satisfy the order, delivery is processed immediately. 
-        If not, 
-        
-        - the customer may leave immediately (if tolerance is zero)
+        __init__: Initializes the customer demand object and checks the parameters.
+        _process_delivery: Delivers one customer order: records the delivery cost and waits for the lead time.
+        wait_for_order: Lets a customer wait for units, up to their tolerance, when the order cannot be filled at once.
+        customer: Handles one customer order.
+        behavior: Creates customer orders for the whole simulation.
 
-        - else, the customer waits for the order to be fulfilled within their tolerance time, possibly accepting
-        partial deliveries if a split ratio is allowed. If the tolerance is exceeded, the unmet demand is recorded as a shortage.
+    Behavior:
+        Customer orders arrive at the site with the times and sizes given by ``order_arrival_model`` and
+        ``order_quantity_model``. If the site's inventory can fill an order, it is delivered at once. If not,
+        a shortage is recorded at the site, and
+
+        - with no tolerance (the default), the customer leaves without the units;
+
+        - with ``consume_available``, the customer takes the units that are there and leaves;
+
+        - with a tolerance, the customer waits for the units, up to the tolerance, and the order counts as a
+          backorder at the site while they wait. They may accept partial deliveries, if
+          ``order_min_split_ratio`` is below 1. If the tolerance runs out, they leave without the rest.
 
     Assumptions:
-        - Customer orders arrive following the provided stochastic arrival model.
-        - Order quantities follow the specified stochastic quantity model.
-        - Customers may wait for the fulfillment of their orders up to the defined tolerance time.
-        - Customers can accept split deliveries based on the minimum split ratio.
-        - If customer tolerance is zero, customer returns without waiting for fulfillment.
-        - Delivery cost and lead time are sampled dynamically for each order (if specified).
-        - The connected upstream node must not be a supplier; it should typically be a retailer or distributor node.
+        - The time between customer orders follows ``order_arrival_model``; the first order arrives at time 0.
+        - The units in each order follow ``order_quantity_model``.
+        - The delivery cost and lead time are drawn afresh for each customer order.
+        - The site (``demand_node``) cannot be a raw-material supplier; it is usually a retailer or a distributor.
     """
     _info_keys = Node._info_keys + [
         "order_arrival_model", "order_quantity_model", "demand_node",
@@ -3853,39 +3865,53 @@ class Demand(Node):
                  consume_available: bool = False,
                  **kwargs) -> None:
         """
-        Initialize the demand node object.
+        Initialize the customer demand object.
         
         Parameters:
             env (simpy.Environment): Simulation environment.
-            ID (str): Unique identifier for the demand node.
-            name (str): Name of the demand node.
-            order_arrival_model (callable): Function that models inter-arrival times between customer orders.
-            order_quantity_model (callable): Function that models the quantity per customer order.
-            demand_node (Node): Upstream node from which the demand node sources products.
-            tolerance (float): Maximum time customers are willing to wait if required quantity is unavailable.
-            order_min_split_ratio (float): Minimum allowable fraction of the order that can be delivered in split deliveries.
-            delivery_cost (callable): Function that models the delivery cost per order.
-            lead_time (callable): Function that models the delivery lead time per order.
-            consume_available (bool): If True, the demand node consumes available inventory immediately and leaves.
-            **kwargs: Additional keyword arguments for Node and GlobalLogger.
+            ID (str): Unique identifier for the customer demand.
+            name (str): Name of the customer demand.
+            order_arrival_model (callable): Time units between one customer order and the next (a number, or a
+                function returning one each time).
+            order_quantity_model (callable): Units in each customer order (a number, or a function returning one
+                each time).
+            demand_node (Node): The site the customers order from. (Despite its name, this is not the customer
+                demand itself.) It cannot be a raw-material supplier.
+            tolerance (float): How long, in time units, a customer is willing to wait for units that are not there.
+                0 (the default) means the customer leaves at once.
+            order_min_split_ratio (float): For a customer who waits: the smallest partial delivery they accept, as a
+                fraction of the order (more than 0, at most 1). 1 (the default) means no partial deliveries.
+            delivery_cost (callable): Cost of delivering each customer order (a number or a function); recorded as
+                this customer demand's transportation cost.
+            lead_time (callable): Lead time of each customer order: time units from the site to the customer (a
+                number or a function).
+            consume_available (bool): If True, a customer whose order cannot be filled in full takes the units that
+                are there and leaves; the rest is recorded as a shortage.
+            **kwargs: Additional keyword arguments for Node and GlobalLogger. Also accepts ``periodic_stats``
+                (bool, default False: if True, its statistics are updated every ``stats_period`` time units) and
+                ``stats_period`` (float, default 1).
         
         Attributes:
             _info_keys (list): List of keys to include in the info dictionary.
-            order_arrival_model (callable): Function defining the order arrival process.
-            order_quantity_model (callable): Function defining the order quantity distribution.
-            demand_node (Node): Upstream node supplying the demand.
-            customer_tolerance (float): Maximum waiting time allowed for customer orders.
-            delivery_cost (callable): Delivery cost function for each order.
-            lead_time (callable): Delivery lead time function for each order.
-            min_split (float): Minimum allowed split ratio for partially fulfilled orders.
-            consume_available (bool): If True, partial fulfillment is allowed and available inventory is consumed immediately.
-            stats (Statistics): Tracks various performance metrics like demand placed, fulfilled, and shortages.
+            order_arrival_model (callable): Function giving the time units between customer orders.
+            order_quantity_model (callable): Function giving the units in each customer order.
+            demand_node (Node): The site the customers order from.
+            customer_tolerance (float): How long a customer is willing to wait (the ``tolerance`` parameter).
+            delivery_cost (callable): Function giving the cost of delivering each customer order.
+            lead_time (callable): Function giving the lead time of each customer order.
+            min_split (float): The smallest partial delivery a waiting customer accepts, as a fraction of the order.
+            consume_available (bool): If True, a customer takes the units that are there when the order cannot be
+                filled in full.
+            stats (Statistics): Its statistics: the customer orders placed (``demand_placed``) and received
+                (``fulfillment_received``), and the delivery costs (``transportation_cost``). Shortages and
+                backorders are recorded at the site (``demand_node``).
 
         Returns:
             None
         """
-        # Pull periodic-stats kwargs out before forwarding to Node — exposes
-        # the ``Statistics`` periodic update cadence as a node-level kwarg.
+        # Take the statistics options out of kwargs before passing the rest on
+        # to Node. They belong to Statistics, but are accepted here so users can
+        # ask for regular statistics updates.
         periodic_stats = kwargs.pop('periodic_stats', False)
         stats_period = kwargs.pop('stats_period', 1)
         if periodic_stats:
@@ -3893,8 +3919,8 @@ class Demand(Node):
         super().__init__(env=env,ID=ID,name=name,node_type="demand",**kwargs)
         if order_arrival_model is None or order_quantity_model is None:
             raise ValueError("Order arrival and quantity models cannot be None.")
-        # Auto-wrap + numeric-validate every Demand callable in one place;
-        # see ``ensure_numeric_callable`` for the §6.4 rationale.
+        # Turn each of these settings into a function and check that it returns
+        # a number (see ``ensure_numeric_callable``).
         order_arrival_model = ensure_numeric_callable("order_arrival_model", order_arrival_model)
         order_quantity_model = ensure_numeric_callable("order_quantity_model", order_quantity_model)
         delivery_cost = ensure_numeric_callable("delivery_cost", delivery_cost)
@@ -3918,25 +3944,26 @@ class Demand(Node):
         self.delivery_cost = delivery_cost
         self.lead_time = lead_time
         self.min_split = order_min_split_ratio
-        self.consume_available = consume_available # if True, the demand node consumes available inventory immediately and leaves
+        self.consume_available = consume_available # if True, a customer takes the units that are there and leaves
         self.env.process(self.behavior())
-        self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the demand node
+        self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # statistics of this customer demand
 
     def _process_delivery(self, order_quantity, customer_id, get_event=None):
         """
-        Process the delivery of the order, including lead time and delivery cost updates.
+        Deliver one customer order: take the units out of the site's inventory, record the delivery cost, and
+        wait for the lead time.
 
         Parameters:
-            order_quantity (float): The quantity of the product ordered.
+            order_quantity (float): Units delivered.
             customer_id (int): Customer ID for logging purposes.
             get_event (optional): the request that has already taken this order's
-                units off the shelf, if the caller made one. ``wait_for_order``
-                passes one so that the units are taken at the same moment the
-                customer checks the shelf. When it is not given, the units are
-                taken here.
+                units out of the inventory, if the caller made one.
+                ``wait_for_order`` passes one so that the units are taken at the
+                same moment the customer checks the inventory. When it is not
+                given, the units are taken here.
 
         Attributes:
-            order_quantity (float): The quantity of the product ordered.
+            order_quantity (float): Units delivered.
             customer_id (int): Customer ID for logging purposes.
 
         returns:
@@ -3951,7 +3978,7 @@ class Demand(Node):
         yield get_event
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity}, available.")
 
-        lead_time = self.lead_time() # get the lead time from the demand node
+        lead_time = self.lead_time() # draw the lead time of this customer order
         validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
         yield self.env.timeout(lead_time) # wait for the delivery of the order
         #self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity} received.")
@@ -3961,21 +3988,21 @@ class Demand(Node):
     
     def wait_for_order(self,customer_id,order_quantity):
         """
-        Wait for the required number of units based on customer tolerance.
-        While waiting, the customer's order is counted as a backorder at the node.
-        The customer checks again each time new stock arrives at the node.
-        If the customer tolerance is infinite, the method waits until the order is fulfilled.
-        Otherwise, the customer leaves as soon as their tolerance (patience) runs out,
-        even if no new stock has arrived, and whatever they were still owed is taken
-        off the node's backorders.
+        Let a customer wait for the units of their order, up to their tolerance.
+        While waiting, the customer's order is counted as a backorder at the site.
+        The customer checks again each time units are added to the site's inventory.
+        If the tolerance is infinite, the customer waits until the order is filled.
+        Otherwise, the customer leaves as soon as their tolerance runs out, even if
+        no new units have arrived, and whatever they were still owed is taken off
+        the site's backorders.
 
         Parameters:
-            order_quantity (float): The quantity of the product ordered.
+            order_quantity (float): Units ordered.
             customer_id (int): Customer ID for logging purposes.
 
         Attributes:
             customer_id (int): Customer ID for logging purposes.
-            order_quantity (float): The quantity of the product ordered.
+            order_quantity (float): Units ordered.
         
         Returns:
             None
@@ -3983,7 +4010,7 @@ class Demand(Node):
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity} not available! Order will be split if split ratio is provided.")
         self.demand_node.stats.update_stats(backorder=[1,order_quantity])
         if(not self.demand_node.inventory_drop.triggered):
-            self.demand_node.inventory_drop.succeed()  # signal that inventory has been dropped (since backorder is created)
+            self.demand_node.inventory_drop.succeed()  # a backorder lowers the inventory position, so let the replenishment policy check
         partial = order_quantity
         if self.min_split < 1:
             partial = int(order_quantity * self.min_split)
@@ -3992,13 +4019,13 @@ class Demand(Node):
         deadline = self.env.now + self.customer_tolerance
         while True:
             available = self._available()
-            # When there is enough, the units are taken off the shelf right
-            # here, in the same step as the check, and not later inside
+            # When there is enough, the units are taken out of the inventory
+            # right here, in the same step as the check, and not later inside
             # ``_process_delivery``. That process only starts once this step is
-            # over. If one delivery of stock wakes several waiting customers at
-            # the same moment, each of them would otherwise check the shelf
-            # before any of them had taken anything, all would see the same
-            # units, and all would think those units were theirs.
+            # over. If one delivery wakes several waiting customers at the same
+            # moment, each of them would otherwise check the inventory before
+            # any of them had taken anything, all would see the same units, and
+            # all would think those units were theirs.
             if order_quantity <= available: # check if remaining order quantity is available
                 get_event, _ = self.demand_node.inventory.get(order_quantity)
                 self.env.process(self._process_delivery(order_quantity, customer_id, get_event))
@@ -4006,15 +4033,16 @@ class Demand(Node):
                 order_quantity = 0
                 break
             # ``partial`` can round down to 0 for a small order, so also check
-            # that there is at least one unit to send. Asking the shelf for 0
-            # units is an error in SimPy.
-            elif available > 0 and available >= partial: # or else at least min required 'partial' is available
+            # that there is at least one unit to send. Asking the inventory for
+            # 0 units is an error in SimPy.
+            elif available > 0 and available >= partial: # or else at least the smallest partial delivery is there
                 get_event, _ = self.demand_node.inventory.get(available)
                 self.env.process(self._process_delivery(available, customer_id, get_event))
-                # Partial shipment: backorder count stays 1 (one outstanding customer order)
-                # while its quantity ticks down. fulfillment_received and demand_fulfilled
-                # each get a compensating -1 on the count so the single eventual completion
-                # is counted exactly once — matching the backorder accounting convention.
+                # Partial delivery: the backorder still counts as 1 order (one customer
+                # still waiting), and only its units go down. Each delivery adds 1 to the
+                # order counts of fulfillment_received and demand_fulfilled (inside
+                # _process_delivery), so 1 is taken off them here: the customer's order is
+                # counted once, when it is finally filled.
                 self.demand_node.stats.update_stats(backorder=[0,-available], demand_fulfilled=[-1,0])
                 self.stats.update_stats(fulfillment_received=[-1,0])
                 order_quantity -= available # update order quantity
@@ -4022,76 +4050,74 @@ class Demand(Node):
                 self.demand_node.stats.update_stats(shortage=[1,order_quantity-available])
 
             if self.env.now >= deadline:
-                break  # the customer's patience has run out
+                break  # the customer's tolerance has run out
 
-            # Wait for whichever comes first: new stock arriving at the node, or
-            # the end of the customer's patience. Without the second part, a
-            # customer would only notice that their patience had run out when
-            # stock next arrived — and if no stock ever arrived, they would
-            # wait (and stay counted as a backorder) forever.
+            # Wait for whichever comes first: new units arriving at the site, or
+            # the end of the customer's tolerance. Without the second part, a
+            # customer would only notice that their tolerance had run out when
+            # units next arrived — and if none ever arrived, they would wait
+            # (and stay counted as a backorder) forever.
             raised_event = self.demand_node.inventory_raised  # the node's current "inventory raised" signal
             if deadline == float('inf'):
-                yield raised_event  # endless patience: only new stock can end the wait
+                yield raised_event  # infinite tolerance: only new units can end the wait
             else:
                 yield raised_event | self.env.timeout(deadline - self.env.now)
 
-            # The "stock arrived" signal can fire only once, so after it fires it
+            # The "units arrived" signal can fire only once, so after it fires it
             # is swapped for a fresh one. Several customers may be waiting on the
             # same signal; only the first one to wake should swap it. If a later
             # customer swapped it again, the customers who had already moved on
             # to the first fresh signal would be left waiting on one that never
             # fires. Hence the check that the node still holds the signal we
-            # waited on. If we woke because our patience ran out instead, the
+            # waited on. If we woke because our tolerance ran out instead, the
             # signal has not fired and must be left alone for the others.
             if raised_event.triggered and self.demand_node.inventory_raised is raised_event:
                 self.demand_node.inventory_raised = self.env.event()
 
         if order_quantity > 0: # the customer gives up and leaves without the rest of the order
             # They are no longer waiting, so take what they were still owed off
-            # the node's current backorders. (The count drops by 1 even after
+            # the site's current backorders. (The count drops by 1 even after
             # partial deliveries: one customer is one backorder until they are
-            # fully served or leave.) Without this, the node would keep
-            # reordering stock for a customer who has already gone.
+            # fully served or leave.) Without this, the site would keep placing
+            # replenishment orders for a customer who has already gone.
             self.demand_node.stats.update_stats(backorder=[-1,-order_quantity])
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available! Customer leaves.")
 
     def _available(self):
         """
-        How many units a customer can take from the node's shelf right now.
+        How many units a customer can take from the site's inventory right now.
 
-        Requests for stock are served strictly in the order they were made. If
-        an earlier request is still waiting because the shelf cannot fill it yet
-        (for example, a site below this node ordered 50 units while only 10 are
-        on the shelf), every later request waits behind it, even a small one.
-        So while any request is waiting, nothing on the shelf is free for a new
-        customer, even though units can be seen on it.
+        Orders are served strictly in the order they were placed. If an earlier
+        order is still waiting because the inventory cannot fill it yet (for
+        example, a buyer ordered 50 units while the inventory level is 10),
+        every later order waits behind it, even a small one. So while any order
+        is waiting, no units are free for a new customer, even though the
+        inventory level is above zero.
 
         Returns:
-            float: the shelf level, or 0 while an earlier request is still waiting.
+            float: the inventory level, or 0 while an earlier order is still waiting.
         """
         inventory = self.demand_node.inventory
         return 0 if inventory.inventory.get_queue else inventory.level
 
     # ---- Customer-order helpers -------------------------------------------
-    # ``customer`` used to handle four different ways of filling an order all in
-    # one method, each with its own style and its own stats updates. Splitting
-    # them into separate, named helpers makes each case clear and lets
-    # ``customer`` read as a simple router. Every helper is written as a SimPy
-    # generator so the router can call them all the same way with ``yield
-    # from``; ``_serve_no_tolerance`` does no waiting, but is still written as a
-    # generator (``return; yield``) so the router needs no special case for it.
-    # The tolerance helper starts ``wait_for_order`` as its own separate process
-    # on purpose, so the ``customer`` call returns promptly even when the
-    # customer is willing to wait a long time; the stats are still recorded
-    # inside ``wait_for_order`` whenever the order is eventually settled.
+    # ``customer`` decides which of the helpers below serves a customer order;
+    # each helper handles one case, with its own statistics updates. Every
+    # helper can be called the same way, with ``yield from``: the ones that
+    # never wait still contain a ``yield`` after ``return`` (it never runs) so
+    # that Python treats them the same way. The helper for customers who wait
+    # starts ``wait_for_order`` as its own SimPy process on purpose, so the
+    # ``customer`` call ends at once even when the customer is willing to wait
+    # a long time; ``wait_for_order`` records the rest when the order is
+    # finally settled.
 
     def _serve_in_full(self, order_quantity, customer_id):
-        """Inventory has the full requested quantity — record demand and deliver."""
+        """The site can fill the whole order: record it and deliver."""
         self.demand_node.stats.update_stats(demand_received=[1, order_quantity])
         yield from self._process_delivery(order_quantity, customer_id)
 
     def _serve_partial_consume(self, order_quantity, available, customer_id):
-        """``consume_available`` path — ship what's on hand, record the rest as shortage."""
+        """With ``consume_available``: deliver the units that are there, and record the rest as a shortage."""
         self.logger.info(
             f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:"
             f"{order_quantity} not available, inventory level:{available}. Consuming available inventory."
@@ -4103,31 +4129,29 @@ class Demand(Node):
         yield from self._process_delivery(available, customer_id)
 
     def _enqueue_for_tolerance(self, order_quantity, available, customer_id):
-        """Backorder-allowed path — record shortage and let ``wait_for_order`` poll until tolerance."""
+        """For a customer willing to wait: record the order and the shortage, then start ``wait_for_order``."""
         self.demand_node.stats.update_stats(
             demand_received=[1, order_quantity],
             shortage=[1, order_quantity - available],
         )
-        # Fire-and-forget: ``wait_for_order`` runs as a sibling process so
-        # the parent ``customer`` call returns promptly even when the
-        # tolerance window is large. Backorder/shortage bookkeeping inside
-        # ``wait_for_order`` is independent of the parent's lifecycle.
+        # ``wait_for_order`` runs as its own SimPy process, which is not waited
+        # for here, so the ``customer`` call ends at once even when the
+        # tolerance is long. ``wait_for_order`` records the backorder itself.
         self.env.process(self.wait_for_order(customer_id, order_quantity))
         return
-        yield  # pragma: no cover — keeps this a generator so the dispatcher can ``yield from`` uniformly.
+        yield  # pragma: no cover — never runs; it lets ``customer`` call this with ``yield from`` like the others.
 
     def _discard_unservable(self, order_quantity, customer_id):
-        """Order is too big for the upstream node to ever hold — discard it.
+        """The order is too big for the site ever to hold — discard it.
 
-        The smallest piece the customer will accept (the whole order when no
-        partial delivery is allowed, otherwise the minimum split chunk) is
-        larger than the upstream node's total shelf capacity. Even a completely
-        full shelf could not cover it, so this order can never be served. We
-        record it as lost demand (a shortage) and log a warning, but we do
-        **not** create a backorder and do **not** trigger a replenishment
-        order. Backordering it would only make the node order stock from its
-        own supplier that, once delivered, would not fit on the shelf and would
-        simply be thrown away."""
+        The smallest part the customer will accept (the whole order when no
+        partial delivery is allowed, otherwise the smallest partial delivery) is
+        larger than the site's capacity. Even a completely full inventory could
+        not cover it, so this order can never be served. We record it as a
+        shortage and log a warning, but we do **not** create a backorder and do
+        **not** trigger a replenishment order. A backorder would only make the
+        site order units from its own supplier that, once delivered, would not
+        fit within its capacity and would simply be thrown away."""
         capacity = self.demand_node.inventory.capacity
         self.logger.warning(
             f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:"
@@ -4141,7 +4165,7 @@ class Demand(Node):
         yield  # pragma: no cover — keeps this a generator (see _enqueue_for_tolerance).
 
     def _serve_no_tolerance(self, order_quantity, available, customer_id):
-        """Zero-tolerance path — log shortage and leave without a wait."""
+        """For a customer with no tolerance: record the shortage; the customer leaves at once without the units."""
         self.logger.info(
             f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: Order quantity:"
             f"{order_quantity} not available, inventory level:"
@@ -4153,27 +4177,26 @@ class Demand(Node):
 
     def customer(self, customer_id, order_quantity):
         """
-        Dispatcher: route a single customer order to the right fulfilment helper.
+        Handle one customer order, by passing it to the helper for its case:
 
-        Four cases drive the dispatch — exactly the same set the original
-        inline branch handled — but the branches now delegate to named
-        helpers (see ``_serve_in_full`` / ``_serve_partial_consume`` /
-        ``_enqueue_for_tolerance`` / ``_serve_no_tolerance``) so each path's
-        intent is named in one place and the dispatcher reads as a single
-        rule table.
+        - the site can fill the whole order: ``_serve_in_full``;
+        - otherwise, with ``consume_available`` and some units there: ``_serve_partial_consume``;
+        - otherwise, for a customer with a tolerance: ``_enqueue_for_tolerance`` (or ``_discard_unservable``
+          if the order is too big for the site ever to hold);
+        - otherwise: ``_serve_no_tolerance``.
 
         Parameters:
             customer_id (int): Customer ID for logging purposes.
-            order_quantity (float): The quantity of the product ordered.
+            order_quantity (float): Units ordered.
 
         Returns:
             None
         """
         available = self._available()
         self.stats.update_stats(demand_placed=[1, order_quantity])
-        # The smallest piece this customer will take: the whole order when no
-        # partial delivery is allowed (min_split >= 1), otherwise the minimum
-        # split chunk. This mirrors how ``wait_for_order`` computes ``partial``.
+        # The smallest part this customer will take: the whole order when no
+        # partial delivery is allowed (min_split >= 1), otherwise the smallest
+        # partial delivery. This matches how ``wait_for_order`` computes ``partial``.
         min_chunk = order_quantity if self.min_split >= 1 else int(order_quantity * self.min_split)
         if order_quantity <= available:
             yield from self._serve_in_full(order_quantity, customer_id)
@@ -4181,10 +4204,10 @@ class Demand(Node):
             yield from self._serve_partial_consume(order_quantity, available, customer_id)
         elif self.customer_tolerance > 0:
             if min_chunk > self.demand_node.inventory.capacity:
-                # Order can never be served — even a full shelf cannot cover
-                # the smallest acceptable piece. Discard it rather than create
-                # a backorder that would drive a replenishment the shelf can't
-                # hold.
+                # The order can never be served — even a full inventory cannot
+                # cover the smallest part the customer accepts. Discard it
+                # rather than create a backorder that would lead to a
+                # replenishment order the inventory can't hold.
                 yield from self._discard_unservable(order_quantity, customer_id)
             else:
                 yield from self._enqueue_for_tolerance(order_quantity, available, customer_id)
@@ -4193,9 +4216,9 @@ class Demand(Node):
     
     def behavior(self):
         """
-        Generate demand by calling the order arrival and order quantity models.
-        This method simulates the demand generation process, including order placement
-        and handling shortages or unsatisfied demand.
+        Create customer orders for the whole simulation: start a customer with an order of
+        ``order_quantity_model()`` units, wait ``order_arrival_model()`` time units, and repeat. So the first
+        customer order arrives at time 0.
 
         Parameters:
             None
