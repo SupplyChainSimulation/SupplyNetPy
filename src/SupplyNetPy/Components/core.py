@@ -746,28 +746,28 @@ class Product(NamedEntity, InfoMixin):
 
 class InventoryReplenishment(InfoMixin, NamedEntity):
     """
+    The `InventoryReplenishment` class is the base for all replenishment policies in SupplyNetPy: the rules a
+    site follows to decide when to place a replenishment order and how many units to order.
 
-    The `InventoryReplenishment` class defines the abstract structure for inventory replenishment policies within
-    SupplyNetPy. It provides a common interface for managing how nodes place replenishment orders during the simulation.
+    This class is not used directly. Each policy is a subclass, such as the (s, S) policy (`SSReplenishment`),
+    the (R, Q) policy (`RQReplenishment`) and the periodic policy (`PeriodicReplenishment`).
 
-    This class is not intended for direct use. It must be subclassed to implement specific replenishment strategies,
-    such as min-max (s, S), reorder point, quantity (RQ), or periodic review (TQ) policies.
-
-    The `run` method should be overridden to define the replenishment logic for the policy. The class integrates with
-    the SimPy environment to support time-driven inventory management. The `inventory_drop` event is used to signal stock
-    depletion, enabling the replenishment process to respond to changes in inventory levels in real time.
+    A subclass overrides the `run` method with its rule. `run` runs as a SimPy process for the whole
+    simulation. A policy usually checks the node's inventory position each time the node's inventory drops
+    (the `inventory_drop` event), or at fixed intervals.
 
     **How a custom policy should talk to its node.** A policy should use these four helper methods instead of reaching
     into the node's internal attributes:
 
-    - `self.node.position()` — the inventory position: units on the shelf and in transit, minus units owed to
-      waiting customers.
-    - `self.node.place_order(quantity)` — picks a supplier using the node's selection policy and starts the order. This
-      replaces calling `selection_policy.select(...)` and `env.process(process_order(...))` yourself.
-    - `self.node.wait_for_drop()` — a generator used as `yield from self.node.wait_for_drop()` to wait until the
-      inventory drops; on wake-up it safely replaces the `inventory_drop` event with a fresh one.
-    - `Link.available_quantity()` — lets a supplier-selection policy check a supplier's stock without reading
-      `link.source.inventory.level` directly.
+    - `self.node.position()` — the inventory position: inventory level plus units in transit, minus units the
+      node still owes (to other sites and to waiting customers).
+    - `self.node.place_order(quantity)` — picks a supplier using the node's supplier-selection policy and places
+      the replenishment order. This replaces calling `selection_policy.select(...)` and
+      `env.process(process_order(...))` yourself.
+    - `self.node.wait_for_drop()` — used as `yield from self.node.wait_for_drop()` to wait until the inventory
+      drops; on wake-up it safely replaces the `inventory_drop` event with a fresh one.
+    - `Link.available_quantity()` — lets a supplier-selection policy check a supplier's inventory level without
+      reading `link.source.inventory.level` directly.
 
     Sticking to these helpers keeps a policy from depending on how a particular node is built, so it works with any
     future `Node` type that offers the same methods.
@@ -818,19 +818,19 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
 
     def run(self):
         """
-        This method should be overridden by subclasses to implement the specific replenishment policy logic.
+        The policy's rule. Each subclass overrides this method.
         """
         pass
 
 class SSReplenishment(InventoryReplenishment):
     """
-    Implements the (s, S) or min-max inventory replenishment policy with optional safety stock support.
+    Implements the (s, S) replenishment policy, with an optional safety stock.
 
-    When the inventory level falls to or below the reorder point (s), an order is placed to replenish 
-    stock up to the order-up-to level (S). If safety stock is provided, both the reorder point and the 
-    order-up-to level are adjusted accordingly. The policy supports both event-driven and periodic inventory 
-    checks, with an optional initial review delay. Supplier selection is automatically managed using the 
-    node’s supplier selection policy.
+    When the inventory position falls to the reorder point `s` or below, the node places a replenishment order
+    big enough to bring its inventory position back up to the order-up-to level `S`. If a safety stock is
+    given, it is added to both `s` and `S`. The inventory position is checked each time the node's inventory
+    drops, or every `period` time units if a period is given, starting after an optional first review delay.
+    The supplier is chosen by the node's supplier-selection policy.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
@@ -843,12 +843,12 @@ class SSReplenishment(InventoryReplenishment):
         node (object): Node to which this policy applies.
         params (dict): Replenishment policy parameters.
         name (str): Replenishment policy name.
-        first_review_delay (float): Delay before the first inventory check begins.
-        period (float): Time interval for periodic inventory checks.
+        first_review_delay (float): Time units to wait before the first check of the inventory position.
+        period (float): Time units between checks. 0 (the default) means checking each time the inventory drops.
 
     Functions:
         __init__: Initializes the replenishment policy object.
-        run: Monitors inventory and places orders based on the (s, S) policy.
+        run: Checks the inventory position and places replenishment orders by the (s, S) rule.
     """
     _info_keys = InventoryReplenishment._info_keys + ["name", "first_review_delay", "period"]
 
@@ -867,14 +867,14 @@ class SSReplenishment(InventoryReplenishment):
             node (object): node to which this policy applies
             params (dict): parameters for the replenishment policy (s, S)
             name (str): replenishment policy name
-            first_review_delay (float): delay before the first inventory check is performed
-            period (float): period for periodic inventory check
+            first_review_delay (float): time units to wait before the first check of the inventory position
+            period (float): time units between checks; 0 means checking each time the inventory drops
 
         Returns:
             None
         """
-        validate_non_negative("Reorder point (s)", params['s']) # this assertion ensures that the reorder point is positive
-        validate_positive("Order-up-to level (S)", params['S']) # this assertion ensures that the order-up-to level is non-negative
+        validate_non_negative("Reorder point (s)", params['s']) # s must not be negative
+        validate_positive("Order-up-to level (S)", params['S']) # S must be positive
         if 's' not in params or 'S' not in params:
             raise ValueError("Parameters 's' and 'S' must be provided for the (s, S) replenishment policy.")
         if params['s'] > params['S']:
@@ -886,7 +886,8 @@ class SSReplenishment(InventoryReplenishment):
     
     def run(self):
         """
-        Replenishes the inventory based on the sS policy.
+        Runs the (s, S) policy for the whole simulation: checks the inventory position and places
+        replenishment orders.
 
         Parameters:
             None
@@ -899,8 +900,7 @@ class SSReplenishment(InventoryReplenishment):
             None    
         """
         s, S = self.params['s'], self.params['S']  # get the reorder point and order-up-to level
-        # ``s > S`` validation already runs in __init__ (line ~751); the
-        # duplicate guard here was §8's "duplicate s>S check" nit. Removed.
+        # (__init__ has already checked that s is not above S.)
 
         if 'safety_stock' in self.params: # check if safety_stock is specified
             validate_positive("Safety stock", self.params['safety_stock'])
@@ -908,38 +908,38 @@ class SSReplenishment(InventoryReplenishment):
             s += self.params['safety_stock']
             S += self.params['safety_stock']
 
-        if self.first_review_delay > 0: # if first review delay is specified, wait for the specified time before starting the replenishment process
+        if self.first_review_delay > 0: # wait before the first check, if a first review delay is given
             yield self.env.timeout(self.first_review_delay)
 
-        while True: # run the replenishment process indefinitely
+        while True: # check for the whole simulation
             self.node.logger.info(f"{self.env.now:.4f}:{self.node.ID}: Inventory levels:{self.node.inventory.level}, on hand:{self.node.inventory.on_hand}")
             position = self.node.position()
             if position <= s:
                 self.node.place_order(S - position)
 
-            if self.period == 0: # if periodic check is OFF
-                yield from self.node.wait_for_drop()  # wait for the inventory to be dropped
-            elif self.period: # if periodic check is ON
+            if self.period == 0: # no period: check again when the inventory drops
+                yield from self.node.wait_for_drop()
+            elif self.period: # a period is given: check again after it
                 yield self.env.timeout(self.period)
 
 class RQReplenishment(InventoryReplenishment):
     """
-    Implements a Reorder Quantity (RQ) Inventory Replenishment Policy with optional safety stock support.
+    Implements the (R, Q) replenishment policy.
 
-    This policy continuously monitors inventory levels and places a replenishment order when the inventory 
-    falls to or below the reorder point (R). The replenishment quantity is fixed at Q units per order.
+    When the inventory position falls to the reorder point `R` or below, the node places a replenishment order
+    of a fixed `Q` units.
 
-    The inventory can be checked continuously (event-based) if 'period' is set to 0 (default) and periodically if 
-    a positive 'period' is provided. An optional first review delay can be configured to introduce a delay before 
-    the first inventory check begins.
+    The inventory position is checked each time the node's inventory drops if `period` is 0 (the default), or
+    every `period` time units if a positive period is given. An optional first review delay sets how long to
+    wait before the first check.
 
-    Supplier selection is managed automatically using the node's supplier selection policy. If the selected 
-    supplier does not have sufficient inventory, the shortage is recorded.
+    The supplier is chosen by the node's supplier-selection policy. If the supplier cannot fill the order at
+    once, a shortage is recorded at the supplier.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
         node (object): Node to which this policy applies.
-        params (dict): Parameters for the replenishment policy: R, Q, and optional parameters (safety_stock, first_review_delay, period).
+        params (dict): Parameters for the replenishment policy: R, Q, and the optional first_review_delay and period.
 
     Attributes:
         _info_keys (list): List of keys to include in the info dictionary.
@@ -947,23 +947,23 @@ class RQReplenishment(InventoryReplenishment):
         node (object): Node to which this policy applies.
         params (dict): Replenishment policy parameters (R, Q, optional delays and period).
         name (str): Replenishment policy name.
-        first_review_delay (float): Delay before the first inventory check begins.
-        period (float): Time interval for periodic inventory checks. If 0, continuous checking is used.
+        first_review_delay (float): Time units to wait before the first check of the inventory position.
+        period (float): Time units between checks. 0 (the default) means checking each time the inventory drops.
 
     Functions:
-        __init__: Initializes the RQ replenishment policy object.
-        run: Continuously monitors inventory and places replenishment orders when the reorder point is reached.
+        __init__: Initializes the (R, Q) replenishment policy object.
+        run: Checks the inventory position and places a replenishment order when it reaches the reorder point.
     """
     _info_keys = InventoryReplenishment._info_keys + ["name", "first_review_delay", "period"]
 
     def __init__(self, env, node, params):
         """ 
-        Initialize the RQ replenishment policy object.
+        Initialize the (R, Q) replenishment policy object.
 
         Parameters:
             env (simpy.Environment): Simulation environment.
             node (object): Node to which this policy applies.
-            params (dict): Replenishment policy parameters R, Q, and optional parameters (safety_stock, first_review_delay, period).
+            params (dict): Replenishment policy parameters: R, Q, and the optional first_review_delay and period.
 
         Attributes:
             _info_keys (list): List of keys to include in the info dictionary.
@@ -971,14 +971,14 @@ class RQReplenishment(InventoryReplenishment):
             node (object): Node to which this policy applies.
             params (dict): Replenishment policy parameters (R, Q, optional delays and period).
             name (str): Replenishment policy name.
-            first_review_delay (float): Delay before the first inventory check begins.
-            period (float): Time interval for periodic inventory checks. If 0, continuous checking is used.
+            first_review_delay (float): Time units to wait before the first check of the inventory position.
+            period (float): Time units between checks. 0 means checking each time the inventory drops.
 
         Returns:
             None
         """
-        validate_non_negative("Reorder point (R)", params['R']) # this assertion ensures that the reorder point is non-negative
-        validate_positive("Order quantity (Q)", params['Q'])  # this assertion ensures that the order quantity is positive
+        validate_non_negative("Reorder point (R)", params['R']) # R must not be negative
+        validate_positive("Order quantity (Q)", params['Q'])  # Q must be positive
         super().__init__(env, node, params)
         self.name = "RQ replenishment (R, Q)"
         self.first_review_delay = params.get('first_review_delay', 0)
@@ -986,18 +986,18 @@ class RQReplenishment(InventoryReplenishment):
         
     def run(self):
         """
-        Continuously monitors the inventory and places replenishment orders when the inventory level 
-        falls to or below the reorder point (R).
+        Runs the (R, Q) policy for the whole simulation: places a replenishment order of `Q` units whenever
+        the inventory position is at the reorder point `R` or below.
 
-        If a periodic review interval is provided, inventory is checked at that interval.
-        Otherwise, the system waits for inventory drop events to trigger the next check.
+        If a period is given, the inventory position is checked every `period` time units. Otherwise it is
+        checked each time the node's inventory drops.
 
         Parameters:
             None
 
         Attributes:
             R (float): Reorder point.
-            Q (float): Replenishment quantity.
+            Q (float): Units in each replenishment order.
         
         Returns:
             None
@@ -1019,14 +1019,13 @@ class RQReplenishment(InventoryReplenishment):
 
 class PeriodicReplenishment(InventoryReplenishment):
     """
-    Implements a time-based inventory replenishment policy where a fixed quantity `Q` is ordered at regular intervals
-    `T` with optional safety stock support.
+    Implements the periodic replenishment policy: every `T` time units, the node places a replenishment order of
+    `Q` units, whatever its inventory position. If a safety stock is given and the inventory level is below it,
+    the order also includes the units needed to bring the inventory level back up to the safety stock. An
+    optional first review delay sets how long to wait before the first order.
 
-    This policy ensures consistent inventory reviews and replenishment, independent of the current stock level. Supports 
-    an optional initial review delay before starting periodic checks.
-
-    Supplier selection is automatically managed using the node’s defined supplier selection policy. Shortages are 
-    recorded if the supplier does not have enough stock.
+    The supplier is chosen by the node's supplier-selection policy. If the supplier cannot fill the order at
+    once, a shortage is recorded at the supplier.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
@@ -1039,11 +1038,11 @@ class PeriodicReplenishment(InventoryReplenishment):
         node (object): Node to which this policy applies.
         params (dict): Parameters for the replenishment policy.
         name (str): Replenishment policy name.
-        first_review_delay (float): Delay before the first inventory check.
+        first_review_delay (float): Time units to wait before the first replenishment order.
 
     Functions:
         __init__: Initializes the replenishment policy object.
-        run: Continuously manages periodic replenishment by placing orders of size Q every T time units.
+        run: Places a replenishment order of Q units every T time units.
     """
     _info_keys = InventoryReplenishment._info_keys + ["name", "first_review_delay"]
 
@@ -1062,32 +1061,32 @@ class PeriodicReplenishment(InventoryReplenishment):
             node (object): node to which this policy applies
             params (dict): parameters for the replenishment policy (T, Q)
             name (str): replenishment policy name
-            first_review_delay (float): delay before the first inventory check is performed
+            first_review_delay (float): time units to wait before the first replenishment order
 
         Returns:
             None
         """
-        validate_positive("Replenishment period (T)", params['T'])  # this assertion ensures that the replenishment period is positive
-        validate_positive("Replenishment quantity (Q)", params['Q'])  # this assertion ensures that the replenishment quantity is positive
+        validate_positive("Replenishment period (T)", params['T'])  # T must be positive
+        validate_positive("Replenishment quantity (Q)", params['Q'])  # Q must be positive
         super().__init__(env, node, params)
         self.name = "Periodic replenishment (T, Q)"
         self.first_review_delay = params.get('first_review_delay', 0)
 
     def run(self):
         """
-        Replenishes the inventory based on the periodic policy.
+        Runs the periodic policy for the whole simulation: places a replenishment order every `T` time units.
 
         Parameters:
             None
 
         Attributes:
-            name (str): replenishment policy name
-            _info_keys (list): list of keys to include in the info dictionary
+            T (float): time units between replenishment orders
+            Q (float): units in each replenishment order
 
         Returns:
             None
         """
-        T, Q = self.params['T'], self.params['Q']  # get the period and quantity
+        T, Q = self.params['T'], self.params['Q']  # the period and the order size
         ss = 0
         if 'safety_stock' in self.params: # check if safety_stock is specified
             validate_non_negative("Safety stock", self.params['safety_stock'])
@@ -1103,7 +1102,7 @@ class PeriodicReplenishment(InventoryReplenishment):
             if self.node.inventory.level < ss:
                 reorder_quantity += ss - self.node.inventory.level
             self.node.place_order(reorder_quantity)
-            yield self.env.timeout(T) # periodic replenishment, wait for the next period
+            yield self.env.timeout(T) # wait for the next period
 
 class SupplierSelectionPolicy(InfoMixin, NamedEntity):
     """

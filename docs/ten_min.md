@@ -55,8 +55,6 @@ The SupplyNetPy Components module includes an `InventoryReplenishment` class tha
 
 - <p> [Replenish Quantity (RQ)](api-reference/api-ref-core.md#SupplyNetPy.Components.core.RQReplenishment) — reorder a fixed quantity Q when placing an order. Parameters: {R, Q} (`RQReplenishment`) </p>
 
-- <p> [Replenish Quantity (RQ) with safety stock](api-reference/api-ref-core.md#SupplyNetPy.Components.core.RQReplenishment) — reorder a fixed quantity Q when placing an order. Parameters: {R, Q, safety_stock} (`RQReplenishment`) </p>
-
 - <p> [Periodic (T,Q)](api-reference/api-ref-core.md#SupplyNetPy.Components.core.PeriodicReplenishment) — replenish inventory every T days with Q units. Parameters: {T, Q} (`PeriodicReplenishment`) </p>
 
 - <p> [Periodic (T,Q) with safety stock](api-reference/api-ref-core.md#SupplyNetPy.Components.core.PeriodicReplenishment) — replenish inventory every T days with Q units. If safety stock is specified, then when the safety stock level is violated, order Q units in addition to the quantity needed to maintain safety stock levels. Parameters: {T, Q, safety_stock} (`PeriodicReplenishment`) </p>
