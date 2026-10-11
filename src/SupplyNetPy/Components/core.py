@@ -2833,37 +2833,41 @@ class Inventory(NamedEntity, InfoMixin):
 
 class Supplier(Node):
     """
-    The `Supplier` class represents a supplier in the supply network that continuously 
-    extracts raw materials whenever the inventory is not full. Each supplier is associated 
-    with a specific raw material and can have either finite or infinite inventory capacity.
+    The `Supplier` class represents a raw-material supplier: a site at the start of the network that mines
+    one raw material and sells it to manufacturers. It has no supplier of its own.
 
-    For finite suppliers, raw materials are extracted in batches based on the extraction 
-    quantity and extraction time specified by the instance of `RawMaterial` class. For infinite suppliers, 
-    inventory is considered unlimited.
+    A raw-material supplier with finite inventory (``node_type="supplier"``) mines
+    `RawMaterial.extraction_quantity` units every `RawMaterial.extraction_time` time units, as long as its
+    inventory is not full. When its inventory is full it stops, and starts mining again as soon as its
+    inventory drops. An infinite supplier (``node_type="infinite_supplier"``) never runs out, so it does not
+    mine at all.
 
     Parameters:
         env (simpy.Environment): simulation environment
-        ID (str): unique identifier for the supplier
-        name (str): name of the supplier
-        node_type (str): type of the node (supplier/infinite_supplier)
-        capacity (float): maximum capacity of the inventory
-        initial_level (float): initial inventory level
-        inventory_holding_cost (float): inventory holding cost
-        raw_material (RawMaterial): raw material supplied by the supplier
-        **kwargs: any additional keyword arguments for the Node class and logger
+        ID (str): unique identifier for the raw-material supplier
+        name (str): name of the raw-material supplier
+        node_type (str): "supplier" (finite inventory, mines raw material) or "infinite_supplier" (never runs out)
+        capacity (float): the largest inventory level it can hold (ignored for an infinite supplier)
+        initial_level (float): inventory level at the start (ignored for an infinite supplier)
+        inventory_holding_cost (float): holding cost per unit per time unit
+        raw_material (RawMaterial): the raw material it mines and sells
+        **kwargs: any additional keyword arguments for the Node class and logger. Also accepts
+            ``periodic_stats`` (bool, default False: if True, its statistics are updated every
+            ``stats_period`` time units) and ``stats_period`` (float, default 1).
 
     Attributes:
         _info_keys (list): list of keys to include in the info dictionary.
-        raw_material (RawMaterial): raw material supplied by the supplier
-        sell_price (float): selling price of the raw material
-        inventory (Inventory): inventory of the supplier
-        inventory_drop (simpy.Event): event to signal when inventory is dropped
-        inventory_raised (simpy.Event): event to signal when inventory is raised
-        stats (Statistics): statistics object for the supplier
+        raw_material (RawMaterial): the raw material it mines and sells
+        sell_price (float): sell price per unit (the raw material's ``cost``)
+        inventory (Inventory): its inventory (infinite for an infinite supplier)
+        inventory_drop (simpy.Event): fires when its inventory drops (finite inventory only)
+        inventory_raised (simpy.Event): fires when units are added to its inventory (finite inventory only)
+        stats (Statistics): its statistics. Besides the usual ones, ``total_raw_materials_mined`` (units
+            mined so far) and ``total_material_cost`` (mining cost so far, part of ``node_cost``).
 
     Functions:
         __init__: Initializes the supplier object.
-        behavior: Simulates the continuous raw material extraction process.
+        behavior: Mines raw material whenever the inventory is not full (finite inventory only).
     """
     _info_keys = Node._info_keys + ["raw_material", "sell_price"]
 
@@ -2882,48 +2886,50 @@ class Supplier(Node):
         
         Parameters:
             env (simpy.Environment): simulation environment
-            ID (str): unique identifier for the supplier
-            name (str): name of the supplier
-            node_type (str): type of the node (supplier/infinite_supplier)
-            capacity (float): maximum capacity of the inventory
-            initial_level (float): initial inventory level
-            inventory_holding_cost (float): inventory holding cost
-            raw_material (RawMaterial): raw material supplied by the supplier
-            **kwargs: any additional keyword arguments for the Node class and logger
+            ID (str): unique identifier for the raw-material supplier
+            name (str): name of the raw-material supplier
+            node_type (str): "supplier" (finite inventory, mines raw material) or "infinite_supplier" (never runs out)
+            capacity (float): the largest inventory level it can hold (ignored for an infinite supplier)
+            initial_level (float): inventory level at the start (ignored for an infinite supplier)
+            inventory_holding_cost (float): holding cost per unit per time unit
+            raw_material (RawMaterial): the raw material it mines and sells
+            **kwargs: any additional keyword arguments for the Node class and logger. Also accepts
+                ``periodic_stats`` (bool, default False: if True, its statistics are updated every
+                ``stats_period`` time units) and ``stats_period`` (float, default 1).
         
         Attributes:
             _info_keys (list): list of keys to include in the info dictionary.
-            raw_material (RawMaterial): raw material supplied by the supplier
-            sell_price (float): selling price of the raw material
-            inventory (Inventory): inventory of the supplier
-            inventory_drop (simpy.Event): event to signal when inventory is dropped
-            inventory_raised (simpy.Event): event to signal when inventory is raised
-            stats (Statistics): statistics object for the supplier
+            raw_material (RawMaterial): the raw material it mines and sells
+            sell_price (float): sell price per unit (the raw material's ``cost``)
+            inventory (Inventory): its inventory (infinite for an infinite supplier)
+            inventory_drop (simpy.Event): fires when its inventory drops (finite inventory only)
+            inventory_raised (simpy.Event): fires when units are added to its inventory (finite inventory only)
+            stats (Statistics): its statistics. Besides the usual ones, ``total_raw_materials_mined`` (units
+                mined so far) and ``total_material_cost`` (mining cost so far, part of ``node_cost``).
 
         Returns:
             None
         """
-        # Pull periodic-stats kwargs out before forwarding to Node — Statistics
-        # owns this knob, but exposing it as a node-level kwarg lets users tune
-        # the periodic update cadence without subclassing. Suppliers default to
-        # no periodic update (current behavior); if the user opts in, the
-        # cadence is configurable.
+        # Take the statistics options out of kwargs before passing the rest on
+        # to Node. They belong to Statistics, but are accepted here so users can
+        # ask for regular statistics updates without subclassing. By default a
+        # raw-material supplier's statistics are not updated regularly.
         periodic_stats = kwargs.pop('periodic_stats', False)
         stats_period = kwargs.pop('stats_period', 1)
         if periodic_stats:
             validate_positive(name="stats_period", value=stats_period)
         super().__init__(env=env,ID=ID,name=name,node_type=node_type,**kwargs)
-        self.raw_material = raw_material # raw material supplied by the supplier
+        self.raw_material = raw_material # the raw material it mines and sells
         self.sell_price = 0
         if(self.raw_material):
-            self.sell_price = self.raw_material.cost # selling price of the raw material
+            self.sell_price = self.raw_material.cost # sell price per unit
         if(self.node_type!="infinite_supplier"):
             inventory_kwargs = {k: v for k, v in kwargs.items() if k not in _LOGGER_KWARGS and k not in _NODE_KWARGS}
             self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, holding_cost=inventory_holding_cost, replenishment_policy=None, **inventory_kwargs)
-            self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
-            self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
+            self.inventory_drop = self.env.event()  # fires when the inventory drops
+            self.inventory_raised = self.env.event() # fires when units are added
             if(self.raw_material):
-                self.env.process(self.behavior()) # start the behavior process
+                self.env.process(self.behavior()) # start mining
             else:
                 self.logger.error(f"{self.ID}:Raw material not provided for this supplier. Recreate it with a raw material.")
                 raise ValueError("Raw material not provided.")
@@ -2939,8 +2945,9 @@ class Supplier(Node):
         
     def behavior(self):
         """
-        Supplier behavior: The supplier keeps extracting raw material whenever the inventory is not full.
-        Assume that a supplier can extract a single type of raw material.
+        Mine raw material for the whole simulation: `extraction_quantity` units every `extraction_time` time
+        units, as long as the inventory is not full. When it is full, wait until the inventory drops, then mine
+        again. A raw-material supplier mines a single raw material.
 
         Parameters:
             None
@@ -2954,16 +2961,16 @@ class Supplier(Node):
         while True:
             if(self.inventory.level < self.inventory.capacity): # check if the inventory is not full
                 mined_quantity = self.raw_material.extraction_quantity
-                if((self.inventory.level+self.raw_material.extraction_quantity)>self.inventory.capacity): # check if the inventory can accommodate the extracted quantity
-                    mined_quantity = self.inventory.capacity - self.inventory.level # update statistics
+                if((self.inventory.level+self.raw_material.extraction_quantity)>self.inventory.capacity): # mine only what fits within the capacity
+                    mined_quantity = self.inventory.capacity - self.inventory.level
                 self.inventory.put(mined_quantity)
                 self.stats.update_stats(total_raw_materials_mined=mined_quantity, total_material_cost=mined_quantity*self.raw_material.mining_cost)
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:Raw material mined/extracted. Inventory level:{self.inventory.level}")
                 yield self.env.timeout(self.raw_material.extraction_time)
             else:
-                # The shelf is full. Wait until a buyer takes something
-                # (Inventory.get signals inventory_drop), then mine again,
-                # instead of checking the shelf every day.
+                # The inventory is full. Wait until it drops (a buyer takes
+                # units, and Inventory.get signals inventory_drop), then mine
+                # again, instead of checking the inventory every time unit.
                 yield from self.wait_for_drop()
             self.logger.info(f"{self.env.now:.4f}:{self.ID}: Inventory level:{self.inventory.level}") # log on each event-driven wake-up
 
