@@ -7,6 +7,59 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
+## 0.2.0 (2026-10-11)
+
+Most of these fixes come from
+[issue #1](https://github.com/SupplyChainSimulation/SupplyNetPy/issues/1), reported by
+[@ashwingaikwadiby](https://github.com/ashwingaikwadiby). Results
+change for networks with manufacturers, raw-material suppliers with finite
+inventory, perishable goods, customers who wait, or replenishment orders that
+have to wait at a supplier. Simple networks, such as the quickstart example,
+give the same results as before.
+
+* **[FIX]** A replenishment order that has to wait at its supplier is now a
+  backorder there only while it waits, and is no longer counted twice in the
+  supplier's inventory position. Before, the supplier ordered too much, kept
+  the extra units for the rest of the run, and its backorders were never
+  cleared.
+* **[FIX]** A manufacturer now keeps making production batches until every
+  planned unit is made, orders raw material for every planned unit, and carries
+  on when units leave its full inventory. Before, it could stop producing for
+  good, with raw material left unused or with orders waiting forever.
+* **[FIX]** A raw-material supplier with finite inventory starts mining again as
+  soon as its inventory drops. Before, once its inventory had been full it never
+  mined again, and manufacturers buying from it waited forever.
+* **[FIX]** Perishable goods. An order now gets the batches that are really in
+  inventory when it is filled, oldest first. Expired units are thrown away at
+  once and are no longer shipped to an order that was waiting, and destroyed
+  units are removed at once too. Before, an order that had to wait could lose
+  units, and expired units could be shipped.
+* **[FIX]** Customers who wait (`tolerance` above 0) now leave as soon as their
+  tolerance runs out, and their backorders are cleared when they leave. All
+  waiting customers are woken when units arrive, two waiting customers can no
+  longer take the same units, and a partial delivery of 0 units no longer
+  crashes.
+* **[FIX]** A waiting customer's shortage is recorded once, when the order
+  arrives. Before, it was recorded again at every check, so shortage figures
+  were too high.
+* **[FIX]** A supplier whose site is disrupted is no longer counted as short for
+  orders it never receives.
+* **[FIX]** `Inventory.destroy()` now wakes a raw-material supplier (to mine
+  again) and a manufacturer (to make more). It still does not wake a
+  replenishment policy.
+* **[NEW]** `Inventory.get()` takes a `site_order` argument, and
+  `Inventory.waiting_orders()` and `Inventory.waiting_site_orders()` report the
+  units asked for by orders still waiting at an inventory.
+* **[DOCS]** The (R, Q) policy (`RQReplenishment`) never used `safety_stock`, so
+  passing it had no effect. The documentation no longer says that it does.
+* **[DOCS]** A new Glossary page defines one word for each idea, and the
+  documentation, docstrings and code comments now use those words. The API
+  reference now lists every result of `simulate_sc_net`, and no longer shows
+  raw markup from the docstrings.
+* **[DOCS]** Several documentation pages described their examples wrongly, and
+  are corrected. The complex network example now has the links shown in its
+  picture, lead times that differ as intended, and a fixed seed.
+
 ## 0.1.12 (2026-05-31)
 
 - **[FIX]** Replenishment orders that were bigger than the free space on the

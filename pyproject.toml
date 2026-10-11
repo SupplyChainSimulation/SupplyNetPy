@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "supplynetpy"
-version = "0.1.12"
+version = "0.2.0"
 dependencies = [
     "simpy",
     "networkx",
