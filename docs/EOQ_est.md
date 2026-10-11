@@ -13,78 +13,77 @@ img{
 
 ## System Description
 
-As Best Buy sells through its current stock of HP computers, the purchasing manager places a replenishment order for a new batch of *Q* computers (the **lot size**). Each order carries a fixed cost of *S* dollars — a per-order overhead that covers paperwork, transport, receiving, and similar costs that do *not* scale with the size of the order. The purchasing manager has to decide how many computers to put in each order. The decision uses the following inputs:
+As Best Buy sells through its current inventory of HP computers, the purchasing manager places a replenishment order for *Q* more computers (the **lot size**). Each order carries a fixed cost of *S* dollars. This is an overhead for each order, covering paperwork, transport, receiving and similar costs that do *not* grow with the size of the order. The purchasing manager has to decide how many computers to put in each order. The decision uses the following inputs.
 
- - *D* — annual demand for the product (how many units are sold per year)
- - *S* — fixed cost incurred per order (independent of the order size)
- - *C* — cost per unit (what HP charges Best Buy for one computer)
- - *h* — holding cost per year, expressed as a fraction of the product cost (e.g., *h* = 0.2 means it costs 20% of the unit price to keep one unit on the shelf for a year — covering storage, capital tied up in inventory, etc.)
- 
- Assume that HP does not offer any discounts, and each unit costs $C no matter how large an order is. The holding cost is thus given by H = hC. The model is developed using the following basic assumptions:
+ * *D* is the annual demand for the product (how many units are sold per year).
+ * *S* is the fixed cost of each order (whatever its size).
+ * *C* is the cost per unit (what HP charges Best Buy for one computer).
+ * *h* is the holding cost per year, as a fraction of the cost per unit. For example, *h* = 0.2 means it costs 20% of the unit price to keep one unit in inventory for a year, covering storage, the money tied up in inventory and so on.
 
- 1. Demand is steady at D units per unit time.
- 2. No shortages are allowed, that is, all demand must be supplied from stock.
- 3. Replenishment lead time is fixed (initially assumed to be zero).
+ Assume that HP does not offer any discounts, and each unit costs $C no matter how large an order is. The holding cost per unit per year is then H = hC. The model rests on the following basic assumptions.
 
-The purchasing manager makes the lot-sizing decision to minimize the total cost the store incurs. He or she must consider three costs when deciding on the lot size:
+ 1. Demand is steady at D units per time unit.
+ 2. No shortages are allowed, that is, all demand must be met from inventory.
+ 3. The lead time is fixed (at first assumed to be zero).
 
- - Annual material cost
- - Annual ordering cost
- - Annual holding cost
+The purchasing manager chooses the lot size to keep the store's total cost as low as possible. The manager must consider three costs when deciding on the lot size.
 
- Because purchase price is independent of lot size, we have
+ * Annual material cost
+ * Annual ordering cost
+ * Annual holding cost
 
-  - Annual material cost = $CD$
- 
- The number of orders must suffice to meet the annual demand D. Given a lot size of Q, we thus have
+ Because the price per unit does not depend on the lot size, we have
 
-  - Number of orders per year = $\frac{D}{Q}$
- 
- Because an order cost of S is incurred for each order placed, we infer that
+  * Annual material cost = $CD$
 
-  - Annual ordering cost = $(\frac{D}{Q}){S}$
- 
-Given a lot size of Q, we have an average inventory of Q/2. The annual holding cost is thus the cost of holding Q/2 units in inventory for one year and is given as
+ The number of orders must be enough to meet the annual demand D. Given a lot size of Q, we thus have
 
-  - Annual holding cost = $(\frac{Q}{2})H = (\frac{Q}{2})hC$
+  * Number of orders per year = $\frac{D}{Q}$
 
-The total annual cost, TC, is the sum of all three costs and is given as
+ Because an order cost of S is paid for each order placed, we find that
 
-  - Total annual cost, $TC = CD + (\frac{D}{Q})S + (\frac{Q}{2})hC$
+  * Annual ordering cost = $(\frac{D}{Q}){S}$
+
+Given a lot size of Q, we have an average inventory of Q/2. The annual holding cost is thus the cost of holding Q/2 units in inventory for one year, which is
+
+  * Annual holding cost = $(\frac{Q}{2})H = (\frac{Q}{2})hC$
+
+The total annual cost, TC, is the sum of all three costs, which is
+
+  * Total annual cost, $TC = CD + (\frac{D}{Q})S + (\frac{Q}{2})hC$
 
 ![lot size](img/EOQ_est_files/EOQ_est_lot_size.png)
 
-<small> Image source: [Textbook] Supply Chain Management: Strategy, Planning, and Operation, (Chopra and Meindl) </small>
+<small> Image source, the textbook <b>Supply Chain Management: Strategy, Planning, and Operation</b> (Chopra and Meindl). </small>
 
-Above figure shows the variation in different costs as the lot size is changed. Observe that  the annual holding cost increases with an increase in lot size. In contrast, the annual ordering cost declines with an increase in lot size. The material cost is independent of lot size because we have assumed the price to be fixed. The total annual cost thus first declines and then increases with an increase in lot size.
+The figure above shows how the different costs change with the lot size. Observe that the annual holding cost increases with an increase in lot size. In contrast, the annual ordering cost declines with an increase in lot size. The material cost is independent of lot size because we have assumed the price to be fixed. The total annual cost thus first declines and then increases with an increase in lot size.
 
 ![sc net](img/EOQ_est_files/EOQ_est_sc_net.png)
 
-From the perspective of the manager at Best Buy, the optimal lot size is one that minimizes the total cost to Best Buy. It is obtained by taking the first derivative of the total cost with respect to Q and setting it equal to 0. The optimum lot size is referred to as the economic order quantity (EOQ). It is denoted by Q* and is given by the following equation:
+From the point of view of the manager at Best Buy, the optimal lot size is the one that keeps Best Buy's total cost as low as possible. It is found by taking the first derivative of the total cost with respect to Q and setting it equal to 0. The optimal lot size is called the economic order quantity (EOQ). It is written Q* and is given by the equation below.
 
 Optimal lot size, $Q* = \sqrt{\frac{2DS}{hC}}$
  
 ## Numerical Example
 
-Demand for the Deskpro computer at Best Buy is 1,000 units per month. Best Buy incurs a fixed order placement, transportation, and receiving cost of $4,000 each time an order is placed. Each computer costs Best Buy $500 and the retailer has a holding cost of 20 percent. Evaluate the number of computers that the store manager should order in each replenishment lot.
+Demand for the Deskpro computer at Best Buy is 1,000 units per month. Best Buy incurs a fixed order placement, transportation, and receiving cost of $4,000 each time an order is placed. Each computer costs Best Buy $500 and the retailer has a holding cost of 20 percent. Work out the number of computers the store manager should order in each replenishment order.
 
-Analysis:
-In this case, the store manager has the following inputs:
+**Analysis.** In this case, the store manager has the following inputs.
 
- - Annual demand, $D = 1,000 * 12 = 12,000$ units
- - Order cost per lot, $S = 4,000$
- - Unit cost per computer, $C = 500$
- - Holding cost per year as a fraction of unit cost, $h = 0.2$
+ * Annual demand, $D = 1,000 * 12 = 12,000$ units
+ * Order cost per lot, $S = 4,000$
+ * Unit cost per computer, $C = 500$
+ * Holding cost per year as a fraction of the unit cost, $h = 0.2$
  
 Using the EOQ formula, the optimal lot size is<br>
 
 Optimal order size = Q* =  $\sqrt{\frac{2 * 12,000 * 4,000}{0.2 * 500}} = 980$
  
-To minimize the total cost at Best Buy, the store manager orders a lot size of 980 computers for each replenishment order. The cycle inventory is the average resulting inventory and is given by<br>
+To keep the total cost at Best Buy as low as possible, the store manager orders a lot size of 980 computers in each replenishment order. The cycle inventory is the resulting average inventory, which is<br>
 
 Cycle inventory = $\frac{Q*}{2} = 490$
  
-For a lot size of Q* = 980, the store manager evaluates<br>
+For a lot size of Q* = 980, the store manager works out<br>
 
 Number of orders per year = $\frac{D} {Q*} = \frac{12,000} {980} = 12.24$<br>
 Annual ordering and holding cost = $\frac{D} {Q*} S + (\frac{Q*} {2}) hC = 97,980$<br>
@@ -271,4 +270,4 @@ plt.show()
 
 ![estimated EOQ](img/EOQ_est_files/EOQ_est_1_1.png)
 
-We conducted multiple simulations with varying lengths (1000, 2000, 3000, 4000, 5000, and 6000). Our findings indicated that when the simulation length is less than 4000, the Economic Order Quantity (EOQ) is approximately 1010. Additionally, we found that the results improve as the simulation length increases.
+We ran several simulations of different lengths (1000, 2000, 3000, 4000, 5000 and 6000 time units, each read as a day). When the simulation is shorter than 4000 time units, the economic order quantity (EOQ) comes out at about 1010. The results get closer to the analytical answer as the simulation gets longer.
