@@ -3,6 +3,9 @@ import SupplyNetPy.Components as scm
 import simpy
 import numpy as np
 
+# Same random numbers on every run
+np.random.seed(42)
+
 class Distributions:
     def __init__(self, lam=5, mu=5, low=1, high=10):
         self.lam = lam
@@ -92,16 +95,16 @@ links.append(scm.Link(env=env, ID='l5', source=bakery, sink=distributor2, cost=7
 
 # Distributor 1 → Shops 1, 2, 3
 for i in range(0,3):
-    link = scm.Link(env=env, ID=f'l{i+6}', source=distributor1, sink=cake_shops[i], cost=4, lead_time=lambda: 0.4 + i*0.1)
+    link = scm.Link(env=env, ID=f'l{i+6}', source=distributor1, sink=cake_shops[i], cost=4, lead_time=lambda i=i: 0.4 + i*0.1)
     links.append(link)
 # Distributor 2 → Shops 4, 5
 for i in range(3,5):
     link = scm.Link(env=env, ID=f'l{i+6}', source=distributor2, sink=cake_shops[i], cost=5, lead_time=lambda: 0.5)
     links.append(link)
 
-# Hybrid cross-links
+# Distributor 1 → Shop 4, Distributor 2 → Shop 2
 links.append(scm.Link(env=env, ID='l11', source=distributor1, sink=cake_shops[3], cost=8, lead_time=lambda: 0.5))
-links.append(scm.Link(env=env, ID='l12', source=distributor2, sink=cake_shops[4], cost=6, lead_time=lambda: 0.8))
+links.append(scm.Link(env=env, ID='l12', source=distributor2, sink=cake_shops[1], cost=6, lead_time=lambda: 0.8))
 
 # ------------------- Demands -------------------
 arrival = Distributions(lam=5)
@@ -134,21 +137,21 @@ scm.print_node_wise_performance(cake_shops)
 """
 #out-st
 INFO sim_trace - Supply chain info:
-INFO sim_trace - available_inv                     : 534
-INFO sim_trace - avg_available_inv                 : 365.46027397260275
-INFO sim_trace - avg_cost_per_item                 : 1.8309188338110083
-INFO sim_trace - avg_cost_per_order                : 352.90117548464065
-INFO sim_trace - backorders                        : [182, 23989]
-INFO sim_trace - demand_by_customers               : [9175, 22985]
-INFO sim_trace - demand_by_site                    : [436, 1829491]
+INFO sim_trace - available_inv                     : 505
+INFO sim_trace - avg_available_inv                 : 0
+INFO sim_trace - avg_cost_per_item                 : 2.1394786900921177
+INFO sim_trace - avg_cost_per_order                : 549.6946952365308
+INFO sim_trace - backorders                        : [0, 0]
+INFO sim_trace - demand_by_customers               : [9252, 23108]
+INFO sim_trace - demand_by_site                    : [2836, 3082653]
 INFO sim_trace - demands                           : {'d1': Demand Shop 1, 'd2': Demand Shop 2, 'd3': Demand Shop 3, 'd4': Demand Shop 4, 'd5': Demand Shop 5}
-INFO sim_trace - env                               : <simpy.core.Environment object at 0x00000278F5714A10>
-INFO sim_trace - fulfillment_received_by_customers : [911, 2193]
-INFO sim_trace - fulfillment_received_by_site      : [412, 1827149]
-INFO sim_trace - inventory_carry_cost              : 59324.19758288176
-INFO sim_trace - inventory_spend_cost              : 3056583.0
-INFO sim_trace - inventory_waste                   : 25961
-INFO sim_trace - links                             : {'l1': fmill to bakery, 'l2': sfact to bakery, 'l3': yfact to bakery, 'l4': bakery to dist1, 'l5': bakery to dist2, 'l6': dist1 to cake_shop1, 'l7': dist1 to cake_shop2, 'l8': dist1 to cake_shop3, 'l9': dist2 to cake_shop4, 'l10': dist2 to cake_shop5, 'l11': dist1 to cake_shop4, 'l12': dist2 to cake_shop5}
+INFO sim_trace - env                               : <simpy.core.Environment object at 0x00000278E4301090>
+INFO sim_trace - fulfillment_received_by_customers : [5520, 13657]
+INFO sim_trace - fulfillment_received_by_site      : [2832, 3082453]
+INFO sim_trace - inventory_carry_cost              : 48490.47601918524
+INFO sim_trace - inventory_spend_cost              : 6085795.0
+INFO sim_trace - inventory_waste                   : 35528
+INFO sim_trace - links                             : {'l1': fmill to bakery, 'l2': sfact to bakery, 'l3': yfact to bakery, 'l4': bakery to dist1, 'l5': bakery to dist2, 'l6': dist1 to cake_shop1, 'l7': dist1 to cake_shop2, 'l8': dist1 to cake_shop3, 'l9': dist2 to cake_shop4, 'l10': dist2 to cake_shop5, 'l11': dist1 to cake_shop4, 'l12': dist2 to cake_shop2}
 INFO sim_trace - nodes                             : {'fmill': Flour Mill, 'sfact': Sugar Factory, 'yfact': Yeast Factory, 'bakery': Bakery, 'dist1': Distributor 1, 'dist2': Distributor 2, 'cake_shop1': Cake Shop 1, 'cake_shop2': Cake Shop 2, 'cake_shop3': Cake Shop 3, 'cake_shop4': Cake Shop 4, 'cake_shop5': Cake Shop 5}
 INFO sim_trace - num_distributors                  : 2
 INFO sim_trace - num_manufacturers                 : 1
@@ -156,79 +159,74 @@ INFO sim_trace - num_of_links                      : 12
 INFO sim_trace - num_of_nodes                      : 11
 INFO sim_trace - num_retailers                     : 5
 INFO sim_trace - num_suppliers                     : 3
-INFO sim_trace - profit                            : -2226001.1975828814
-INFO sim_trace - revenue                           : 1165732
-INFO sim_trace - shortage                          : [8446, 34633]
-INFO sim_trace - total_cost                        : 3391733.1975828814
-INFO sim_trace - total_demand                      : [9611, 1852476]
-INFO sim_trace - total_fulfillment_received        : [1323, 1829342]
-INFO sim_trace - transportation_cost               : 2466
+INFO sim_trace - profit                            : -2681850.476019185
+INFO sim_trace - revenue                           : 3962859
+INFO sim_trace - shortage                          : [3916, 14762]
+INFO sim_trace - total_cost                        : 6644709.476019185
+INFO sim_trace - total_demand                      : [12088, 3105761]
+INFO sim_trace - total_fulfillment_received        : [8352, 3096110]
+INFO sim_trace - transportation_cost               : 14924
 ---- Node-wise performance ----
 ---- ---- Suppliers and Bakery---- ----
-Performance Metric       Flour Mill               Sugar Factory            Yeast Factory            Bakery
-backorder                [0, 0]                   [0, 0]                   [0, 0]                   [132, 22135]
-demand_fulfilled         [21, 898260]             [21, 449130]             [21, 449130]             [214, 26936]
-demand_placed            [0, 0]                   [0, 0]                   [0, 0]                   [63, 1796520]
-demand_received          [21, 898260]             [21, 449130]             [21, 449130]             [228, 29138]
-fulfillment_received     [0, 0]                   [0, 0]                   [0, 0]                   [63, 1796520]
-inventory_carry_cost     0                        0                        0                        53334.0
-inventory_level          0                        0                        0                        500
-inventory_spend_cost     0                        0                        0                        2964258.0
-inventory_waste          0                        0                        0                        243
-node_cost                0                        0                        0                        3291288.0
-shortage                 [0, 0]                   [0, 0]                   [0, 0]                   [132, 12825]
-profit                   2245650.0                628782.0                 89826.0                  -2348528.0
-revenue                  2245650.0                628782.0                 89826.0                  942760
-total_material_cost      0                        0                        0                        N/A
-total_raw_materials_mined0                        0                        0                        N/A
-transportation_cost      0                        0                        0                        336
+Performance Metric       Flour Mill               Sugar Factory            Yeast Factory            Bakery                   
+backorder                [0, 0]                   [0, 0]                   [0, 0]                   [0, 0]                   
+demand_fulfilled         [349, 1493400]           [349, 746700]            [349, 746700]            [763, 49350]             
+demand_placed            [0, 0]                   [0, 0]                   [0, 0]                   [1047, 2986800]          
+demand_received          [349, 1493400]           [349, 746700]            [349, 746700]            [765, 49480]             
+destroyed_qty            0                        0                        0                        0                        
+destroyed_value          0                        0                        0                        0                        
+fulfillment_received     [0, 0]                   [0, 0]                   [0, 0]                   [1047, 2986800]          
+inventory_carry_cost     0                        0                        0                        30075.92740021967        
+inventory_level          0                        0                        0                        170                      
+inventory_spend_cost     0                        0                        0                        4928220.0                
+inventory_waste          0                        0                        0                        0                        
+name                     fmill statistics         sfact statistics         yfact statistics         bakery statistics        
+node_cost                0                        0                        0                        5459379.927400219        
+profit                   3733500.0                1045379.9999999999       149340.0                 -3732129.9274002193      
+revenue                  3733500.0                1045379.9999999999       149340.0                 1727250                  
+shortage                 [0, 0]                   [0, 0]                   [0, 0]                   [61, 2141]               
+total_material_cost      0                        0                        0                        N/A                      
+total_raw_materials_mined0                        0                        0                        N/A                      
+transportation_cost      0                        0                        0                        5584                     
 
 ---- ---- Distributors ---- ----
-Performance Metric       Distributor 1            Distributor 2
-backorder                [26, 805]                [24, 1049]
-demand_fulfilled         [60, 1389]               [75, 2304]
-demand_placed            [124, 6200]              [104, 22938]
-demand_received          [67, 1449]               [78, 2384]
-fulfillment_received     [116, 5800]              [98, 21136]
-inventory_carry_cost     1165.8018979669055       4439.666173296053
-inventory_level          7                        27
-inventory_spend_cost     0                        0
-inventory_waste          4842                     19345
-node_cost                1909.8018979669055       5167.666173296053
-shortage                 [26, 470]                [24, 691]
-profit                   48094.19810203309        80080.33382670395
-revenue                  50004                    85248
-transportation_cost      744                      728
+Performance Metric       Distributor 1            Distributor 2            
+backorder                [0, 0]                   [0, 0]                   
+demand_fulfilled         [636, 23882]             [386, 22421]             
+demand_placed            [498, 24900]             [267, 24580]             
+demand_received          [637, 23912]             [387, 22461]             
+destroyed_qty            0                        0                        
+destroyed_value          0                        0                        
+fulfillment_received     [497, 24850]             [266, 24500]             
+inventory_carry_cost     5945.791776500316        8872.313638179628        
+inventory_level          120                      120                      
+inventory_spend_cost     0                        0                        
+inventory_waste          868                      1959                     
+name                     dist1 statistics         dist2 statistics         
+node_cost                8933.791776500315        10741.313638179628       
+profit                   850818.2082234997        818835.6863618203        
+revenue                  859752                   829577                   
+shortage                 [59, 1548]               [64, 1720]               
+transportation_cost      2988                     1869                     
 
 ---- ---- Retail Shops ---- ----
-Performance Metric       Cake Shop 1              Cake Shop 2              Cake Shop 3              Cake Shop 4              Cake Shop 5            
-
-backorder                [0, 0]                   [0, 0]                   [0, 0]                   [0, 0]                   [0, 0]                 
-
-demand_fulfilled         [39, 96]                 [239, 555]               [39, 105]                [310, 757]               [284, 680]             
-
-demand_placed            [8, 198]                 [52, 947]                [7, 304]                 [29, 1160]               [49, 1224]             
-
-demand_received          [39, 96]                 [239, 555]               [39, 105]                [310, 757]               [284, 680]             
-
-fulfillment_received     [8, 198]                 [45, 887]                [7, 304]                 [28, 1120]               [47, 1184]             
-
-inventory_carry_cost     9.42778086039718         81.4112372198074         15.98847104347198        148.6863226007502        129.21569989437646     
-
-inventory_level          0                        0                        0                        0                        0                      
-
-inventory_spend_cost     4950                     22175                    7600                     28000                    29600                  
-
-inventory_waste          102                      352                      200                      383                      494                    
-
-node_cost                4991.427780860397        22464.411237219807       7643.988471043472        28293.68632260075        29974.215699894376     
-
-shortage                 [1759, 4320]             [1595, 3992]             [1787, 4534]             [1567, 3925]             [1556, 3876]
-
-profit                   -1151.4277808603974      -264.41123721980694      -3443.9884710434717      1986.3136773992483       -2774.2156998943756    
-
-revenue                  3840                     22200                    4200                     30280                    27200                  
-
-transportation_cost      32                       208                      28                       145                      245 
+Performance Metric       Cake Shop 1              Cake Shop 2              Cake Shop 3              Cake Shop 4              Cake Shop 5              
+backorder                [0, 0]                   [0, 0]                   [0, 0]                   [0, 0]                   [0, 0]                   
+demand_fulfilled         [1495, 3693]             [749, 1839]              [1373, 3395]             [1280, 3179]             [623, 1551]              
+demand_placed            [286, 8491]              [122, 5977]              [229, 9444]              [265, 10600]             [122, 11861]             
+demand_received          [1495, 3693]             [749, 1839]              [1373, 3395]             [1280, 3179]             [623, 1551]              
+destroyed_qty            0                        0                        0                        0                        0                        
+destroyed_value          0                        0                        0                        0                        0                        
+fulfillment_received     [286, 8491]              [122, 5977]              [228, 9414]              [264, 10560]             [122, 11861]             
+inventory_carry_cost     851.4641598062459        460.7647558646054        862.8687633143642        845.5826210075172        575.7629042928984        
+inventory_level          39                       26                       16                       14                       0                        
+inventory_spend_cost     212275                   149425                   235350                   264000                   296525                   
+inventory_waste          4789                     4132                     6033                     7387                     10360                    
+name                     cake_shop1 statistics    cake_shop2 statistics    cake_shop3 statistics    cake_shop4 statistics    cake_shop5 statistics    
+node_cost                214270.46415980626       150373.7647558646        237128.86876331436       266170.5826210075        297710.7629042929        
+profit                   -66550.46415980626       -76813.7647558646        -101328.86876331436      -139010.58262100752      -235670.7629042929       
+revenue                  147720                   73560                    135800                   127160                   62040                    
+shortage                 [325, 794]               [1162, 2899]             [495, 1277]              [561, 1453]              [1189, 2930]             
+transportation_cost      1144                     488                      916                      1325                     610                      
 #out-en
 """
