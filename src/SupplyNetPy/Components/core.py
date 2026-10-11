@@ -1509,39 +1509,37 @@ class SelectFastest(SupplierSelectionPolicy):
 # ---------------------------------------------------------------------------
 # Disruption impact helpers
 #
-# A disruption can happen in many ways (natural disaster, power outage,
-# political event, contamination), and each can affect stored inventory
-# differently. ``Node`` offers a single ``disruption_impact`` setting that
-# takes either a built-in name (handled here) or a function you supply that
-# receives the node. The effect runs once, at the moment the node switches from
-# active to inactive inside ``Node.disruption`` — not on every time step. So an
-# effect that should build up *during* the outage (slow spoilage, ongoing
-# theft) belongs in your own function that starts its own process; running an
-# effect on every time step here would flood the simulation with needless
-# wake-ups.
+# A disruption can have many causes (natural disaster, power cut, political
+# event, contamination), and each can affect the units at a node differently.
+# ``Node`` offers a single ``disruption_impact`` setting that takes either a
+# built-in name (handled here) or a function you supply that receives the node.
+# The effect runs once, at the moment the node's status changes from active to
+# inactive inside ``Node.disruption`` — not once per time unit. So an effect
+# that should build up *during* the disruption (slow spoilage, ongoing theft)
+# belongs in your own function that starts its own SimPy process; running an
+# effect once per time unit here would wake the simulation up for nothing.
 #
 # Built-in options:
-#   - "none" / None       — no effect on inventory; only the status changes.
-#   - "destroy_all"       — remove all of the node's stock (and, for a
-#                           Manufacturer, its raw_inventory_counts too — losing
-#                           "all physical stock at this site" is one event).
-#   - "destroy_fraction"  — remove ``loss_fraction × current level``. The
+#   - "none" / None       — no effect on the units; only the status changes.
+#   - "destroy_all"       — destroy all units at the node (and, for a
+#                           manufacturer, its raw materials too: all physical
+#                           units at the site are lost at once).
+#   - "destroy_fraction"  — destroy ``loss fraction × inventory level``. The
 #                           fraction can itself be a zero-arg function, so each
 #                           disruption can destroy a different amount.
 # ---------------------------------------------------------------------------
 
 def _unit_destroyed_value(node) -> float:
     """
-    Best-effort per-unit cost used when accounting for destroyed inventory.
+    The value of one destroyed unit, used to record ``destroyed_value``.
 
-    Different concrete nodes price their stock differently:
-    ``InventoryNode`` exposes ``buy_price`` directly, ``Manufacturer`` carries
-    it on the embedded ``Product``, and a finite ``Supplier`` prices stock at
-    the underlying ``RawMaterial.cost``. This helper centralises that
-    fallback chain so the impact callbacks don't have to know about every
-    node subclass. Returns 0 when no price is configured (e.g. a node built
-    purely for disruption mechanics with no economic side); callers will
-    log destroyed_qty but no destroyed_value.
+    Each kind of node values its units differently: an ``InventoryNode`` uses
+    its ``buy_price``, a ``Manufacturer`` the ``buy_price`` of its ``Product``,
+    and a raw-material supplier the ``cost`` of its ``RawMaterial``. This
+    helper tries each in turn, so the impact functions do not need to know
+    about every kind of node. It returns 0 when no price is set (for example,
+    a node built only to study disruptions, with no costs); the callers then
+    record ``destroyed_qty`` but no ``destroyed_value``.
     """
     if getattr(node, "buy_price", 0):
         return node.buy_price
@@ -1556,11 +1554,11 @@ def _unit_destroyed_value(node) -> float:
 
 def _destroy_all_impact(node) -> None:
     """
-    Built-in handler for ``disruption_impact="destroy_all"``: remove all of the
-    node's stock and record the loss in the stats. For a `Manufacturer`
-    this also clears the ``raw_inventory_counts`` dict in addition to the
-    finished-goods `Inventory`. For an infinite supplier
-    (``level == inf``) this does nothing — there is no real pile to destroy.
+    Built-in effect for ``disruption_impact="destroy_all"``: destroy all units at
+    the node and record the loss in its statistics. For a `Manufacturer` this
+    also clears its raw materials (``raw_inventory_counts``), not just its
+    product `Inventory`. For an infinite supplier (``level == inf``) this does
+    nothing — there is no real pile to destroy.
     """
     inv = getattr(node, "inventory", None)
     unit_value = _unit_destroyed_value(node)
@@ -1569,15 +1567,14 @@ def _destroy_all_impact(node) -> None:
         if destroyed > 0 and hasattr(node, "stats"):
             node.stats.update_stats(destroyed_qty=destroyed,
                                     destroyed_value=destroyed * unit_value)
-    # Manufacturer-side raw materials live in a plain dict, not a SimPy
-    # Container; clear them by hand and price each line at its own raw-material
-    # cost (more accurate than the finished-product unit_value above).
+    # A manufacturer counts its raw materials in a plain dictionary, not in its
+    # inventory, so they are cleared by hand here. Each raw material is valued
+    # at its own cost (more accurate than the product's value used above).
     raw_counts = getattr(node, "raw_inventory_counts", None)
     if raw_counts:
         raw_cost_lookup = {}
-        # ``Manufacturer.suppliers`` is a list of ``Link`` whose ``source`` is a
-        # ``Supplier`` carrying a ``raw_material`` reference; that's where the
-        # per-unit cost lives.
+        # A manufacturer's suppliers are links whose ``source`` is a
+        # raw-material supplier; its ``raw_material`` holds the cost per unit.
         for link in getattr(node, "suppliers", []):
             rm = getattr(getattr(link, "source", None), "raw_material", None)
             if rm is not None:
@@ -1602,10 +1599,10 @@ def _destroy_all_impact(node) -> None:
 
 def _destroy_fraction_impact(fraction_fn):
     """
-    Build a handler for ``disruption_impact="destroy_fraction"``. ``fraction_fn``
-    is a zero-arg callable returning a float in [0, 1]; it is invoked at every
-    disruption edge so each event can sample a fresh magnitude (e.g. flood
-    severity drawn from a distribution).
+    Build the effect for ``disruption_impact="destroy_fraction"``. ``fraction_fn``
+    is a zero-arg function returning a number between 0 and 1; it is called
+    each time a disruption starts, so each disruption can destroy a different
+    fraction (for example, a flood severity drawn at random).
     """
     def _impact(node) -> None:
         inv = getattr(node, "inventory", None)
@@ -1631,21 +1628,20 @@ def _destroy_fraction_impact(fraction_fn):
 
 def _resolve_disruption_impact(impact, loss_fraction):
     """
-    Translate the user-facing ``disruption_impact`` knob into a single
-    callable ``f(node) -> None`` (or ``None`` for the no-op default).
+    Turn the ``disruption_impact`` setting into one function ``f(node) -> None``
+    (or ``None`` for no effect).
 
-    Accepted forms:
-      * ``None`` or ``"none"`` (case-insensitive) — returns ``None``.
+    Accepted values:
+      * ``None`` or ``"none"`` (any letter case) — returns ``None``.
       * ``"destroy_all"`` — returns `_destroy_all_impact`.
-      * ``"destroy_fraction"`` — pairs with ``loss_fraction`` (a number or
-        zero-arg callable returning a number); returns a closure that wipes
-        ``fraction × current level`` per disruption edge.
-      * Any other callable — used as-is. The signature must accept a single
-        positional argument (the node).
+      * ``"destroy_fraction"`` — used with ``loss_fraction`` (a number, or a
+        zero-arg function returning one); returns a function that destroys
+        ``fraction × inventory level`` each time a disruption starts.
+      * Any other function — used as it is. It must take one argument (the node).
 
     Raises:
-        ValueError: For unknown string values, or when a callable is not
-            callable (e.g. a non-callable, non-string scalar).
+        ValueError: For an unknown name, or for a value that is neither a
+            string, a function nor None.
     """
     if impact is None:
         return None
@@ -1675,44 +1671,43 @@ def _resolve_disruption_impact(impact, loss_fraction):
 
 class Node(NamedEntity, InfoMixin):
     """
-    Represents a node in the supply network, such as a supplier, manufacturer, warehouse, distributor, retailer, or demand point.
-    Supports automatic disruption and recovery, dynamic logging, and performance tracking.
+    Represents a node in the supply chain network: a raw-material supplier, a manufacturer, a warehouse,
+    distributor or retailer, or a customer demand. This is the base class they all share. It handles
+    disruption and recovery, and logging.
 
-    Each node can experience disruptions either probabilistically or based on custom-defined disruption and recovery times.
-    During disruptions, the node becomes inactive and resumes operations after the specified recovery period.
-    Tracks key performance metrics like transportation costs, node-specific costs, profit and net profit, products sold, 
-    demand placed, and shortages.
+    A node can be disrupted at random (each time unit, a disruption starts with probability `failure_p`) or at
+    the times given by `node_disrupt_time`. While disrupted, its status is "inactive"; it recovers after
+    `node_recovery_time`. The subclasses also keep statistics (`stats`): orders, shortages, costs, revenue and
+    profit.
 
-    Supports integration with inbuilt replenishment policies: SS, RQ, Periodic and any custom policy created by extending 
-    the `ReplenishmentPolicy` class.
+    Sites can use the built-in replenishment policies ((s, S), (R, Q) and periodic) or a custom one made by
+    subclassing `InventoryReplenishment`, and the built-in supplier-selection policies (`SelectFirst`,
+    `SelectAvailable`, `SelectCheapest`, `SelectFastest`) or a custom one made by subclassing
+    `SupplierSelectionPolicy`.
 
-    Supplier selection policies: Available, Cheapest, Fastest and any custom policy created by extending the 
-    `SupplierSelectionPolicy` class.
-
-    Supported node types: "infinite_supplier", "supplier", "manufacturer", "factory", "warehouse", "distributor", 
-    "retailer", "store", "demand"
+    For the node types, see `NodeType`.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
         ID (str): Unique node ID.
         name (str): Node name.
         node_type (str): Type of the node.
-        failure_p (float, optional): Probability of node failure.
-        node_disrupt_time (callable, optional): Function to generate disruption time.
-        node_recovery_time (callable, optional): Function to generate recovery time.
+        failure_p (float, optional): Disruption probability: the chance, each time unit, that a disruption starts.
+        node_disrupt_time (callable, optional): Time units until the next disruption (a number, or a function
+            returning one each time).
+        node_recovery_time (callable, optional): Time units a disruption lasts (a number, or a function
+            returning one each time).
         logging (bool, optional): Flag to enable/disable logging.
-        disruption_impact (str | callable | None, optional): Effect on inventory at the
-            active→inactive edge. ``None`` (default) leaves stock untouched. Built-in
-            string presets: ``"destroy_all"`` wipes the node's inventory (and a
-            Manufacturer's ``raw_inventory_counts``); ``"destroy_fraction"`` wipes
-            ``disruption_loss_fraction × current_level``. A user-supplied callable
-            ``f(node) -> None`` is the escape hatch for arbitrary effects (partial
-            spoilage, contamination, capacity damage). The hook fires once per
-            disruption — for accruing-during-outage effects spawn a SimPy process
-            inside the callback.
-        disruption_loss_fraction (float | callable, optional): Fraction in [0, 1]
-            paired with ``disruption_impact="destroy_fraction"``. May be a zero-arg
-            callable so each disruption can sample a fresh magnitude.
+        disruption_impact (str | callable | None, optional): What a disruption does to the units at the node,
+            at the moment it starts. ``None`` (default) leaves them untouched. Built-in names:
+            ``"destroy_all"`` destroys all units at the node (and a manufacturer's raw materials);
+            ``"destroy_fraction"`` destroys ``disruption_loss_fraction × inventory level``. For any other
+            effect (partial spoilage, contamination, capacity damage), pass your own function
+            ``f(node) -> None``. It runs once per disruption; for an effect that builds up during the
+            disruption, start a SimPy process inside the function.
+        disruption_loss_fraction (float | callable, optional): Fraction between 0 and 1, used with
+            ``disruption_impact="destroy_fraction"``. May be a zero-arg function, so each disruption can
+            destroy a different fraction.
         **kwargs: Additional arguments for the logger.
 
     Attributes:
@@ -1721,22 +1716,23 @@ class Node(NamedEntity, InfoMixin):
         ID (str): ID of the node (alphanumeric)
         name (str): name of the node
         node_type (str): type of the node
-        node_failure_p (float): node failure probability
-        node_status (str): status of the node (active/inactive)
-        node_disrupt_time (callable): function to model node disruption time
-        node_recovery_time (callable): function to model node recovery time
-        disruption_impact: User-facing impact spec (string preset, callable, or None).
-        _disruption_impact_fn (callable | None): Resolved single-arg callback fired by ``disruption()``.
+        node_failure_p (float): disruption probability (the chance, each time unit, that a disruption starts)
+        node_status (str): status of the node: "active", or "inactive" while disrupted
+        node_disrupt_time (callable): function giving the time units until the next disruption
+        node_recovery_time (callable): function giving the time units a disruption lasts
+        disruption_impact: The ``disruption_impact`` setting as given (a name, a function, or None).
+        _disruption_impact_fn (callable | None): The function that ``disruption()`` calls when a disruption starts.
         logger (GlobalLogger): logger object
-        suppliers (list): inbound ``Link`` objects whose ``sink`` is this node; populated by ``Link.__init__`` via ``add_supplier_link``.
+        suppliers (list): The links to this node's suppliers (links whose ``sink`` is this node); filled in by
+            ``Link.__init__`` through ``add_supplier_link``.
 
     Functions:
-        __init__: Initializes the node object, validates parameters, and sets up logging and self-disruption if needed.
-        disruption: Simulates node disruption and automatic recovery over time.
-        add_supplier_link: Register an inbound Link with this node (called by Link.__init__).
-        position: Backorder-aware inventory position used by replenishment policies.
-        place_order: Pick a supplier via the selection policy and spawn the dispatch process.
-        wait_for_drop: Generator; block on ``inventory_drop`` and rotate the event.
+        __init__: Initializes the node object, checks the parameters, and sets up logging and disruptions if needed.
+        disruption: Disrupts the node and recovers it, for the whole simulation.
+        add_supplier_link: Registers a link from one of this node's suppliers (called by Link.__init__).
+        position: The inventory position, used by replenishment policies.
+        place_order: Chooses a supplier with the supplier-selection policy and places a replenishment order.
+        wait_for_drop: Waits until the inventory drops (use with ``yield from``).
     """
     _info_keys = ["ID", "name", "node_type", "failure_p", "node_status", "logging", "disruption_impact"]
 
@@ -1760,22 +1756,22 @@ class Node(NamedEntity, InfoMixin):
             ID (str): Unique node ID.
             name (str): Node name.
             node_type (str): Type of the node.
-            failure_p (float, optional): Probability of node failure.
-            node_disrupt_time (callable, optional): Function to generate disruption time.
-            node_recovery_time (callable, optional): Function to generate recovery time.
+            failure_p (float, optional): Disruption probability: the chance, each time unit, that a disruption starts.
+            node_disrupt_time (callable, optional): Time units until the next disruption (a number or a function).
+            node_recovery_time (callable, optional): Time units a disruption lasts (a number or a function).
             logging (bool, optional): Flag to enable/disable logging.
             **kwargs: Additional arguments for the logger.
-        
+
         Attributes:
             _info_keys (list): List of keys to include in the info dictionary.  
             env (simpy.Environment): simulation environment
             ID (str): ID of the node (alphanumeric)
             name (str): name of the node
             node_type (str): type of the node
-            node_failure_p (float): node failure probability
-            node_status (str): status of the node (active/inactive)
-            node_disrupt_time (callable): function to model node disruption time
-            node_recovery_time (callable): function to model node recovery time
+            node_failure_p (float): disruption probability
+            node_status (str): status of the node: "active", or "inactive" while disrupted
+            node_disrupt_time (callable): function giving the time units until the next disruption
+            node_recovery_time (callable): function giving the time units a disruption lasts
             logger (GlobalLogger): logger object
 
         Returns:
@@ -1793,28 +1789,26 @@ class Node(NamedEntity, InfoMixin):
         except ValueError:
             global_logger.error(f"Invalid node type. Node type: {node_type}")
             raise ValueError(f"Invalid node type: {node_type}.")
-        # ``ensure_numeric_callable`` does the auto-wrap and validates the
-        # returned value is numeric on a single test invocation. This catches
-        # the §6.4 footgun where ``not callable(x)`` would skip the wrap for
-        # any callable — including a class like ``int`` or a generator
-        # function — leaving ``x()`` to crash deep inside a SimPy process.
+        # ``ensure_numeric_callable`` turns a plain number into a function that
+        # returns it, and calls the function once to check that it returns a
+        # number. A mistake (for example, passing a class such as ``int``) is
+        # then reported here, instead of crashing later in the middle of a run.
         node_recovery_time = ensure_numeric_callable("node_recovery_time", node_recovery_time)
         if node_disrupt_time is not None:
             node_disrupt_time = ensure_numeric_callable("node_disrupt_time", node_disrupt_time)
         self.env = env  # simulation environment
         self.ID = ID  # ID of the node (alphanumeric)
         self.name = name  # name of the node
-        self.node_type = node_type  # type of the node (supplier, manufacturer, warehouse, distributor, retailer, demand)
-        self.node_failure_p = failure_p  # node failure probability
-        self.node_status = "active"  # node status (active/inactive)
-        self.node_disrupt_time = node_disrupt_time  # callable function to model node disruption time
-        self.node_recovery_time = node_recovery_time  # callable function to model node recovery time
-        self.rng = rng if rng is not None else _rng  # RNG for probabilistic disruption; falls back to library default
-        self.suppliers = []  # inbound Link registry; populated by Link.__init__ via Node.add_supplier_link
-        # Disruption impact: resolved once at construction so the per-edge call
-        # site in ``disruption`` is a single attribute lookup. Stored under the
-        # public ``disruption_impact`` name (it is in ``_info_keys``) for
-        # introspection; the resolved callable lives at ``_disruption_impact_fn``.
+        self.node_type = node_type  # type of the node (see NodeType)
+        self.node_failure_p = failure_p  # disruption probability
+        self.node_status = "active"  # "active", or "inactive" while disrupted
+        self.node_disrupt_time = node_disrupt_time  # function: time units until the next disruption
+        self.node_recovery_time = node_recovery_time  # function: time units a disruption lasts
+        self.rng = rng if rng is not None else _rng  # random number generator for random disruptions; the library's default if none is given
+        self.suppliers = []  # links to this node's suppliers; filled in by Link.__init__ through add_supplier_link
+        # Work out the disruption-impact function once, here. The setting as
+        # given is kept as ``disruption_impact`` (shown by get_info); the
+        # function that runs when a disruption starts is ``_disruption_impact_fn``.
         self.disruption_impact = disruption_impact
         self._disruption_impact_fn = _resolve_disruption_impact(disruption_impact, disruption_loss_fraction)
 
@@ -1841,13 +1835,15 @@ class Node(NamedEntity, InfoMixin):
         if not logging:
             self.logger.disable_logging()  # mute this node specifically
 
-        if(self.node_failure_p>0 or self.node_disrupt_time): # start self disruption if failure probability > 0
+        if(self.node_failure_p>0 or self.node_disrupt_time): # start the disruption process if the node can be disrupted
             self.env.process(self.disruption()) 
     
     def disruption(self):
         """
-        This method disrupts the node by changing the node status to "inactive" and
-        recovers it after the specified recovery time.
+        Disrupts the node (its status becomes "inactive") and recovers it after the
+        recovery time, for the whole simulation. Disruptions start either at the
+        times given by ``node_disrupt_time``, or at random: each time unit, a
+        disruption starts with probability ``failure_p``.
 
         Parameters:
             None
@@ -1869,15 +1865,15 @@ class Node(NamedEntity, InfoMixin):
                     self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
                     # The disruption-impact effect runs once, at the moment the
                     # node switches from active to inactive. Effects that should
-                    # build up *during* the outage belong in a custom callback
-                    # that starts its own process; checking on every time step
-                    # here would flood the simulation with needless wake-ups.
+                    # build up *during* the disruption belong in a custom
+                    # function that starts its own process; checking once per
+                    # time unit here would wake the simulation up for nothing.
                     if self._disruption_impact_fn is not None:
                         self._disruption_impact_fn(self)
                 else:
                     # Random disruption: check once per time unit, so
-                    # ``node_failure_p`` acts as the chance of failing in any one
-                    # time step. The ``yield env.timeout(1)`` below MUST run
+                    # ``node_failure_p`` acts as the chance that a disruption
+                    # starts in any one time unit. The ``yield env.timeout(1)`` below MUST run
                     # whether or not this check succeeds. If it were skipped on a
                     # miss, the ``while True`` loop would spin without advancing
                     # simulation time, repeating the check over and over until one
@@ -1891,19 +1887,20 @@ class Node(NamedEntity, InfoMixin):
                     yield self.env.timeout(1)
             else:
                 recovery_time = self.node_recovery_time() # get the recovery time
-                validate_positive(name="node_recovery_time", value=recovery_time) # check if disrupt_time is positive
+                validate_positive(name="node_recovery_time", value=recovery_time) # the recovery time must be positive
                 yield self.env.timeout(recovery_time)
                 self.node_status = "active"
                 self.logger.info(f"{self.env.now}:{self.ID}: Node recovered from disruption.")
 
     def add_supplier_link(self, link) -> None:
         """
-        Register an inbound transport link whose ``sink`` is this node.
+        Register a link from one of this node's suppliers (a link whose ``sink``
+        is this node).
 
-        This is the one supported entry point for attaching a Link to a Node.
-        Supplier-selection policies iterate over ``node.suppliers`` to choose
-        where to dispatch a replenishment order, so a Link must be registered
-        here for the node to route orders over it.
+        This is the one supported way to attach a Link to a Node.
+        Supplier-selection policies look through ``node.suppliers`` to choose
+        which supplier receives a replenishment order, so a Link must be
+        registered here for the node to send orders over it.
 
         ``Link.__init__`` calls this automatically for its ``sink`` — users of
         the direct-instantiation API do not need to call it themselves.
@@ -1932,57 +1929,59 @@ class Node(NamedEntity, InfoMixin):
         self.suppliers.append(link)
 
     # ---- Replenishment-policy contract -------------------------------------
-    # The three methods below form the public contract that replenishment
-    # policies (SSReplenishment, RQReplenishment, PeriodicReplenishment, and
-    # any user-defined subclass of InventoryReplenishment) are expected to
-    # speak in terms of. They hide the `inventory.on_hand`, `stats.backorder`,
-    # `selection_policy`, `process_order`, and `inventory_drop` internals so a
-    # policy does not need privileged knowledge of the node's layout. Only
-    # nodes that own replenishment plumbing (currently ``InventoryNode`` and
-    # ``Manufacturer``) are expected to call ``place_order`` and
-    # ``wait_for_drop``; ``position`` additionally works on ``Supplier`` since
-    # it has both ``inventory`` and ``stats``.
+    # The three methods below are what replenishment policies (the built-in
+    # ones and any subclass of InventoryReplenishment) use to work with their
+    # node, so a policy never needs to read or change the node's internal
+    # attributes (`inventory.on_hand`, `stats.backorder`, `selection_policy`,
+    # `process_order`, `inventory_drop`). ``place_order`` and ``wait_for_drop``
+    # need a node that places replenishment orders (``InventoryNode`` and
+    # ``Manufacturer``); ``position`` also works on a ``Supplier``, which has
+    # an inventory and statistics too.
     def position(self) -> float:
         """
-        Backorder-aware inventory position used by replenishment policies.
+        The inventory position, used by replenishment policies.
 
-        The inventory position is the stock the node can count on: units on
-        the shelf plus units in transit (``inventory.on_hand``), minus the units
-        it owes to waiting customers. Replenishment policies use this single
-        value instead of working it out themselves, so the arithmetic stays in
-        one place.
+        The inventory position is what the node can count on: its inventory
+        level plus the units in transit to it, minus the units it still owes
+        (to other sites and to waiting customers). Replenishment policies use
+        this one value instead of working it out themselves, so the arithmetic
+        stays in one place.
 
-        The node's backorders hold two kinds of waiting orders, and only one of
-        them is subtracted here:
+        ``inventory.on_hand`` already holds most of it. The node's backorders
+        hold two kinds of waiting orders, and only one of them is subtracted
+        here:
 
-        - Orders from other sites. These have already been taken off
-          ``on_hand`` when they were placed (they wait in the shelf's line,
-          see ``Inventory.waiting_site_orders``), so subtracting them again
-          would count them twice and make the node order too much.
-        - Customers who wait for stock. They have not been taken off
-          ``on_hand``, so they are subtracted here.
+        - Replenishment orders from other sites. They were taken off
+          ``on_hand`` when they were placed (those still waiting are in the
+          inventory's line, see ``Inventory.waiting_site_orders``), so
+          subtracting them again would count them twice and make the node order
+          too much.
+        - Customers waiting for units. They were not taken off ``on_hand``, so
+          they are subtracted here.
 
         Returns:
-            float: The backorder-aware inventory position.
+            float: The inventory position.
         """
         customer_backorders = self.stats.backorder[1] - self.inventory.waiting_site_orders()
         return self.inventory.on_hand - customer_backorders
 
     def place_order(self, quantity) -> None:
         """
-        Pick a supplier via this node's selection policy and spawn ``process_order``.
+        Choose a supplier with this node's supplier-selection policy and place a
+        replenishment order with it.
 
-        Wraps the "choose supplier, then ``env.process(process_order(...))``"
-        idiom so replenishment policies can express a dispatch as a single
-        call instead of reaching into ``selection_policy.select`` and
-        ``process_order`` independently. The spawned SimPy process handles
-        the capacity clamp, link-disruption gate, and supplier-side
-        bookkeeping; this method does not yield.
+        This does in one call what a replenishment policy would otherwise do in
+        two steps: ``selection_policy.select(...)`` and
+        ``env.process(process_order(...))``. The order itself is handled by
+        ``process_order``, which runs as its own SimPy process: it reduces the
+        order to fit the node's capacity, does not send it if the link is
+        disrupted, and records the order at the supplier. This method returns
+        at once.
 
         Parameters:
-            quantity (float): Quantity to order (pre-clamp; the downstream
-                ``process_order`` may still reduce it to fit capacity or
-                skip the dispatch if the link is disrupted).
+            quantity (float): Units to order. ``process_order`` may still reduce
+                this to fit the capacity, or not send the order if the link is
+                disrupted.
 
         Returns:
             None
@@ -1992,16 +1991,16 @@ class Node(NamedEntity, InfoMixin):
 
     def wait_for_drop(self):
         """
-        Generator: block until the inventory-drop event fires, then rotate it.
+        Wait until the node's inventory drops, then get ready for the next drop.
 
-        Replenishment policies use ``yield from node.wait_for_drop()`` in
-        place of manually yielding on ``self.node.inventory_drop`` and
-        reassigning a fresh event afterwards. Rotating the event inside this
-        helper keeps the "yield then reset" pattern in exactly one place.
+        Replenishment policies use it as ``yield from node.wait_for_drop()``.
+        It waits on the node's ``inventory_drop`` event, which fires when the
+        inventory drops. A SimPy event can fire only once, so after it fires it
+        is replaced with a fresh one, ready for the next drop. Doing this here
+        keeps that replacing step in one place.
 
         Yields:
-            simpy.Event: The current ``inventory_drop`` event; on wake-up the
-            slot is replaced with a fresh ``env.event()``.
+            simpy.Event: The current ``inventory_drop`` event.
         """
         yield self.inventory_drop
         self.inventory_drop = self.env.event()
