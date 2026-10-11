@@ -2007,39 +2007,41 @@ class Node(NamedEntity, InfoMixin):
 
 class Link(NamedEntity, InfoMixin):
     """
-    Represents a transportation connection between two nodes in the supply network.
+    Represents a link: the transport connection that carries goods from one site, its source (the supplier),
+    to another, its sink (the buyer).
 
-    Each link carries a transportation cost and lead time. Links can experience disruptions based on 
-    a failure probability or a disruption time distribution and will automatically recover after a 
-    specified recovery time.
-
+    Each link has a transportation cost (per order) and a lead time. A link can be disrupted at random (each
+    time unit, a disruption starts with probability `link_failure_p`) or at the times given by
+    `link_disrupt_time`; it recovers after `link_recovery_time`. While a link is disrupted, no new orders are
+    sent over it; orders already in transit still arrive.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
         ID (str): ID of the link.
-        source (Node): Source node of the link.
-        sink (Node): Sink node of the link.
-        cost (float): Transportation cost of the link.
-        lead_time (callable): Function returning lead time for the link.
-        link_failure_p (float): Probability of random link failure.
-        link_disrupt_time (callable): Function returning time to next disruption.
-        link_recovery_time (callable): Function returning recovery time after disruption.
+        source (Node): The supplier: the site the goods come from.
+        sink (Node): The buyer: the site the goods go to.
+        cost (float): Transportation cost of each order sent over the link.
+        lead_time (callable): Time units an order takes to arrive (a number, or a function returning one each time).
+        link_failure_p (float): Disruption probability: the chance, each time unit, that a disruption starts.
+        link_disrupt_time (callable): Time units until the next disruption (a number or a function).
+        link_recovery_time (callable): Time units a disruption lasts (a number or a function).
 
     Attributes:
         env (simpy.Environment): Simulation environment.
         ID (str): ID of the link.
-        source (Node): Source node.
-        sink (Node): Sink node.
-        cost (float): Transportation cost.
-        lead_time (callable): Function for stochastic lead time.
-        link_failure_p (float): Failure probability.
-        status (str): Current status of the link ("active" or "inactive").
-        link_disrupt_time (callable): Disruption time function.
-        link_recovery_time (callable): Recovery time function.
+        source (Node): The supplier.
+        sink (Node): The buyer.
+        cost (float): Transportation cost of each order.
+        lead_time (callable): Function giving the lead time of each order.
+        link_failure_p (float): Disruption probability.
+        status (str): Status of the link: "active", or "inactive" while disrupted.
+        link_disrupt_time (callable): Function giving the time units until the next disruption.
+        link_recovery_time (callable): Function giving the time units a disruption lasts.
 
     Functions:
-        __init__: Initializes the link object and validates parameters.
-        disruption: Simulates link disruption and automatic recovery.
+        __init__: Initializes the link object and checks the parameters.
+        disruption: Disrupts the link and recovers it, for the whole simulation.
+        available_quantity: The supplier's inventory level.
     """
     _info_keys = ["ID", "source", "sink", "cost", "lead_time", "link_failure_p"]
     _stats_keys = ["status"]
@@ -2055,31 +2057,31 @@ class Link(NamedEntity, InfoMixin):
                  link_recovery_time: Callable = lambda: 1,
                  rng: random.Random = None) -> None:
         """
-        Initialize the Link object representing a transportation connection between two nodes.
+        Initialize the link.
 
         Parameters:
             env (simpy.Environment): The simulation environment.
             ID (str): Unique identifier for the link.
-            source (Node): The source node of the link. Cannot be a demand node.
-            sink (Node): The sink node of the link. Cannot be a supplier node.
-            cost (float): Transportation cost associated with the link. Must be non-negative.
-            lead_time (callable): Function returning the stochastic lead time. Cannot be None.
-            link_failure_p (float, optional): Probability of random link failure. Default is 0.0.
-            link_disrupt_time (callable, optional): Function returning the time to the next disruption. If provided, overrides link_failure_p.
-            link_recovery_time (callable, optional): Function returning the time required for link recovery after disruption. Default is a constant 1 unit.
+            source (Node): The supplier (the site the goods come from). Cannot be a customer demand.
+            sink (Node): The buyer (the site the goods go to). Cannot be a raw-material supplier.
+            cost (float): Transportation cost of each order sent over the link. Must not be negative.
+            lead_time (callable): Lead time of each order: a number, or a function returning one (it can be random). Cannot be None.
+            link_failure_p (float, optional): Disruption probability: the chance, each time unit, that a disruption starts. Default is 0.0.
+            link_disrupt_time (callable, optional): Time units until the next disruption (a number or a function). If given, it is used instead of link_failure_p.
+            link_recovery_time (callable, optional): Time units a disruption lasts (a number or a function). Default is 1 time unit.
 
         Attributes:
             env (simpy.Environment): The simulation environment.
             ID (str): The ID of the link.
-            source (Node): The source node.
-            sink (Node): The sink node.
-            name (str): Readable name of the link combining source and sink IDs.
-            cost (float): Transportation cost.
-            lead_time (callable): Lead time function.
-            link_failure_p (float): Link failure probability.
-            status (str): Link status ("active" or "inactive").
-            link_recovery_time (callable): Link recovery time function.
-            link_disrupt_time (callable): Disruption time function.
+            source (Node): The supplier.
+            sink (Node): The buyer.
+            name (str): Readable name of the link, made from the source and sink IDs.
+            cost (float): Transportation cost of each order.
+            lead_time (callable): Function giving the lead time of each order.
+            link_failure_p (float): Disruption probability.
+            status (str): Status of the link: "active", or "inactive" while disrupted.
+            link_recovery_time (callable): Function giving the time units a disruption lasts.
+            link_disrupt_time (callable): Function giving the time units until the next disruption.
 
         Returns:
             None
@@ -2115,29 +2117,30 @@ class Link(NamedEntity, InfoMixin):
 
         self.env = env  # simulation environment
         self.ID = ID  # ID of the link (alphanumeric)
-        self.source = source  # source node of the link
-        self.sink = sink  # sink node of the link
+        self.source = source  # the supplier
+        self.sink = sink  # the buyer
         self.name = f"{self.source.ID} to {self.sink.ID}"  # name of the link
-        self.cost = cost  # cost of the link
-        self.lead_time = lead_time  # lead time of the link
-        self.link_failure_p = link_failure_p  # link failure probability
-        self.status = "active"  # link status (active/inactive)
-        self.link_recovery_time = link_recovery_time  # link recovery time
-        self.link_disrupt_time = link_disrupt_time  # link disruption time, if provided
-        self.rng = rng if rng is not None else _rng  # RNG for probabilistic disruption; falls back to library default
+        self.cost = cost  # transportation cost of each order
+        self.lead_time = lead_time  # function giving the lead time of each order
+        self.link_failure_p = link_failure_p  # disruption probability
+        self.status = "active"  # "active", or "inactive" while disrupted
+        self.link_recovery_time = link_recovery_time  # function: time units a disruption lasts
+        self.link_disrupt_time = link_disrupt_time  # function: time units until the next disruption, if given
+        self.rng = rng if rng is not None else _rng  # random number generator for random disruptions; the library's default if none is given
 
-        # Auto-register with the sink via the public method instead of mutating
-        # sink.suppliers directly. Every Node initialises ``suppliers = []`` in
-        # its __init__, so this works for any valid sink — including a plain
-        # Node or a Demand — rather than depending on the sink having its own
-        # suppliers-list setup.
+        # Register this link with its sink (the buyer) through
+        # ``add_supplier_link``, rather than changing ``sink.suppliers``
+        # directly. Every Node starts with an empty ``suppliers`` list, so this
+        # works for any valid sink.
         self.sink.add_supplier_link(self)
-        if(self.link_failure_p>0 or self.link_disrupt_time): # disrupt the link if link_failure_p > 0
+        if(self.link_failure_p>0 or self.link_disrupt_time): # start the disruption process if the link can be disrupted
             self.env.process(self.disruption())
     
     def disruption(self):
         """
-        This method disrupts the link by changing the link status to "inactive" and recovers it after the specified recovery time.
+        Disrupts the link (its status becomes "inactive") and recovers it after the recovery time, for the whole
+        simulation. Disruptions start either at the times given by ``link_disrupt_time``, or at random: each time
+        unit, a disruption starts with probability ``link_failure_p``.
 
         Parameters:
             None
@@ -2148,16 +2151,16 @@ class Link(NamedEntity, InfoMixin):
         Returns:
             None
         """
-        # Ongoing shipments already dispatched over this link are intentionally
-        # not interrupted when the link goes inactive — only *new* orders are
-        # blocked (see the link-status check in InventoryNode.process_order and
-        # Manufacturer.process_order_raw). Interrupting in-transit shipments
-        # would require tracking them as individual processes; deferred.
+        # Orders already in transit over this link are not stopped when the
+        # link is disrupted; only *new* orders are not sent (see the link checks
+        # in InventoryNode.process_order and Manufacturer.process_order).
+        # Stopping orders in transit would need each one tracked as its own
+        # process; that is left for later.
         while True:
             if(self.status=="active"):
                 if(self.link_disrupt_time): # if link_disrupt_time is provided, wait for the disruption time
                     disrupt_time = self.link_disrupt_time() # get the disruption time
-                    validate_positive(name="link_disrupt_time", value=disrupt_time) # check if disrupt_time is positive
+                    validate_positive(name="link_disrupt_time", value=disrupt_time) # the disruption time must be positive
                     yield self.env.timeout(disrupt_time)
                     self.status = "inactive" # change the link status to inactive
                     global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
@@ -2174,20 +2177,21 @@ class Link(NamedEntity, InfoMixin):
                     yield self.env.timeout(1)
             else:
                 recovery_time = self.link_recovery_time() # get the recovery time
-                validate_positive(name="link_recovery_time", value=recovery_time) # check if disrupt_time is positive
+                validate_positive(name="link_recovery_time", value=recovery_time) # the recovery time must be positive
                 yield self.env.timeout(recovery_time)
                 self.status = "active"
                 global_logger.info(f"{self.env.now}:{self.ID}: Link recovered from disruption.")
 
     def available_quantity(self) -> float:
         """
-        Amount of the upstream source's inventory currently available over this link.
+        The supplier's inventory level: how many units it has right now.
 
-        Exposed so supplier-selection policies (e.g. ``SelectAvailable``) can
-        compare candidate links without reaching into ``link.source.inventory.level``.
+        Supplier-selection policies (such as ``SelectAvailable``) use it to
+        compare suppliers without reading ``link.source.inventory.level``
+        directly.
 
         Returns:
-            float: The source node's current inventory level.
+            float: The supplier's inventory level.
         """
         return self.source.inventory.level
 
