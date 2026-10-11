@@ -2473,9 +2473,14 @@ class Inventory(NamedEntity, InfoMixin):
         # `waiting_site_orders`).
         get_event.site_order = site_order
         self.on_hand -= amount  # Update the on-hand inventory level
-        if(self.replenishment_policy):
-            if(not self.node.inventory_drop.triggered):
-                self.node.inventory_drop.succeed()  # signal that inventory has been dropped
+        # Tell the node that stock went down. Its replenishment policy (if it
+        # has one) checks whether to reorder, and a supplier with a full shelf
+        # starts mining again. Every node is told, not only those with a
+        # policy: a supplier has no policy, and without this signal it would
+        # never mine again once its shelf had been full.
+        inventory_drop = getattr(self.node, "inventory_drop", None)
+        if inventory_drop is not None and not inventory_drop.triggered:
+            inventory_drop.succeed()
         # A factory that stopped because its shelf was full can carry on once
         # stock leaves the shelf. (Only manufacturers have this method.)
         wake_production = getattr(self.node, "wake_production", None)
@@ -2753,8 +2758,9 @@ class Supplier(Node):
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:Raw material mined/extracted. Inventory level:{self.inventory.level}")
                 yield self.env.timeout(self.raw_material.extraction_time)
             else:
-                # Inventory is full — wait for a downstream draw (Inventory.get
-                # succeeds inventory_drop) instead of polling every tick.
+                # The shelf is full. Wait until a buyer takes something
+                # (Inventory.get signals inventory_drop), then mine again,
+                # instead of checking the shelf every day.
                 yield from self.wait_for_drop()
             self.logger.info(f"{self.env.now:.4f}:{self.ID}: Inventory level:{self.inventory.level}") # log on each event-driven wake-up
 
@@ -2957,8 +2963,6 @@ class InventoryNode(Node):
         if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
             shortage = reorder_quantity - supplier.source.inventory.level
             supplier.source.stats.update_stats(shortage=[1,shortage])
-            if(not supplier.source.inventory_drop.triggered):
-                supplier.source.inventory_drop.succeed()  # signal that inventory has been dropped (the supplier is short of stock)
 
         if(supplier.source.node_status == "active"):
             self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)

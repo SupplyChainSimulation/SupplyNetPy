@@ -2406,6 +2406,93 @@ class TestFactoryKeepsProducing(unittest.TestCase):
         assert m1.raw_inventory_counts["rm1"] < 5   # no raw material left sitting unused
 
 
+class TestLimitedSupplierKeepsMining(unittest.TestCase):
+    """A supplier with a limited shelf mines again as soon as a buyer takes stock.
+
+    A supplier mines until its shelf is full and then waits for the "stock
+    went down" signal. That signal used to reach only nodes with a
+    replenishment policy, which suppliers never have, so a supplier whose
+    shelf had once been full never mined again.
+    """
+
+    def _supplier(self, env, capacity=20, initial_level=20):
+        # Mines 5 units a day, up to a shelf of `capacity`.
+        rm = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=5, extraction_time=1,
+                             mining_cost=0, cost=1)
+        sup = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier", capacity=capacity,
+                           initial_level=initial_level, raw_material=rm)
+        return sup, rm
+
+    def _distributor(self, env, ID="D1"):
+        return scm.InventoryNode(env=env, ID=ID, name=ID, node_type="distributor", capacity=float("inf"),
+                                 initial_level=0, inventory_holding_cost=0, replenishment_policy=None,
+                                 policy_param=None, product_sell_price=5, product_buy_price=1)
+
+    def _order_at(self, env, day, buyer, link, qty):
+        yield env.timeout(day)
+        yield env.process(buyer.process_order(link, qty))
+
+    def test_supplier_refills_its_shelf_after_a_sale(self):
+        # A full supplier sells 10 units on day 0, then mines 5 a day until
+        # its shelf is full again.
+        env = simpy.Environment()
+        sup, _ = self._supplier(env)
+        d1 = self._distributor(env)
+        link = scm.Link(env=env, ID="L1", source=sup, sink=d1, cost=0, lead_time=lambda: 1)
+        env.process(d1.process_order(link, 10))
+        env.run(until=5)
+        assert sup.inventory.level == 20
+        assert sup.stats.total_raw_materials_mined == 10
+
+    def test_orders_smaller_than_the_shelf_find_it_full_again(self):
+        # Orders of 10 every 5 days never ask for more than the supplier has,
+        # so no order wakes it by running short. It must refill after each one.
+        env = simpy.Environment()
+        sup, _ = self._supplier(env)
+        d1 = self._distributor(env)
+        link = scm.Link(env=env, ID="L1", source=sup, sink=d1, cost=0, lead_time=lambda: 1)
+        for day in (0, 5, 10):
+            env.process(self._order_at(env, day, d1, link, 10))
+        for day in (4.5, 9.5, 14.5):
+            env.run(until=day)
+            assert sup.inventory.level == 20   # full again before the next order
+        assert d1.inventory.level == 30         # every order arrived after one day
+        assert sup.stats.backorder == [0, 0]    # no order ever had to wait
+
+    def test_factory_gets_raw_material_from_a_supplier_that_was_full(self):
+        # A factory buys all 20 units on day 0, and 20 more on day 10. The
+        # supplier must mine again so the second order is filled.
+        env = simpy.Environment()
+        sup, rm = self._supplier(env)
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1, sell_price=5,
+                              buy_price=0, batch_size=5, raw_materials=[(rm, 1)])
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=float("inf"), initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
+                              product_sell_price=5, product=product)
+        link = scm.Link(env=env, ID="L1", source=sup, sink=m1, cost=0, lead_time=lambda: 1)
+        env.process(self._order_at(env, 0, m1, link, 20))
+        env.process(self._order_at(env, 10, m1, link, 20))
+        env.run(until=40)
+        assert m1.stats.total_products_manufactured == 40
+        assert sup.inventory.waiting_orders() == 0
+        assert sup.stats.backorder == [0, 0]
+        assert sup.inventory.level == 20   # and it has refilled its shelf since
+
+    def test_disrupted_supplier_site_is_not_told_stock_went_down(self):
+        # The supplying site is down, so the order is not placed. Nothing
+        # leaves its shelf, so its "stock went down" signal must not fire
+        # (that would make its own policy reorder for no reason).
+        env = simpy.Environment()
+        w0 = self._distributor(env, ID="W0")
+        d1 = self._distributor(env)
+        link = scm.Link(env=env, ID="L1", source=w0, sink=d1, cost=0, lead_time=lambda: 1)
+        w0.node_status = "inactive"
+        env.process(d1.process_order(link, 10))
+        env.run(until=1)
+        assert not w0.inventory_drop.triggered
+        assert d1.pending_orders == 0
+
+
 class TestSupplierRawMaterialBackordersAreLive(unittest.TestCase):
     """A raw-material supplier's backorders show the orders it owes right now.
 

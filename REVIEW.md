@@ -451,6 +451,33 @@ Reported in GitHub issue #1 (defects 3, 4 and 5). `Manufacturer.behavior`, `Manu
 - `examples/py/hybrid_big_sc.py`: the bakery no longer stops (seed 2: 70,358 loaves made, raw material ordered for 70,558, the last 200 still on their way). Customers there still get only about 3%, but the bread now runs out downstream: most of it expires at the distributors and shops (defect 7).
 - `pytest` — 234/234 passing. New `TestFactoryKeepsProducing` (7 tests: one delivery made into every batch it covers; raw material ordered while an earlier order is on its way; leftover raw material does not cancel a new order; a full shelf restarts once space frees; a disrupted raw-material link plans nothing until it recovers; one working supplier per raw material; the example from the issue). `TestSupplierRawMaterialBackordersAreLive::test_disrupted_supplier_records_no_backorder` now places the order through `process_order`, where the check lives, and also checks that no shortage is recorded and nothing is planned.
 
+### 3.19 A supplier with a limited shelf stops mining for good once its shelf has been full ✅ Resolved
+Reported in GitHub issue #1 (defect 6). `Inventory.get`, `Supplier.behavior`, `InventoryNode.process_order`.
+
+**How a supplier is meant to work (user, 2026-10-11).** A supplier with a limited shelf keeps mining (`extraction_quantity` units every `extraction_time`) until its shelf is full, and starts again as soon as stock is taken. This is a base-stock rule (keep the shelf at a target and replace whatever is taken) with the shelf capacity as the target. A supplier has no replenishment policy of its own. An optional mining policy, such as (s, S) campaign mining, may be added later as a feature, with this behaviour as the default.
+
+**Original issue.** When its shelf is full, `Supplier.behavior` waits for the "stock went down" signal (`inventory_drop`). `Inventory.get` sent that signal only when the node had a replenishment policy, and suppliers never have one, so taking stock from a supplier never woke it. The only other wake-up was in `InventoryNode.process_order`, which signalled the supplier when a distributor ordered more than the supplier had on its shelf. Raw-material orders from factories never woke it. So:
+
+- A factory buying from a limited supplier stopped for good once the supplier's first full shelf was used up: the supplier never mined again, and the raw-material orders waited forever.
+- Distributors only got through because an order bigger than what was left on the shelf woke the supplier. Until then it did not refill, so the next orders found it partly empty and had to wait.
+
+This came in with §5.1 Fix (1), which replaced the supplier's daily check with waiting on `inventory_drop`, on the belief that `Inventory.get` already signalled every node.
+
+In `examples/notebooks/simple_supplier_n_factory.ipynb` (365 days) the supplier mined nothing at all: by the end, 3,500 units of raw-material orders were stuck waiting at the supplier, the factory had made 4,200 units, and customers got 7% of what they asked for.
+
+**Fix applied:**
+
+- `Inventory.get` signals `inventory_drop` for every node that has the event (looked up with `getattr`), not only for nodes with a replenishment policy. A supplier with a full shelf now starts mining as soon as a buyer takes stock. For a distributor with no policy nobody waits on the event, so the signal does nothing. Endless suppliers return from `get` before this point and do not have the event.
+- The extra signal in `InventoryNode.process_order` (sent when the supplier was short) is removed. `Inventory.get` now signals whenever an order is really taken from the supplier's shelf. The extra signal also fired when the supplier site was down and the order was never placed, which woke the supplying site's own policy for no reason (an open item from §3.18).
+
+**Not changed:** `InventoryNode.process_order` still records a shortage at the supplier before checking that the supplier site is working, so a down site gets a shortage for an order it never received. `Inventory.destroy` still does not signal anything (see the convention in `CLAUDE.md`), so a supplier whose shelf is destroyed while full waits for the next order before mining again.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`; it has only an endless supplier). `examples/py/sc_with_factory.py` output identical. `examples/py/hybrid_big_sc.py` uses only endless suppliers and is not affected.
+- `simple_supplier_n_factory.ipynb` (its simulation, run without the plots): the supplier now mines 79,050 units, no order is left waiting, the factory makes 82,700 units, and customers get 80% instead of 7%. The warehouse now throws away 62,795 expired units: stock reaches it already old (defect 7). The notebook's saved outputs are out of date.
+- `pytest` — 238/238 passing. New `TestLimitedSupplierKeepsMining` (4 tests: the supplier refills its shelf after a sale; orders smaller than the shelf find it full again; a factory gets its raw material from a supplier that was full; a supplying site that is down is not told its stock went down). All four fail on the old code.
+
 ---
 
 ## 4. Design / architecture issues
@@ -744,6 +771,8 @@ The cosmetic step of renaming the underlying `simpy.Container` attribute (`self.
 **Fix applied (1) — `Supplier.behavior` is now event-driven:**
 
 The full-inventory branch's `yield self.env.timeout(1)` is replaced with `yield from self.wait_for_drop()`. The drop signal already exists — `Inventory.get` succeeds `node.inventory_drop` whenever the supplier ships, and `Node.wait_for_drop()` is the documented contract for blocking on it (introduced in §4.3). For a supplier with `capacity = inf` (the `infinite_supplier` path) this branch was never reached, so the change is a no-op for that case. The per-iteration tail-log `f"... Inventory level: ..."` now fires only on event-driven wake-ups instead of on every tick — a noise win, not a regression.
+
+*Corrected in §3.19: `Inventory.get` did not signal suppliers. It signalled only nodes with a replenishment policy, so a limited supplier whose shelf had been full never mined again. It now signals every node that has `inventory_drop`.*
 
 **Fix applied (2) — `Manufacturer.behavior` is now event-driven:**
 
