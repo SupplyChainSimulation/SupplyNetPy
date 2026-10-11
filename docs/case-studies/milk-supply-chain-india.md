@@ -90,6 +90,6 @@ The per node view behind the fourth finding is available as a second interactive
 
 <p><a href="../milk-india/retailer_profit_heatmap.html" target="_blank"><b>&#128279; Open the interactive retailer profit and waste map</b></a> <small>(opens in a new tab, about 15 MB)</small></p>
 
-## Status
+## Further work
 
-The study is ongoing. The exhaustive sweep has already produced a large volume of simulation data, and a related research thread builds on it. We are exploring graph neural network (GNN) metamodels for simulation based optimization of supply chains. A metamodel trained on this data may learn to predict near optimal values of alpha, beta, and n_backup for a given disruption degree directly from the network, without running thousands of simulations. This page presents a brief introduction to the study and selected insights, and will be updated from time to time as the work matures.
+The exhaustive sweep produced a large volume of simulation data, and a related research thread builds on it. We are exploring graph neural network (GNN) metamodels for simulation based optimization of supply chains. A metamodel trained on this data may learn to predict near optimal values of alpha, beta, and n_backup for a given disruption degree directly from the network, without running thousands of simulations.
