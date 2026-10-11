@@ -518,6 +518,8 @@ In addition, `remove_expired` and `Inventory.destroy` removed units with an ordi
 - `simple_supplier_n_factory.ipynb` (its simulation): no change in what customers get (about 80%). The warehouse still throws away 58,880 units (62,795 before): the factory holds up to 2,500 units of a product that lasts 10 days and ships the oldest first, so units reach the warehouse 1–11 days old. That comes from the example's settings, not from the code.
 - `pytest` — 245/245 passing. New `TestPerishableBatchesPickedWhenShipped` (5 tests: a waiting order gets every unit with its real dates; stock that expires while an order waits is thrown away, not shipped; `destroy` empties the shelf at once while an order waits; `destroy` restarts a full supplier; the two records agree throughout a busy perishable network). `TestSiteBackordersAreLive::test_waiting_expiry_removal_not_mistaken_for_a_site_order` became `test_expired_goods_removed_at_once_not_behind_a_site_order`. All six fail on the old code.
 
+*Renamed later, when the terminology was settled (`docs/glossary.md`): `_Shelf` → `_InventoryContainer`, `_ShelfRequest` → `_InventoryGet`, `_Shelf.take_now` → `_InventoryContainer.remove_now`, `Inventory._take_oldest_batches` → `Inventory._pick_oldest_batches`, `Inventory._stock_went_down` → `Inventory._signal_inventory_drop`.*
+
 ---
 
 ## 4. Design / architecture issues

@@ -6,3 +6,15 @@ h3 {
   border-radius: 2px;
   background-color:  #dedede;
 }
+/* Let long text in table cells wrap onto several lines, so a wide table fits
+   the page instead of scrolling sideways. The theme keeps every table cell,
+   and every piece of inline code, on one line. Long code names inside a cell
+   may break where needed. */
+.wy-table-responsive table td,
+.wy-table-responsive table th {
+  white-space: normal;
+}
+.wy-table-responsive table td code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

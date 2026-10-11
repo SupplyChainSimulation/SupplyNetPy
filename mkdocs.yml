@@ -31,6 +31,7 @@ nav:
     - Milk Supply Chain (India): case-studies/milk-supply-chain-india.md
   - API Reference:
       - Introduction: api-reference/api-intro.md
+      - Glossary: glossary.md
       - Core Components: api-reference/api-ref-core.md
       - Utilities: api-reference/api-ref-utilities.md
       - Logger: api-reference/api-ref-logger.md
