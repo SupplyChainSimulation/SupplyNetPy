@@ -2960,11 +2960,15 @@ class InventoryNode(Node):
 
         self.pending_orders += 1  # count this order as in flight; decremented when delivery completes (or supplier disrupted)
 
-        if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
-            shortage = reorder_quantity - supplier.source.inventory.level
-            supplier.source.stats.update_stats(shortage=[1,shortage])
-
         if(supplier.source.node_status == "active"):
+            # The supplier is short if it cannot fill the whole order from its
+            # shelf right now. This is checked only here, once we know the
+            # order is really placed: a supplier whose site is down never
+            # receives the order, so it must not be counted as short for it.
+            if supplier.source.inventory.level < reorder_quantity:
+                shortage = reorder_quantity - supplier.source.inventory.level
+                supplier.source.stats.update_stats(shortage=[1,shortage])
+
             self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
             supplier.source.stats.update_stats(demand_received=[1,reorder_quantity])
 

@@ -470,13 +470,25 @@ In `examples/notebooks/simple_supplier_n_factory.ipynb` (365 days) the supplier 
 - `Inventory.get` signals `inventory_drop` for every node that has the event (looked up with `getattr`), not only for nodes with a replenishment policy. A supplier with a full shelf now starts mining as soon as a buyer takes stock. For a distributor with no policy nobody waits on the event, so the signal does nothing. Endless suppliers return from `get` before this point and do not have the event.
 - The extra signal in `InventoryNode.process_order` (sent when the supplier was short) is removed. `Inventory.get` now signals whenever an order is really taken from the supplier's shelf. The extra signal also fired when the supplier site was down and the order was never placed, which woke the supplying site's own policy for no reason (an open item from §3.18).
 
-**Not changed:** `InventoryNode.process_order` still records a shortage at the supplier before checking that the supplier site is working, so a down site gets a shortage for an order it never received. `Inventory.destroy` still does not signal anything (see the convention in `CLAUDE.md`), so a supplier whose shelf is destroyed while full waits for the next order before mining again.
+**Not changed:** `InventoryNode.process_order` still records a shortage at the supplier before checking that the supplier site is working, so a down site gets a shortage for an order it never received. `Inventory.destroy` still does not signal anything (see the convention in `CLAUDE.md`), so a supplier whose shelf is destroyed while full waits for the next order before mining again. *The shortage part is fixed in §3.20.*
 
 **Verified:**
 
 - `examples/py/intro_simple.py` unchanged (`profit: -4435.0`; it has only an endless supplier). `examples/py/sc_with_factory.py` output identical. `examples/py/hybrid_big_sc.py` uses only endless suppliers and is not affected.
 - `simple_supplier_n_factory.ipynb` (its simulation, run without the plots): the supplier now mines 79,050 units, no order is left waiting, the factory makes 82,700 units, and customers get 80% instead of 7%. The warehouse now throws away 62,795 expired units: stock reaches it already old (defect 7). The notebook's saved outputs are out of date.
 - `pytest` — 238/238 passing. New `TestLimitedSupplierKeepsMining` (4 tests: the supplier refills its shelf after a sale; orders smaller than the shelf find it full again; a factory gets its raw material from a supplier that was full; a supplying site that is down is not told its stock went down). All four fail on the old code.
+
+### 3.20 A supplier site that is down is counted as short for orders it never receives ✅ Resolved
+Open item from §3.18 and §3.19. `InventoryNode.process_order`.
+
+**Original issue.** `InventoryNode.process_order` recorded a shortage at the supplier (when its shelf held less than the order) *before* checking whether the supplier's site was working. When the site was down, the code then logged "Order not placed" and stopped, but the shortage stayed. The supplier's demand received did not go up, so its shortage counted orders it never received. While a site was down, the buyer's policy could try several times (for example each time its own stock dropped), and each attempt added another shortage. `simulate_sc_net` adds every node's shortage into the network total, so that was too high as well. A down *link* never had this problem: it is checked before anything is recorded. Factories did not have it either: since §3.18, `Manufacturer.process_order` checks the link and the supplier site before any raw-material order starts.
+
+**Fix applied:** the shortage check moved inside the "supplier site is active" branch, just before the order is placed. A supplier is now counted as short only for an order it really receives. Nothing changes when the supplier site is up.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`).
+- `pytest` — 240/240 passing. New `TestNoShortageAtASupplierSiteThatIsDown` (2 tests: three orders to a down site that is short record no shortage, demand or backorder anywhere; the same order to a working site is still counted as short, `[1, 15]`). The first fails on the old code.
 
 ---
 

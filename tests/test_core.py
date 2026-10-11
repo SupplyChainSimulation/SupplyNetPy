@@ -2493,6 +2493,48 @@ class TestLimitedSupplierKeepsMining(unittest.TestCase):
         assert d1.pending_orders == 0
 
 
+class TestNoShortageAtASupplierSiteThatIsDown(unittest.TestCase):
+    """A supplier is counted as short only for orders it really receives.
+
+    When the supplying site is down, the order is not placed. The supplier
+    used to be counted as short for it anyway, before the code checked
+    whether its site was up.
+    """
+
+    def _warehouse_and_distributor(self, env):
+        # W0 has 5 units; D1 will order 20 from it.
+        w0 = scm.InventoryNode(env=env, ID="W0", name="W0", node_type="warehouse", capacity=100,
+                               initial_level=5, inventory_holding_cost=0, replenishment_policy=None,
+                               policy_param=None, product_sell_price=5, product_buy_price=1)
+        d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor", capacity=100,
+                               initial_level=0, inventory_holding_cost=0, replenishment_policy=None,
+                               policy_param=None, product_sell_price=5, product_buy_price=1)
+        link = scm.Link(env=env, ID="L1", source=w0, sink=d1, cost=0, lead_time=lambda: 1)
+        return w0, d1, link
+
+    def test_supplier_site_down_is_not_counted_as_short(self):
+        env = simpy.Environment()
+        w0, d1, link = self._warehouse_and_distributor(env)
+        w0.node_status = "inactive"
+        for _ in range(3):   # the policy may try several times during an outage
+            env.process(d1.process_order(link, 20))
+        env.run(until=1)
+        assert w0.stats.shortage == [0, 0]
+        assert w0.stats.demand_received == [0, 0]
+        assert w0.stats.backorder == [0, 0]
+        assert d1.stats.demand_placed == [0, 0]
+        assert d1.pending_orders == 0
+
+    def test_supplier_site_up_is_still_counted_as_short(self):
+        # The same order to a working site that is short: counted as before.
+        env = simpy.Environment()
+        w0, d1, link = self._warehouse_and_distributor(env)
+        env.process(d1.process_order(link, 20))
+        env.run(until=1)
+        assert w0.stats.shortage == [1, 15]
+        assert w0.stats.demand_received == [1, 20]
+
+
 class TestSupplierRawMaterialBackordersAreLive(unittest.TestCase):
     """A raw-material supplier's backorders show the orders it owes right now.
 
