@@ -132,7 +132,7 @@ def visualize_sc_net(supplychainnet):
     Visualize the supply chain network as a graph.
 
     Lays the nodes out in columns by type (using
-    :func:`networkx.multipartite_layout`) so the drawing reads left-to-right
+    `networkx.multipartite_layout`) so the drawing reads left-to-right
     (suppliers → manufacturers → distributors → retailers → demand). The old
     default, ``spectral_layout``, often placed nodes badly for small networks.
 
@@ -555,8 +555,8 @@ def get_node_wise_performance(nodes_object_list):
     each node's ``stats.get_statistics()`` dict and returns the rows as a list
     of dicts keyed by the metric name. Callers who want a table can feed the
     result to ``pandas.DataFrame.from_records``; callers who want the plain-text
-    layout can pass it to :func:`format_node_wise_performance` or
-    :func:`print_node_wise_performance`.
+    layout can pass it to `format_node_wise_performance` or
+    `print_node_wise_performance`.
 
     Parameters:
         nodes_object_list (list): List of supply chain node objects.
@@ -614,10 +614,10 @@ def print_node_wise_performance(nodes_object_list):
     """
     Print the per-node performance table to stdout.
 
-    Thin wrapper around :func:`format_node_wise_performance`; kept as a
+    Thin wrapper around `format_node_wise_performance`; kept as a
     library convenience for the existing notebooks/scripts that call it
     directly. Programmatic consumers should prefer
-    :func:`get_node_wise_performance` (returns a list of dicts) so the table
+    `get_node_wise_performance` (returns a list of dicts) so the table
     can be rendered however the caller prefers.
 
     Parameters:
@@ -648,25 +648,25 @@ class Network:
     """
     Object-oriented wrapper around a SupplyNetPy network.
 
-    ``Network`` owns the supply-chain dict that :func:`create_sc_net` returns
-    and that :func:`simulate_sc_net` mutates with KPIs after a run. It exposes
+    ``Network`` owns the supply-chain dict that `create_sc_net` returns
+    and that `simulate_sc_net` mutates with KPIs after a run. It exposes
     the construction metadata as plain attributes / dict views and the
-    post-simulation KPIs through :attr:`results`, so a caller can tell the
+    post-simulation KPIs through `results`, so a caller can tell the
     "before" and "after" states apart without inspecting key names.
 
     Construction (two interchangeable styles):
 
-    .. code-block:: python
+    ```python
+    # Style A — classmethod, takes the same args as create_sc_net.
+    net = scm.Network.build(nodes=[...], links=[...], demands=[...])
+    net.simulate(sim_time=200)
+    print(net.results["profit"])
 
-        # Style A — classmethod, takes the same args as create_sc_net.
-        net = scm.Network.build(nodes=[...], links=[...], demands=[...])
-        net.simulate(sim_time=200)
-        print(net.results["profit"])
-
-        # Style B — wrap an existing dict (e.g. produced by legacy code).
-        sc = scm.create_sc_net(nodes=[...], links=[...], demands=[...])
-        net = scm.Network(sc)
-        net.simulate(sim_time=200)
+    # Style B — wrap an existing dict (e.g. produced by legacy code).
+    sc = scm.create_sc_net(nodes=[...], links=[...], demands=[...])
+    net = scm.Network(sc)
+    net.simulate(sim_time=200)
+    ```
 
     The wrapper does not duplicate state: ``net.as_dict()`` returns the same
     underlying dict the free-functions read and write, so legacy code that
@@ -691,7 +691,7 @@ class Network:
         Wrap an existing supply-chain dict.
 
         Parameters:
-            supplychainnet (dict): The dict returned by :func:`create_sc_net`.
+            supplychainnet (dict): The dict returned by `create_sc_net`.
                 The wrapper holds a reference; mutations made via the legacy
                 free-functions remain visible through this object.
         """
@@ -706,8 +706,8 @@ class Network:
         """
         Build a network from netlists or pre-built domain objects.
 
-        Identical signature to :func:`create_sc_net`; returns a wrapped
-        :class:`Network` instead of the bare dict.
+        Identical signature to `create_sc_net`; returns a wrapped
+        `Network` instead of the bare dict.
 
         Returns:
             Network: A network ready to simulate.
@@ -760,9 +760,9 @@ class Network:
     # ---- Simulation entry point -------------------------------------------
     def simulate(self, sim_time, logging: bool = True, log_window=None) -> "Network":
         """
-        Run the simulation and populate :attr:`results`.
+        Run the simulation and populate `results`.
 
-        Mirrors :func:`simulate_sc_net`. Returns ``self`` so calls can chain
+        Mirrors `simulate_sc_net`. Returns ``self`` so calls can chain
         (``Network.build(...).simulate(200)``).
 
         Parameters:
@@ -782,10 +782,10 @@ class Network:
     @property
     def results(self) -> dict:
         """
-        Aggregated KPIs from the most recent :meth:`simulate` call.
+        Aggregated KPIs from the most recent `simulate` call.
 
         Empty dict before ``simulate`` runs. The values come straight from the
-        underlying ``supplychainnet`` dict — :class:`Network` simply picks out
+        underlying ``supplychainnet`` dict — `Network` simply picks out
         the result keys here, so callers do not have to know which dict keys are
         setup information and which are run output.
         """
@@ -793,7 +793,7 @@ class Network:
 
     @property
     def has_run(self) -> bool:
-        """Whether :meth:`simulate` has been called at least once."""
+        """Whether `simulate` has been called at least once."""
         return self._has_run
 
     # ---- Access to the underlying dict ------------------------------------
