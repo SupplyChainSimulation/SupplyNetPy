@@ -520,6 +520,18 @@ In addition, `remove_expired` and `Inventory.destroy` removed units with an ordi
 
 *Renamed later, when the terminology was settled (`docs/glossary.md`): `_Shelf` → `_InventoryContainer`, `_ShelfRequest` → `_InventoryGet`, `_Shelf.take_now` → `_InventoryContainer.remove_now`, `Inventory._take_oldest_batches` → `Inventory._pick_oldest_batches`, `Inventory._stock_went_down` → `Inventory._signal_inventory_drop`.*
 
+### 3.22 A waiting customer is counted as short several times ✅ Resolved
+Found during the comment sweep. `Demand.wait_for_order`.
+
+**Original issue.** A shortage records how many units a site was missing when an order arrived; it is a running total and is never reduced (see `CLAUDE.md`). For a customer who waits (`tolerance > 0`), `_enqueue_for_tolerance` records that shortage when the order arrives. `wait_for_order` then recorded it again on every check where it could not serve the customer: once straight away (its first check runs at the same moment), and once more after every delivery that was not enough. One customer short by 10 units showed a shortage of `[2, 20]` at once, and `[5, 34]` after three small deliveries; the expected value is `[1, 10]`. The node's and the network's shortage figures were too high in any model with waiting customers. Profit was not affected. The bug was already in 0.1.12; it was not caused by the issue #1 fixes.
+
+**Fix applied:** the shortage line in `wait_for_order`'s "not enough yet" case is removed; a comment there says why. A waiting customer's shortage is now recorded once, when the order arrives.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`). No example or case study uses waiting customers (the only `tolerance=` in the examples is commented out), so none of their results change.
+- `pytest` — 248/248 passing. New `TestWaitingCustomerShortageCountedOnce` (3 tests: deliveries too small to fill the order; partial deliveries; one shortage per waiting customer). All three fail on the old code.
+
 ---
 
 ## 4. Design / architecture issues

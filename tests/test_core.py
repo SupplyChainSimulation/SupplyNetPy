@@ -1926,6 +1926,76 @@ class TestWaitingCustomerLeavesOnTime(unittest.TestCase):
         assert w1.stats.backorder == [0, 0]
 
 
+class TestWaitingCustomerShortageCountedOnce(unittest.TestCase):
+    """A waiting customer's shortage is recorded once, when the order arrives.
+
+    The shortage was recorded when the order arrived, and then again each time
+    the waiting customer checked and could not be served: twice at once, and
+    once more after every delivery that was not enough. One customer short by
+    10 units showed a shortage of [2, 20] straight away, and more later.
+    """
+
+    def _site(self, env):
+        # A site with no stock and no replenishment policy: units arrive only
+        # when the test adds them.
+        return scm.InventoryNode(
+            env=env, ID="W1", name="W1", node_type="warehouse",
+            capacity=float("inf"), initial_level=0,
+            inventory_holding_cost=0, replenishment_policy=None, policy_param={},
+            product_buy_price=1, product_sell_price=2,
+        )
+
+    def _deliver(self, env, site, day, qty):
+        yield env.timeout(day)
+        site.inventory.put(qty)
+
+    def test_shortage_recorded_once_while_deliveries_are_too_small(self):
+        # One customer orders 10 and waits; three deliveries (2, 3, 4) are
+        # each too small to fill the order.
+        env = simpy.Environment()
+        w1 = self._site(env)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10,
+                   tolerance=10)
+        for day, qty in ((1, 2), (2, 3), (3, 4)):
+            env.process(self._deliver(env, w1, day, qty))
+        env.run(until=0.5)
+        assert w1.stats.shortage == [1, 10]
+        env.run(until=5)
+        assert w1.stats.shortage == [1, 10]
+        assert w1.stats.backorder == [1, 10]   # still waiting for all 10
+        env.run(until=20)
+        assert w1.stats.shortage == [1, 10]    # never reduced, never added to
+        assert w1.stats.backorder == [0, 0]    # left when the tolerance ran out
+
+    def test_shortage_recorded_once_with_partial_deliveries(self):
+        # The customer accepts partial deliveries of 2 or more, so the
+        # deliveries are passed on as they come.
+        env = simpy.Environment()
+        w1 = self._site(env)
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10,
+                         tolerance=10, order_min_split_ratio=0.2)
+        for day, qty in ((1, 2), (2, 3), (3, 4)):
+            env.process(self._deliver(env, w1, day, qty))
+        env.run(until=5)
+        assert w1.stats.shortage == [1, 10]
+        assert dem.stats.fulfillment_received[1] == 9   # 2 + 3 + 4 delivered
+        assert w1.stats.backorder == [1, 1]             # 1 unit still owed
+
+    def test_one_shortage_per_waiting_customer(self):
+        # Three customers (5 units each) wait at a site with no stock.
+        env = simpy.Environment()
+        w1 = self._site(env)
+        arrivals = _scripted_seq([0, 0, 0.1, 0.1], tail=1e9)   # 2 padding + script
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=arrivals, order_quantity_model=lambda: 5,
+                   tolerance=100)
+        env.process(self._deliver(env, w1, 1, 3))   # too small for anyone
+        env.run(until=5)
+        assert w1.stats.shortage == [3, 15]
+
+
 class TestCustomersOnlyTakeFreeStock(unittest.TestCase):
     """Customers must only be promised units that are really free for them.
 

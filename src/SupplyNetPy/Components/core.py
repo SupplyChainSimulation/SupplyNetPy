@@ -4046,8 +4046,10 @@ class Demand(Node):
                 self.demand_node.stats.update_stats(backorder=[0,-available], demand_fulfilled=[-1,0])
                 self.stats.update_stats(fulfillment_received=[-1,0])
                 order_quantity -= available # update order quantity
-            else: 
-                self.demand_node.stats.update_stats(shortage=[1,order_quantity-available])
+            # Otherwise there is not enough yet, and the customer keeps waiting.
+            # No shortage is recorded here: it was recorded once, when the order
+            # arrived (in _enqueue_for_tolerance). Recording it again on every
+            # check would count the same missing units many times.
 
             if self.env.now >= deadline:
                 break  # the customer's tolerance has run out
