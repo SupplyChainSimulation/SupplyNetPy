@@ -1,40 +1,40 @@
 <small>Find the Google Colab notebook for this example <a href="https://colab.research.google.com/drive/1MFIXSqRlrWP5QIQZHiUtqzo6DZFcHA0w?usp=sharing" target="_blank">here</a>.</small>
 
-# Pharmacy Supply Chain 
+# Pharmacy Supply Chain
 
-This study is from a publication __'Improving Simulation Optimization Run Time When Solving For Periodic Review Inventory Policies in A Pharmacy'__, read it [here](https://informs-sim.org/wsc21papers/232.pdf). This study uses the simulation-based optimization (SBO) method to find the optimum values of replenishment policy parameters (s, S) to minimize the overall cost of the pharmacy supply chain.
+This study comes from the publication __'Improving Simulation Optimization Run Time When Solving For Periodic Review Inventory Policies in A Pharmacy'__, which you can read [here](https://informs-sim.org/wsc21papers/232.pdf). It uses simulation based optimization (SBO) to find the values of the (s, S) policy parameters that keep the total cost of the pharmacy supply chain as low as possible.
 
-In this example, we aim to understand the supply chain network system described by the authors and to use SupplyNetPy to implement it and replicate the results. This exercise allows us to evaluate the complexity of reconstructing a specific system with SupplyNetPy and to validate the library.
+In this example, we aim to understand the supply chain network described by the authors, implement it with SupplyNetPy, and replicate their results. This shows how much effort it takes to rebuild a specific system with SupplyNetPy, and helps to validate the library.
 
 ## System Description
 
-The system is a single-echelon supply chain — that is, a chain with just one layer between the source and the customer. In this case, a hospital pharmacy (the distributor) is supplied directly by a pharmaceutical manufacturing facility (the supplier).
+The system is a supply chain with a single level between the source and the customers. A hospital pharmacy (modeled as a distributor) is supplied directly by a pharmaceutical manufacturer (modeled as an infinite supplier).
 
- - The pharmacy faces stochastic (i.e., unpredictable, day-to-day-varying) demand and is connected to a supplier with unlimited stock.
- - On any given day, the supplier may be disrupted (unable to ship) with probability 0.001.
- - The pharmacy follows an (s, S) replenishment policy: when the inventory level falls below *s*, place an order large enough to bring it up to *S*.
- - The product is perishable, with a shelf life of 90 days.
- - The authors model and simulate this system to find the values of *s* and *S* that minimize the expected total cost per day.
+ * The pharmacy faces random demand, and is supplied by a supplier that never runs out.
+ * On any given day, a disruption of the supplier (when it cannot ship) starts with probability 0.01.
+ * The pharmacy follows an (s, S) replenishment policy. When its inventory position falls below *s*, it orders enough to bring the inventory position back up to *S*.
+ * The product is perishable, with a shelf life of 90 days.
+ * The authors model and simulate this system to find the values of *s* and *S* that minimize the expected total cost per day.
 
-![image-2.png](img/case_study_pharma_files/case_study_pharma_sc.png)
+![The pharmacy supply chain, with the supplier, the hospital pharmacy and its customers.](img/case_study_pharma_files/case_study_pharma_sc.png)
 
-Inventory Type: Perishable <br>
-**Inventory position** is the amount of stock the pharmacy can count on as of today — *what is physically on the shelf right now*, plus *anything already ordered that has not yet arrived* (i.e., in transit from the supplier). It is the basis on which the next reorder decision is made. <br>
-&emsp; Inventory position = inventory on hand + inventory en route <br>
-Replenishment Policy: (s, S) — when the inventory position falls below *s*, place an order for (*S* − current inventory position) units, so that the position is brought back up to *S*. <br>
+The inventory is perishable. <br>
+The **inventory position** is what the pharmacy can count on today, *the units it holds now* plus *the units already ordered that have not arrived yet* (in transit from the supplier). The next replenishment order is decided from it. <br>
+&emsp; Inventory position = inventory level + inventory in transit <br>
+The replenishment policy is (s, S). When the inventory position falls below *s*, the pharmacy orders (*S* &minus; inventory position) units, which brings the inventory position back up to *S*. <br>
 Review period = 1 day (the pharmacy checks its inventory every day). <br>
 
-The flowchart below uses the following shorthand: <br>
-&emsp; H = inventory on hand (what is on the shelf) <br>
-&emsp; H′ = portion of H that will expire at the end of day *t* <br>
-&emsp; P = inventory position = H + inventory en route <br>
+The flowchart below uses this shorthand. <br>
+&emsp; H = inventory level (the units the pharmacy holds) <br>
+&emsp; H′ = the part of H that will expire at the end of day *t* <br>
+&emsp; P = inventory position = H + inventory in transit <br>
 
-![image.png](img/case_study_pharma_files/case_study_pharma_flow.png)
+![Flowchart of the events at the pharmacy each day.](img/case_study_pharma_files/case_study_pharma_flow.png)
 
-This flowchart illustrates the order and sequence of events that take place at the pharmacy. <br>
+This flowchart shows the order of the events that take place at the pharmacy each day. <br>
 <small>(<a href="https://informs-sim.org/wsc21papers/232.pdf" target="_blank">Image source</a>)</small>
 
-## Algorithm: Process flow of Perishable Inventory
+## Daily Process for the Perishable Inventory
 ```algorithm
 Begin day t
     1. Order arrive at the Pharmacy
@@ -56,36 +56,34 @@ Begin day t
             - Do not place order
     6. End of the day t
 ```
-__Optimization Objective: Minimize Expected Cost per day__ <br>
-Costs of interest are shortage, waste, holding and ordering <br>
+__The optimization objective is to minimize the expected cost per day.__ <br>
+The costs of interest are the shortage, waste, holding and ordering costs. <br>
 
 ## Assumptions
 
- - All drugs that arrive in the same month come from the same production batch and have 
- same end of the month expiration date. Hence drugs are only discarded at the end of the month.
- - The inventory on-hand is know each day.
- - Estimated days until inventory expires is known each day.
- - Lead time is deterministic and positive. The order placed at the end of the day (t-1) arrives at the beginning of day t.
- - Demand is stochastic.
- - Supply uncertainty is due to disruptions
- (these two are independent of each other)
- - All demand that is not met is lost.
- - First in first out protocol is followed when serving orders.
+ * All drugs that arrive in the same month come from the same production batch, and expire at the end of the same month. So drugs are only thrown away at the end of a month.
+ * The inventory level is known each day.
+ * The number of days until the inventory expires is known each day.
+ * The lead time is fixed and positive. An order placed at the end of day (*t* &minus; 1) arrives at the beginning of day *t*.
+ * Demand is random.
+ * Supply is uncertain because of disruptions. Demand and disruptions are independent of each other.
+ * All demand that is not met is lost.
+ * Orders are served with the oldest units first (first in, first out).
 
 ## System Configuration
 
- - T = number of days (360 days)
- - l = deterministic lead time (6 days)
- - e = shelf life of the drugs (months) (3 months)
- - R = number of simulation replication (5000)
- - b = shortage cost (5 units)
- - z = waste cost (1 units)
- - h = holding cost (0.001 units)
- - o = ordering cost (0.5 units)
- - dt = demand on day t (stochastic) (Poisson 25/day)
- - yt = binary variable for supply disruption status on day t (yt=0 disrupted, yt=1 available) (stochastic) (p=0.01)
- - disrupt_time ~ Geom(p=0.01)
- - recovery_time ~ Geom(p=1/30)
+ * T = number of days (360)
+ * l = lead time (6 days)
+ * e = shelf life of the drugs (3 months, that is 90 days)
+ * R = number of simulation runs, or replications (5000)
+ * b = shortage cost (5, relative to the buy price)
+ * z = waste cost (1, relative to the buy price)
+ * h = holding cost (0.001, relative to the buy price)
+ * o = ordering cost (0.5, relative to the buy price)
+ * d<sub>t</sub> = demand on day *t* (random, Poisson with a mean of 25 a day)
+ * y<sub>t</sub> = whether the supply is disrupted on day *t* (y<sub>t</sub> = 0 disrupted, y<sub>t</sub> = 1 available)
+ * Time until the next disruption, geometric with p = 0.01
+ * Time to recover from a disruption, geometric with p = 1/30
 
 ## Implementation
 
@@ -287,7 +285,7 @@ plt.grid()
 plt.show()
 ```
 
-![png](img/case_study_pharma_files/case_study_pharma_4_0.png)
+![Expected cost per day for S = 5000 and different values of s, with confidence intervals.](img/case_study_pharma_files/case_study_pharma_4_0.png)
 
 
 ## Running the Model with Varying (S, s)
@@ -326,10 +324,10 @@ plt.grid()
 plt.show()
 ``` 
     
-![optimum S, s](img/case_study_pharma_files/case_study_pharma_6_0.png)
+![Expected cost per day for different values of S and s, from SupplyNetPy.](img/case_study_pharma_files/case_study_pharma_6_0.png)
 
 The following plot displays the results obtained by the authors.
 
-![optimum S, s](img/case_study_pharma_files/case_study_pharma_fin.png)
+![Expected cost per day for different values of S and s, from the paper.](img/case_study_pharma_files/case_study_pharma_fin.png)
 
-<small>Image source: [link](https://informs-sim.org/wsc21papers/232.pdf).</small>
+<small>Image source, the [paper](https://informs-sim.org/wsc21papers/232.pdf).</small>
