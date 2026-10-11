@@ -1106,14 +1106,19 @@ class PeriodicReplenishment(InventoryReplenishment):
 
 class SupplierSelectionPolicy(InfoMixin, NamedEntity):
     """
-    Defines the framework for supplier selection strategies in the supply chain.
+    The base for all supplier-selection policies: the rules a site follows to choose which of its suppliers
+    receives a replenishment order.
 
-    Supports two modes:
-    (1) "dynamic": Supplier selection is flexible and can change based on real-time conditions.
-    (2) "fixed": Always selects a pre-assigned supplier.
+    A site reaches each of its suppliers over a link, so the policy works with links: the site's suppliers are
+    the links in `node.suppliers`, and `select` returns the link to the chosen supplier (the supplier itself is
+    `link.source`).
 
-    The policy is applied at the node level, and this class serves as a base for implementing custom supplier selection policies.
-    The 'select' method must be overridden in subclasses to define specific supplier selection logic.
+    There are two modes:
+    (1) "dynamic": the supplier is chosen afresh for every replenishment order.
+    (2) "fixed": the first supplier chosen is remembered and used for every later order (another one is used
+        only while the link to the remembered supplier is disrupted).
+
+    Each policy is a subclass that overrides the `select` method with its own rule.
 
     Parameters:
         node (object): Node for which the supplier selection policy is applied.
@@ -1123,12 +1128,12 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
         _info_keys (list): List of keys to include in the info dictionary.
         node (object): Node for which the supplier selection policy is applied.
         mode (str): Supplier selection mode ("dynamic" or "fixed").
-        fixed_supplier (object): Fixed supplier if the mode is set to "fixed".
+        fixed_supplier (Link): In "fixed" mode, the link to the remembered supplier (None until the first choice).
 
     Functions:
         __init__: Initializes the supplier selection policy object.
-        select: Supplier selection logic to be implemented by subclasses.
-        validate_suppliers: Validates that the node has at least one connected supplier.
+        select: The policy's rule for choosing a supplier; each subclass overrides it.
+        validate_suppliers: Checks that the node has at least one supplier.
     """
     _info_keys = ["node", "mode"]
 
@@ -1144,7 +1149,7 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
             _info_keys (list): List of keys to include in the info dictionary.
             node (object): Node for which the supplier selection policy is applied.
             mode (str): Supplier selection mode ("dynamic" or "fixed").
-            fixed_supplier (object): Fixed supplier if the mode is set to "fixed".
+            fixed_supplier (Link): In "fixed" mode, the link to the remembered supplier (None until the first choice).
 
         Returns:
             None
@@ -1165,10 +1170,10 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
 
     def select(self, order_quantity):
         """
-        Supplier selection logic to be implemented by subclasses.
+        The policy's rule for choosing a supplier. Each subclass overrides this method.
 
         Parameters:
-            order_quantity (float): Quantity to be ordered.
+            order_quantity (float): Units in the replenishment order.
 
         Returns:
             None
@@ -1177,7 +1182,7 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
 
     def validate_suppliers(self):
         """
-        Validates that the node has at least one connected supplier.
+        Checks that the node has at least one supplier (a link into it).
 
         Returns:
             None
@@ -1188,36 +1193,35 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
 
     def _active_suppliers(self):
         """
-        Return only the suppliers whose transport link is working right now. If
-        every link is down, return the full supplier list instead, so the
-        calling policy always has at least one option to choose from. In that
-        case ``process_order`` will refuse to send the order over the down link
-        and the policy will try again the next time replenishment is triggered.
+        Return the links to the suppliers whose link is not disrupted right now.
+        If every link is disrupted, return all of them instead, so the calling
+        policy always has at least one to choose from. In that case
+        ``process_order`` will not send the order over the disrupted link, and
+        the replenishment policy will try again at its next check.
 
         Returns:
-            list: Suppliers with a working link (``Link`` objects), or all
-                suppliers if none are working.
+            list: The links that are not disrupted, or all links if every one is.
         """
         active = [s for s in self.node.suppliers if s.status == "active"]
         return active if active else self.node.suppliers
 
     def _apply_mode(self, selected):
         """
-        Apply the "fixed" or "dynamic" behavior to a freshly chosen supplier.
+        Apply the "fixed" or "dynamic" mode to a freshly chosen supplier.
 
-        In ``"fixed"`` mode the first chosen supplier is remembered and reused on
-        later calls. But if that remembered supplier's link is currently down,
-        the policy temporarily uses ``selected`` for this call (without
-        forgetting the remembered one) — "fixed" means *prefer this supplier*,
-        not *stop shipping when it is down*. The remembered supplier is used
-        again as soon as its link comes back.
+        In ``"fixed"`` mode the first chosen supplier is remembered and used for
+        later orders. But if the link to the remembered supplier is disrupted,
+        the policy uses ``selected`` for this order instead (without forgetting
+        the remembered one): "fixed" means *prefer this supplier*, not *stop
+        ordering while its link is disrupted*. The remembered supplier is used
+        again as soon as its link recovers.
 
         Parameters:
-            selected (Link): The supplier chosen by the subclass's own logic.
+            selected (Link): The link to the supplier chosen by the subclass's own rule.
 
         Returns:
-            Link: the remembered supplier in fixed mode (or ``selected`` if the
-                remembered one's link is down); ``selected`` in dynamic mode.
+            Link: in fixed mode, the link to the remembered supplier (or ``selected``
+                while that link is disrupted); in dynamic mode, ``selected``.
         """
         if self.mode == "fixed":
             if self.fixed_supplier is None:
@@ -1229,10 +1233,11 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
 
 class SelectFirst(SupplierSelectionPolicy):
     """
-    Implements a supplier selection policy that always selects the first supplier in the supplier list.
+    A supplier-selection policy that chooses the first supplier in the node's list of suppliers (the order in
+    which the links were created), skipping suppliers whose link is disrupted.
 
-    In dynamic mode, the first supplier is selected at each order event.
-    In fixed mode, the first selected supplier is locked for all subsequent orders.
+    In dynamic mode, the choice is made afresh for each replenishment order.
+    In fixed mode (the default for this policy), the first choice is remembered and used for later orders.
 
     Parameters:
         node (object): Node to which this supplier selection policy applies.
@@ -1241,13 +1246,13 @@ class SelectFirst(SupplierSelectionPolicy):
     Attributes:
         node (object): Node to which this policy applies.
         mode (str): Supplier selection mode.
-        fixed_supplier (object): Locked supplier if mode is "fixed".
+        fixed_supplier (Link): In "fixed" mode, the link to the remembered supplier.
         name (str): Name of the selection policy.
         _info_keys (list): List of keys to include in the info dictionary.
 
     Functions:
         __init__: Initializes the selection policy with node and mode.
-        select: Selects the first supplier, either dynamically or as a fixed supplier.
+        select: Chooses the first supplier whose link is not disrupted.
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
 
@@ -1271,23 +1276,23 @@ class SelectFirst(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the first supplier whose transport link is working right now.
+        Chooses the first supplier whose link is not disrupted right now.
 
-        Suppliers with a down link are skipped. If every link is down, the
-        policy falls back to the first supplier in the list (``process_order``
-        then refuses to send over the down link, and the policy tries again the
-        next time replenishment is triggered).
+        Suppliers whose link is disrupted are skipped. If every link is
+        disrupted, the policy chooses the first supplier in the list
+        (``process_order`` then does not send the order over the disrupted link,
+        and the replenishment policy tries again at its next check).
 
-        In dynamic mode, the choice is made fresh for each order. In fixed mode,
-        the first working supplier is remembered and reused; if its link later
-        goes down, the policy temporarily uses another working one without
-        forgetting the remembered supplier.
+        In dynamic mode, the choice is made afresh for each order. In fixed
+        mode, the first choice is remembered and used for later orders; while
+        its link is disrupted, the policy uses another supplier whose link is
+        not, without forgetting the remembered one.
 
         Parameters:
-            order_quantity (float): The quantity to order.
+            order_quantity (float): Units in the replenishment order.
 
         Returns:
-            object: The selected supplier.
+            Link: The link to the chosen supplier.
         """
         self.validate_suppliers()
         candidates = self._active_suppliers()
@@ -1296,10 +1301,11 @@ class SelectFirst(SupplierSelectionPolicy):
 
 class SelectAvailable(SupplierSelectionPolicy):
     """
-    Selects the first supplier that has sufficient available inventory to fulfill the requested order quantity.
+    A supplier-selection policy that chooses the first supplier whose inventory level can fill the whole order.
 
-    If no supplier can fully meet the order, it defaults to the first supplier in the list.
-    Supports both dynamic selection (evaluated at each order event) and fixed selection (locks the first selected supplier).
+    If no supplier can fill the whole order, it chooses the first supplier in the list. Suppliers whose link is
+    disrupted are skipped. In dynamic mode the choice is made afresh for each replenishment order; in fixed mode
+    the first choice is remembered and used for later orders.
 
     Parameters:
         node (object): Node to which this supplier selection policy applies.
@@ -1308,13 +1314,13 @@ class SelectAvailable(SupplierSelectionPolicy):
     Attributes:
         node (object): Node to which this policy applies.
         mode (str): Supplier selection mode.
-        fixed_supplier (object): Locked supplier if mode is "fixed".
+        fixed_supplier (Link): In "fixed" mode, the link to the remembered supplier.
         name (str): Name of the selection policy.
         _info_keys (list): List of keys to include in the info dictionary.
 
     Functions:
         __init__: Initializes the selection policy with node and mode.
-        select: Selects the first available supplier with sufficient inventory.
+        select: Chooses the first supplier whose inventory level can fill the whole order.
 
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
@@ -1339,24 +1345,25 @@ class SelectAvailable(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the first working supplier that has enough stock available.
+        Chooses the first supplier whose inventory level can fill the whole order.
 
-        Suppliers with a down link are skipped first. Among those left, it
-        chooses the first one whose stock can cover ``order_quantity``; if none
-        can, it falls back to the first working supplier (``process_order`` then
-        records the shortage as a supplier backorder). If every link is down, it
-        falls back to the first supplier in the list — which ``process_order``
-        will refuse to send to.
+        Suppliers whose link is disrupted are skipped first. Among those left,
+        it chooses the first one whose inventory level is at least
+        ``order_quantity``; if none is, it chooses the first of them (the order
+        then waits at that supplier until enough units arrive, and the supplier
+        records a shortage and a backorder). If every link is disrupted, it
+        chooses the first supplier in the list, and ``process_order`` does not
+        send the order over the disrupted link.
 
-        In fixed mode, the first choice is remembered and reused for later
-        orders. If its link later goes down, the policy temporarily uses another
-        working one without forgetting the remembered supplier.
+        In fixed mode, the first choice is remembered and used for later
+        orders. While its link is disrupted, the policy uses another supplier
+        whose link is not, without forgetting the remembered one.
 
         Parameters:
-            order_quantity (float): The quantity to order.
+            order_quantity (float): Units in the replenishment order.
 
         Returns:
-            object: The selected supplier.
+            Link: The link to the chosen supplier.
         """
         self.validate_suppliers()
         candidates = self._active_suppliers()
@@ -1366,10 +1373,11 @@ class SelectAvailable(SupplierSelectionPolicy):
 
 class SelectCheapest(SupplierSelectionPolicy):
     """
-    Selects the supplier offering the lowest transportation cost for the order.
+    A supplier-selection policy that chooses the supplier with the lowest transportation cost (the `cost` of
+    the link to it).
 
-    The supplier is chosen based on the minimum transportation cost among all connected suppliers.
-    Supports both dynamic selection (evaluated at each order event) and fixed selection (locks the first selected supplier).
+    Suppliers whose link is disrupted are skipped. In dynamic mode the choice is made afresh for each
+    replenishment order; in fixed mode the first choice is remembered and used for later orders.
 
     Parameters:
         node (object): Node to which this supplier selection policy applies.
@@ -1378,13 +1386,13 @@ class SelectCheapest(SupplierSelectionPolicy):
     Attributes:
         node (object): Node to which this policy applies.
         mode (str): Supplier selection mode.
-        fixed_supplier (object): Locked supplier if mode is "fixed".
+        fixed_supplier (Link): In "fixed" mode, the link to the remembered supplier.
         name (str): Name of the selection policy.
         _info_keys (list): List of keys to include in the info dictionary.
 
     Functions:
         __init__: Initializes the supplier selection policy.
-        select: Selects the supplier with the lowest transportation cost.
+        select: Chooses the supplier with the lowest transportation cost.
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
 
@@ -1408,22 +1416,22 @@ class SelectCheapest(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the working supplier with the lowest transportation cost.
+        Chooses the supplier with the lowest transportation cost.
 
-        Suppliers with a down link are skipped first; if every link is down, the
-        policy falls back to the cheapest of all suppliers (``process_order``
-        then refuses to send over the down link, and the policy tries again on
-        the next trigger).
+        Suppliers whose link is disrupted are skipped first. If every link is
+        disrupted, the policy chooses the cheapest of all suppliers
+        (``process_order`` then does not send the order over the disrupted link,
+        and the replenishment policy tries again at its next check).
 
-        In fixed mode, the first choice is remembered and reused for later
-        orders. If its link later goes down, the policy temporarily uses another
-        working one without forgetting the remembered supplier.
+        In fixed mode, the first choice is remembered and used for later
+        orders. While its link is disrupted, the policy uses another supplier
+        whose link is not, without forgetting the remembered one.
 
         Parameters:
-            order_quantity (float): The quantity to order.
+            order_quantity (float): Units in the replenishment order.
 
         Returns:
-            object: The selected supplier.
+            Link: The link to the chosen supplier.
         """
         self.validate_suppliers()
         candidates = self._active_suppliers()
@@ -1432,11 +1440,12 @@ class SelectCheapest(SupplierSelectionPolicy):
 
 class SelectFastest(SupplierSelectionPolicy):
     """
-    Selects the supplier with the shortest lead time to deliver the product.
+    A supplier-selection policy that chooses the supplier with the shortest lead time.
 
-    The selection is based on minimizing lead time among all connected suppliers.
-    Supports both dynamic selection (evaluated at each order event) and fixed selection (locks the first 
-    selected supplier for all subsequent orders).
+    The lead time of each link is drawn once when the choice is made, so if lead times are random, the choice
+    can differ from one order to the next. Suppliers whose link is disrupted are skipped. In dynamic mode the
+    choice is made afresh for each replenishment order; in fixed mode the first choice is remembered and used
+    for later orders.
 
     Parameters:
         node (object): Node to which this supplier selection policy applies.
@@ -1445,13 +1454,13 @@ class SelectFastest(SupplierSelectionPolicy):
     Attributes:
         node (object): Node to which this policy applies.
         mode (str): Supplier selection mode ("dynamic" or "fixed").
-        fixed_supplier (object): Locked supplier if mode is "fixed".
+        fixed_supplier (Link): In "fixed" mode, the link to the remembered supplier.
         name (str): Name of the selection policy.
         _info_keys (list): List of keys to include in the info dictionary.
 
     Functions:
         __init__: Initializes the supplier selection policy and sets the selection mode.
-        select: Selects the supplier with the shortest lead time based on the configured mode.
+        select: Chooses the supplier with the shortest lead time.
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
 
@@ -1475,22 +1484,22 @@ class SelectFastest(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Selects the working supplier with the shortest lead time.
+        Chooses the supplier with the shortest lead time.
 
-        Suppliers with a down link are skipped first; if every link is down, the
-        policy falls back to the fastest of all suppliers (``process_order`` then
-        refuses to send over the down link, and the policy tries again on the
-        next trigger).
+        Suppliers whose link is disrupted are skipped first. If every link is
+        disrupted, the policy chooses the fastest of all suppliers
+        (``process_order`` then does not send the order over the disrupted link,
+        and the replenishment policy tries again at its next check).
 
-        In fixed mode, the first choice is remembered and reused for later
-        orders. If its link later goes down, the policy temporarily uses another
-        working one without forgetting the remembered supplier.
+        In fixed mode, the first choice is remembered and used for later
+        orders. While its link is disrupted, the policy uses another supplier
+        whose link is not, without forgetting the remembered one.
 
         Parameters:
-            order_quantity (float): The quantity to order.
+            order_quantity (float): Units in the replenishment order.
 
         Returns:
-            object: The selected supplier.
+            Link: The link to the chosen supplier.
         """
         self.validate_suppliers()
         candidates = self._active_suppliers()
