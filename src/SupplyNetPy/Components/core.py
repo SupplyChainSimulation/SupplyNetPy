@@ -2326,50 +2326,53 @@ class _InventoryContainer(simpy.Container):
 
 class Inventory(NamedEntity, InfoMixin):
     """
-    The Inventory class models stock management within a node in the supply network. 
-    It supports both perishable and non-perishable items, enforces capacity limits, 
-    tracks on-hand levels, and notifies replenishment policy whenever inventory levels drops.
-    For perishable inventories, it manages product shelf life and automatically removes expired items. 
-    The class also records inventory levels and calculates carrying costs over time.
+    The `Inventory` class holds the units at a node and its records about them. It keeps the inventory level
+    within the capacity, keeps the inventory position (``on_hand``), and tells the node when its inventory drops,
+    so that its replenishment policy can check whether to order. For perishable goods it keeps the list of
+    batches and throws away expired units. It also works out the holding cost, and can record the inventory
+    level once per time unit.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
-        capacity (float): Maximum capacity of the inventory.
-        initial_level (float): Initial inventory level.
+        capacity (float): The largest inventory level the node can hold.
+        initial_level (float): Inventory level at the start.
         node (Node): Node to which this inventory belongs.
-        replenishment_policy (InventoryReplenishment): Replenishment policy for the inventory.
-        holding_cost (float): Holding cost per unit per time period.
-        shelf_life (float): Shelf life for perishable items.
+        replenishment_policy (InventoryReplenishment): The node's replenishment policy.
+        holding_cost (float): Holding cost per unit per time unit.
+        shelf_life (float): Shelf life of perishable goods, in time units.
         inv_type (str): Type of the inventory, either "non-perishable" or "perishable".
-        record_inv_levels (bool): Flag to enable recording of inventory levels over time.
+        record_inv_levels (bool): If True, record the inventory level once per time unit (in ``instantaneous_levels``).
 
     Attributes:
         _info_keys (list): Keys included in the information dictionary.
         _stats_keys (list): Keys included in the statistics dictionary.
         env (simpy.Environment): Simulation environment.
-        capacity (float): Maximum inventory capacity.
-        init_level (float): Initial inventory level.
+        capacity (float): The largest inventory level the node can hold.
+        init_level (float): Inventory level at the start.
         level (float): Current inventory level.
-        on_hand (float): Current on-hand inventory.
+        on_hand (float): Despite its name, not the units physically here: the inventory position before units owed to waiting customers are taken off (inventory level, plus units in transit, minus units owed to other sites). See ``Node.position``.
         inv_type (str): Inventory type ("non-perishable" or "perishable").
-        holding_cost (float): Holding cost per unit.
-        carry_cost (float): Total accumulated carrying cost.
-        replenishment_policy (InventoryReplenishment): Inventory replenishment policy.
-        inventory (simpy.Container): SimPy container managing inventory levels.
-        last_update_t (float): Last timestamp when carrying cost was updated.
-        shelf_life (float): Shelf life of perishable items (if applicable).
-        perish_queue (list): ``heapq`` min-heap of perishable batches as ``(manufacturing_date, quantity)`` tuples. Index 0 is always the oldest batch (earliest to expire). ``put`` adds a batch with ``heapq.heappush``; a batch leaves the list (oldest first) at the moment its units leave the shelf, so the list always matches the units on the shelf.
-        perish_changed (simpy.Event): Wake-up signal for the ``remove_expired`` daemon. ``put`` succeeds it when an inserted batch displaces the heap head (or arrives into an empty queue), so the daemon recomputes the next expiry instead of polling. Rotated on each wake-up.
-        waste (float): Total quantity of expired items.
-        instantaneous_levels (list): Recorded inventory levels over time.
+        holding_cost (float): Holding cost per unit per time unit.
+        carry_cost (float): Holding cost so far.
+        replenishment_policy (InventoryReplenishment): The node's replenishment policy.
+        inventory (simpy.Container): The SimPy container that holds the units (an ``_InventoryContainer``).
+        last_update_t (float): Time of the last holding-cost update.
+        shelf_life (float): Shelf life of perishable goods, in time units (perishable goods only).
+        perish_queue (list): The list of batches, as ``(manufacturing_date, quantity)`` tuples, kept as a heap (Python's ``heapq``) so the oldest batch (the first to expire) is always at index 0. ``put`` adds a batch; a batch leaves the list (oldest first) at the moment its units leave the inventory, so the list always adds up to the inventory level.
+        perish_changed (simpy.Event): Wake-up signal for ``remove_expired``. ``put`` fires it when a new batch becomes the oldest one (or arrives while the list is empty), so ``remove_expired`` works out the next expiry again instead of checking every time unit. Replaced with a fresh event on each wake-up.
+        waste (float): Expired units thrown away so far.
+        instantaneous_levels (list): ``(time, inventory level)`` pairs, recorded once per time unit if ``record_inv_levels`` is True.
 
     Functions:
         __init__: Initializes the inventory object.
-        record_inventory_levels: Records inventory levels at regular time intervals.
-        put: Adds items to the inventory, handling perishable item tracking.
-        get: Removes items from inventory, using FIFO for perishables.
-        remove_expired: Automatically removes expired items from perishable inventory.
-        update_carry_cost: Updates carrying cost based on inventory level and holding time.
+        waiting_orders: Units asked for by orders still waiting at this inventory.
+        waiting_site_orders: The same, for replenishment orders from other sites only.
+        record_inventory_levels: Records the inventory level once per time unit.
+        put: Adds units (for perishable goods, as a new batch with its manufacturing date).
+        get: Takes units out for an order (oldest batch first, for perishable goods).
+        remove_expired: Throws away expired units (perishable goods only).
+        update_carry_cost: Adds the holding cost since the last update.
+        destroy: Removes units lost in a disruption.
     """
     _info_keys = ["capacity", "initial_level", "replenishment_policy", "holding_cost", "shelf_life", "inv_type"]
     _stats_keys = ["level", "carry_cost", "instantaneous_levels"]
@@ -2389,32 +2392,33 @@ class Inventory(NamedEntity, InfoMixin):
         
         Parameters:
             env (simpy.Environment): Simulation environment.
-            capacity (float): Maximum capacity of the inventory.
-            initial_level (float): Initial inventory level.
+            capacity (float): The largest inventory level the node can hold.
+            initial_level (float): Inventory level at the start.
             node (Node): Node to which this inventory belongs.
-            replenishment_policy (InventoryReplenishment): Replenishment policy for the inventory.
-            holding_cost (float): Holding cost per unit per time period.
-            shelf_life (float): Shelf life for perishable items.
+            replenishment_policy (InventoryReplenishment): The node's replenishment policy.
+            holding_cost (float): Holding cost per unit per time unit.
+            shelf_life (float): Shelf life of perishable goods, in time units.
             inv_type (str): Type of the inventory, either "non-perishable" or "perishable".
+            record_inv_levels (bool): If True, record the inventory level once per time unit.
 
         Attributes:
             _info_keys (list): Keys included in the information dictionary.
             _stats_keys (list): Keys included in the statistics dictionary.
             env (simpy.Environment): Simulation environment.
-            capacity (float): Maximum inventory capacity.
-            init_level (float): Initial inventory level.
+            capacity (float): The largest inventory level the node can hold.
+            init_level (float): Inventory level at the start.
             level (float): Current inventory level.
-            on_hand (float): Current on-hand inventory.
+            on_hand (float): Despite its name, not the units physically here: the inventory position before units owed to waiting customers are taken off (inventory level, plus units in transit, minus units owed to other sites). See ``Node.position``.
             inv_type (str): Inventory type ("non-perishable" or "perishable").
-            holding_cost (float): Holding cost per unit.
-            carry_cost (float): Total accumulated carrying cost.
-            replenishment_policy (InventoryReplenishment): Inventory replenishment policy.
-            inventory (simpy.Container): SimPy container managing inventory levels.
-            last_update_t (float): Last timestamp when carrying cost was updated.
-            shelf_life (float): Shelf life of perishable items (if applicable).
-            perish_queue (list): ``heapq`` min-heap of perishable batches as ``(manufacturing_date, quantity)`` tuples. Index 0 is always the oldest batch (earliest to expire). ``put`` adds a batch with ``heapq.heappush``; a batch leaves the list (oldest first) at the moment its units leave the shelf, so the list always matches the units on the shelf.
-            waste (float): Total quantity of expired items.
-            instantaneous_levels (list): Recorded inventory levels over time.
+            holding_cost (float): Holding cost per unit per time unit.
+            carry_cost (float): Holding cost so far.
+            replenishment_policy (InventoryReplenishment): The node's replenishment policy.
+            inventory (simpy.Container): The SimPy container that holds the units (an ``_InventoryContainer``).
+            last_update_t (float): Time of the last holding-cost update.
+            shelf_life (float): Shelf life of perishable goods, in time units (perishable goods only).
+            perish_queue (list): The list of batches, as ``(manufacturing_date, quantity)`` tuples, kept as a heap (Python's ``heapq``) so the oldest batch (the first to expire) is always at index 0. ``put`` adds a batch; a batch leaves the list (oldest first) at the moment its units leave the inventory, so the list always adds up to the inventory level.
+            waste (float): Expired units thrown away so far.
+            instantaneous_levels (list): ``(time, inventory level)`` pairs, recorded once per time unit.
 
         Returns:
             None
@@ -2439,22 +2443,22 @@ class Inventory(NamedEntity, InfoMixin):
         validate_non_negative("Shelf life", shelf_life)
         self.env = env
         self.init_level = initial_level
-        self.on_hand = initial_level # current inventory level
+        self.on_hand = initial_level # the inventory position (see on_hand above); starts at the initial level
         self.inv_type = inv_type
         self.holding_cost = holding_cost
-        self.carry_cost = 0 # initial carrying cost based on the initial inventory level
+        self.carry_cost = 0 # holding cost so far
         self.replenishment_policy = replenishment_policy
         # The SimPy container that holds the units. For perishable goods it
         # picks the batches for each order at the moment the units leave the
         # inventory (see _InventoryContainer).
         self.inventory = _InventoryContainer(env=self.env, capacity=capacity, init=self.init_level,
                                 pick_batches=self._pick_oldest_batches)
-        self.last_update_t = self.env.now # last time the carrying cost was updated
+        self.last_update_t = self.env.now # last time the holding cost was updated
         
         if self.inv_type == "perishable":
             validate_positive("Shelf life", shelf_life)
             self.shelf_life = shelf_life
-            self.perish_queue = [(0, initial_level)]
+            self.perish_queue = [(0, initial_level)]  # the initial units count as made at time 0
             self.waste = 0
             # Wake-up signal for the ``remove_expired`` helper. ``put`` fires
             # this event when a newly added batch becomes the oldest one (so the
@@ -2465,54 +2469,53 @@ class Inventory(NamedEntity, InfoMixin):
 
         self.instantaneous_levels = []
         if record_inv_levels:
-            self.env.process(self.record_inventory_levels())  # record inventory levels at regular intervals
+            self.env.process(self.record_inventory_levels())  # record the inventory level once per time unit
 
     @property
     def level(self):
-        """Current inventory level, delegating to the underlying SimPy container."""
+        """Current inventory level, read from the SimPy container that holds the units."""
         return self.inventory.level
 
     @property
     def capacity(self):
-        """Inventory capacity, delegating to the underlying SimPy container."""
+        """The largest inventory level the node can hold, read from the SimPy container."""
         return self.inventory.capacity
 
     def waiting_orders(self):
         """
-        How many units are asked for by requests still waiting at the shelf.
+        How many units are asked for by orders still waiting at this inventory.
 
-        A request the shelf cannot fill right away (for example, a site's order
-        bigger than the stock on hand) joins a line and is served, in turn, when
-        enough stock arrives. Requests are served strictly in the order they
-        arrived, so a request can also wait behind an earlier one. Besides
-        orders from other sites, the line can hold other requests made with
-        `get`. All of these units have already been taken off `on_hand` but
-        have not left the shelf yet. (Expired goods and destroyed stock never
-        wait in this line: they are removed at once.)
+        An order the inventory cannot fill right away (for example, a
+        replenishment order bigger than the inventory level) joins a line and
+        is served, in turn, when enough units arrive. Orders are served strictly
+        in the order they arrived, so an order can also wait behind an earlier
+        one. Besides replenishment orders from other sites, the line can hold
+        other orders made with `get`. All of these units have already been
+        taken off `on_hand` but have not left the inventory yet. (Expired and
+        destroyed units never wait in this line: they are removed at once.)
 
         Returns:
-            float: the total of all requests still waiting, or 0 if none are waiting.
+            float: the units asked for by all waiting orders, or 0 if none are waiting.
         """
         return sum(request.amount for request in self.inventory.get_queue)
 
     def waiting_site_orders(self):
         """
-        How many units are owed to other sites whose orders are still waiting at the shelf.
+        How many units are owed to other sites whose replenishment orders are still waiting at this inventory.
 
-        Only the requests made with `get(..., site_order=True)` count, so other
-        waiting requests are left out. These
-        are the orders that also appear in the node's backorders.
+        Only the orders made with `get(..., site_order=True)` count. These
+        orders are also part of the node's backorders.
 
         Returns:
-            float: the total of the waiting orders from other sites, or 0 if none are waiting.
+            float: the units asked for by the waiting replenishment orders from other sites, or 0 if none are waiting.
         """
         return sum(request.amount for request in self.inventory.get_queue
                    if getattr(request, "site_order", False))
 
     def record_inventory_levels(self):
         """
-        Record inventory levels at regular intervals.
-        
+        Record the inventory level once per time unit, in ``instantaneous_levels``.
+
         Parameters:
             None
         
@@ -2528,24 +2531,25 @@ class Inventory(NamedEntity, InfoMixin):
 
     def put(self, amount: float, manufacturing_date: float = None):
         """
-        Add items to inventory. For perishable items, tracks manufacturing date.
+        Add units to the inventory. For perishable goods, they are added as a new
+        batch with their manufacturing date.
 
         Parameters:
-            amount (float): amount to add
-            manufacturing_date (float): only required for perishable inventories
+            amount (float): units to add
+            manufacturing_date (float): the units' manufacturing date (needed for perishable goods only)
 
         Returns:
-            float: the amount actually accepted into inventory. May be less than
-                the requested ``amount`` when the inventory is at/near capacity, and
-                0 when the inventory is infinite, already full, or ``amount <= 0``.
-                Callers that track ``on_hand`` must reconcile any shortfall
-                (``requested - accepted``) against their bookkeeping.
+            float: the units actually accepted. Less than ``amount`` when they do
+                not all fit within the capacity, and 0 when the inventory is
+                infinite, already full, or ``amount <= 0``. Callers that keep
+                ``on_hand`` must take any shortfall (``requested - accepted``)
+                back off it.
         """
-        # Use ``>=``, not ``==``. When we fill the shelf exactly to capacity,
-        # floating-point rounding can leave the level a hair ABOVE capacity
-        # (e.g. 99.99000000000001 for a capacity of 99.99). A plain
+        # Use ``>=``, not ``==``. When the inventory is filled exactly to
+        # capacity, floating-point rounding can leave the level a hair ABOVE
+        # capacity (e.g. 99.99000000000001 for a capacity of 99.99). A plain
         # ``== capacity`` check would miss that case, so ``>=`` is used to
-        # correctly spot an already-full shelf.
+        # correctly spot an inventory that is already full.
         if self.inventory.level == float('inf') or amount <= 0 or self.inventory.level >= self.capacity:
             return 0
 
@@ -2555,7 +2559,7 @@ class Inventory(NamedEntity, InfoMixin):
             # Safety net: if the rounding above left the level just over
             # capacity, this leftover space comes out as zero or negative.
             # SimPy's Container.put rejects a non-positive amount with an error,
-            # so we treat the shelf as already full and simply accept nothing.
+            # so we treat the inventory as already full and simply accept nothing.
             if amount <= 0:
                 return 0
             self.node.logger.warning(f"Inventory capacity exceeded. Only {amount} of {old_amount} units added to inventory.")
@@ -2566,18 +2570,17 @@ class Inventory(NamedEntity, InfoMixin):
                 raise ValueError("Manufacturing date must be provided for perishable inventory.")
             # ``perish_queue`` is a heap ordered by manufacturing date, so the
             # oldest batch (the first to expire) is always at position 0. Adding
-            # a batch with ``heapq.heappush`` is fast; the earlier hand-sorted
-            # insert was slower.
+            # a batch with ``heapq.heappush`` is fast.
             new_batch = (manufacturing_date, amount)
             heapq.heappush(self.perish_queue, new_batch)
-            # Only wake the ``remove_expired`` helper when this new batch becomes
-            # the oldest one (position 0) — either because the queue was empty,
-            # or because this batch is older than everything already stored. For
-            # ordinary restocks (newer dates than what's there) the oldest batch
-            # does not change, so the helper is left alone.
+            # Only wake ``remove_expired`` when this new batch becomes the oldest
+            # one (position 0) — either because the list was empty, or because
+            # this batch is older than every batch already there. For ordinary
+            # deliveries (newer dates than what is there) the oldest batch does
+            # not change, so ``remove_expired`` is left alone.
             if self.perish_queue[0] is new_batch and not self.perish_changed.triggered:
                 self.perish_changed.succeed()
-        self.update_carry_cost()  # Update carrying cost based on the amount added
+        self.update_carry_cost()  # add the holding cost up to now, before the level changes
         self.inventory.put(amount)
         if(not self.node.inventory_raised.triggered):
             self.node.inventory_raised.succeed()  # signal that inventory has been raised
@@ -2678,36 +2681,36 @@ class Inventory(NamedEntity, InfoMixin):
 
     def remove_expired(self):
         """
-        Remove expired items from perishable inventory.
+        Throw away expired units (perishable goods only).
 
-        This runs as a background helper. Instead of checking on every time
-        step, it sleeps exactly until the oldest batch is due to expire. It
-        wakes up early through the ``perish_changed`` event when ``put`` adds a
-        batch that becomes the new oldest one (or arrives into an empty queue),
-        so a batch that expires sooner is handled without waiting for the old
-        timer. After each wake-up it creates a fresh ``perish_changed`` event so
+        This runs as a SimPy process for the whole simulation. Instead of
+        checking every time unit, it sleeps exactly until the oldest batch is
+        due to expire. It wakes up early through the ``perish_changed`` event
+        when ``put`` adds a batch that becomes the new oldest one (or arrives
+        while the list is empty), so a batch that expires sooner is handled
+        without waiting for the old timer. After each wake-up it creates a fresh ``perish_changed`` event so
         an already-used one cannot fire again by mistake — the same pattern as
         ``Node.wait_for_drop``.
         """
         while True:
             if not self.perish_queue:
-                # Nothing to expire — block until the next put signals a head.
+                # Nothing to expire: wait until ``put`` adds a batch.
                 yield self.perish_changed
                 self.perish_changed = self.env.event()
                 continue
             # The oldest batch sits at position 0 of the heap, so one look is
             # enough to find when the next expiry is due. ``max(0, ...)`` keeps
             # the sleep time from going negative for a batch whose expiry time
-            # has already passed (e.g. one given an old made-on date).
+            # has already passed (e.g. one given an old manufacturing date).
             next_expiry = self.perish_queue[0][0] + self.shelf_life
             sleep_dt = max(0, next_expiry - self.env.now)
             timer = self.env.timeout(sleep_dt)
             result = yield timer | self.perish_changed
             if self.perish_changed in result:
-                # A new oldest batch arrived (or the queue went from empty to
-                # non-empty). Make a fresh event and start over from the new
+                # A new oldest batch arrived (or the list was empty and now has
+                # a batch). Make a fresh event and start over from the new
                 # oldest batch — even if the timer also fired, the next loop will
-                # see a sleep time of 0 and remove expired items right away.
+                # see a sleep time of 0 and remove the expired units right away.
                 self.perish_changed = self.env.event()
                 continue
             # The timer fired — remove every batch that has now expired. The
@@ -2731,22 +2734,25 @@ class Inventory(NamedEntity, InfoMixin):
                     self.update_carry_cost()
                     removed = self.inventory.remove_now(qty)  # and the same units out of the inventory
                     self.on_hand -= removed
-                    self.waste += removed  # update waste statistics
+                    self.waste += removed  # expired units thrown away so far
                     self.node.logger.info(f"{self.env.now:.4f}: {removed} units expired (Mgf date:{mfg_date}).")
                     self._signal_inventory_drop()
 
     def update_carry_cost(self):
         """
-        Update the carrying cost of the inventory based on the current level and holding cost.
+        Add the holding cost since the last update: inventory level × time units
+        since then × holding cost per unit per time unit. It is called before
+        every change of the inventory level, so each stretch of time is charged
+        at the level the inventory really had.
         """
         carry_period = self.env.now - self.last_update_t
-        self.carry_cost += self.inventory.level * (carry_period) * self.holding_cost  # update the carrying cost based on the current inventory level
+        self.carry_cost += self.inventory.level * (carry_period) * self.holding_cost  # holding cost for the time since the last update
         self.last_update_t = self.env.now  # update the last update time
 
     def destroy(self, amount: float = None, reason: str = "disruption") -> float:
         """
-        Wipe inventory at the current sim time, modeling physical loss from a
-        disruption event (natural disaster, contamination, theft, etc.).
+        Destroy units now, for a physical loss in a disruption (natural
+        disaster, contamination, theft, etc.).
 
         Removes the units right away, even when orders are waiting,
         so the caller (usually a ``Node`` disruption handler) sees the new
@@ -2760,30 +2766,30 @@ class Inventory(NamedEntity, InfoMixin):
         as it does whenever its inventory drops) and a manufacturer (which can
         make more now that there is free capacity).
 
-        For perishable inventory the oldest batches in ``perish_queue`` are used
-        up first (oldest-out), the same as ``get``: destroying only part of the
-        oldest batch lowers its quantity but keeps its made-on date. ``waste``
-        (which counts only shelf-life expiry) is left unchanged — destruction is
-        tracked separately, via ``Statistics.destroyed_qty`` /
-        ``destroyed_value``, which the caller fills in.
+        For perishable goods the oldest batches are destroyed first, the same as
+        for orders: destroying part of the oldest batch lowers its quantity but
+        keeps its manufacturing date. ``waste`` (which counts only expired
+        units) is left unchanged — destroyed units are counted separately, in
+        ``Statistics.destroyed_qty`` / ``destroyed_value``, which the caller
+        fills in.
 
-        For infinite inventory (``level == float('inf')``) this does nothing: an
-        ``infinite_supplier`` stands for an endless supply of raw material, not a
-        real pile that can be destroyed.
+        For an infinite supplier (``level == float('inf')``) this does nothing:
+        it stands for an unlimited supply of raw material, not a real pile that
+        can be destroyed.
 
         Parameters:
-            amount (float, optional): Quantity to destroy. ``None`` (default)
-                removes the entire current ``level``. Values larger than the
-                current level are reduced to it. Zero or negative values do
-                nothing.
+            amount (float, optional): Units to destroy. ``None`` (default)
+                destroys all units (the whole inventory level). Values larger
+                than the inventory level are reduced to it. Zero or negative
+                values do nothing.
             reason (str, optional): Free-form label written to the per-node
                 logger so the trace makes the distinction between expiry,
                 consumption, and destruction visible. Default ``"disruption"``.
 
         Returns:
-            float: The quantity actually removed (``0`` for the no-op cases
-            above). Callers typically multiply this by a unit cost to record
-            ``destroyed_value`` on ``Statistics``.
+            float: The units actually destroyed (``0`` in the cases above where
+            nothing happens). Callers usually multiply this by the value of one
+            unit to record ``destroyed_value`` on ``Statistics``.
         """
         if self.inventory.level == float('inf'):
             return 0  # infinite_supplier — nothing physical to destroy
@@ -2794,8 +2800,8 @@ class Inventory(NamedEntity, InfoMixin):
         if amount <= 0:
             return 0
 
-        # Capture carrying cost up to the destruction moment so the cost
-        # series doesn't keep accruing against units that no longer exist.
+        # Add the holding cost up to now, so the destroyed units are not
+        # charged holding cost afterwards.
         self.update_carry_cost()
 
         # Destroy the oldest batches first (perishable goods only), and take the
