@@ -2,6 +2,8 @@ from SupplyNetPy.Components.logger import GlobalLogger
 import enum
 import heapq
 import simpy
+from simpy.core import BoundClass
+from simpy.resources.container import ContainerGet
 import copy
 import random
 import numbers
@@ -2178,6 +2180,127 @@ class Link(NamedEntity, InfoMixin):
         """
         return self.source.inventory.level
 
+class _ShelfRequest(ContainerGet):
+    """
+    One request to take units off a `_Shelf` (internal helper for `Inventory`).
+
+    `Inventory.get` creates one of these for every order, customer purchase
+    or other request. On top of what SimPy keeps for every request (mainly
+    the amount asked for), it carries two labels:
+
+    - ``site_order``: True when the request is an order from another site.
+      `Inventory.waiting_site_orders` uses it to tell those orders apart from
+      other requests waiting in line.
+    - ``batches``: the dated batches ``(manufacturing_date, quantity)`` the
+      units came from, for perishable goods. It starts empty and is filled in
+      by `_Shelf._do_get` at the moment the units leave the shelf (see
+      `_Shelf` for why). For goods that are not perishable it stays empty.
+    """
+
+    def __init__(self, shelf, amount, site_order=False):
+        # These must be set before SimPy's own setup below: if the shelf has
+        # enough stock, SimPy hands the units out during that setup, and
+        # `_Shelf._do_get` then writes into `batches`.
+        self.site_order = site_order
+        self.batches = []
+        super().__init__(shelf, amount)
+
+class _Shelf(simpy.Container):
+    """
+    The shelf that holds an `Inventory`'s units (internal helper).
+
+    Every `Inventory` uses one, for perishable and non-perishable goods alike.
+    It is a ``simpy.Container`` with two additions. For goods that are not
+    perishable the first addition does nothing, so the shelf behaves exactly
+    like a plain ``simpy.Container``, apart from `take_now`.
+
+    **How a SimPy container hands out stock.** Asking for units creates a
+    request. If the shelf has enough units, SimPy takes them off at once.
+    If not, the request waits in a line (``get_queue``), and each time units
+    are added, SimPy goes through the line in order and serves every request
+    it now can. Whether a request is served at once or days later, the units
+    leave the shelf in one place: the method ``_do_get``.
+
+    **Why perishable goods need more.** A perishable inventory keeps two
+    records of the same stock: the number of units on this shelf, and the list
+    of dated batches (``Inventory.perish_queue``, oldest first). The two must
+    always agree. Picture a shelf holding 5 units made on day 0, and an order
+    for 20 that has to wait until 30 fresh units (made on day 2) arrive. When
+    it is served, the order must get the 5 old units and 15 of the new ones,
+    and both records must then say "15 units made on day 2". If the dates
+    were picked when the order was *placed*, the order would get dates for
+    only the 5 units on the shelf at that moment, and the two records would
+    no longer agree.
+
+    **Addition 1: the dates are picked in** ``_do_get``. At the same moment the
+    units leave the shelf, the same number of units is taken off the dated
+    list, oldest first, and stored on the request (`_ShelfRequest.batches`).
+    The picking itself is done by the inventory's own method
+    (`Inventory._take_oldest_batches`), passed in as ``pick_batches``; for
+    goods that are not perishable it returns an empty list.
+
+    **Addition 2:** `take_now` **removes units without waiting in line.** It is
+    for units that must leave the shelf right away, even when an order is
+    waiting: `Inventory.remove_expired` uses it to throw away expired goods,
+    and `Inventory.destroy` uses it to remove stock lost in a disruption
+    (perishable or not). An ordinary request would wait behind the waiting
+    order, so the units would stay on the shelf in the meantime: expired
+    goods could then be handed to that order, and destroyed stock would only
+    really disappear when the next delivery came in.
+
+    Parameters:
+        env (simpy.Environment): Simulation environment.
+        capacity (float): How many units the shelf can hold.
+        init (float): Units on the shelf at the start.
+        pick_batches (callable): Called as ``pick_batches(amount)`` each time
+            units leave the shelf. Takes that many units off the dated list,
+            oldest first, and returns them as a list of
+            ``(manufacturing_date, quantity)``.
+    """
+
+    # Make `get(...)` create a `_ShelfRequest` instead of SimPy's plain request.
+    get = BoundClass(_ShelfRequest)
+
+    def __init__(self, env, capacity, init, pick_batches):
+        super().__init__(env, capacity=capacity, init=init)
+        self._pick_batches = pick_batches
+
+    def _do_get(self, event):
+        # SimPy calls this to try to serve a request: straight away when the
+        # request is made, and again each time units are added while it waits.
+        # It is the same as simpy.Container._do_get, plus one line: the dated
+        # batches are picked here, at the moment the units leave the shelf.
+        if self._level >= event.amount:
+            self._level -= event.amount
+            event.batches.extend(self._pick_batches(event.amount))
+            event.succeed()
+            return True
+        return None  # not enough units yet: the request keeps waiting
+
+    def take_now(self, amount):
+        """
+        Remove units from the shelf at once, without waiting in line.
+
+        Used by `Inventory.remove_expired` (expired goods) and
+        `Inventory.destroy` (stock lost in a disruption). Requests already
+        waiting stay where they are and are served later, from later
+        deliveries. The caller takes the same units off the dated list
+        itself, so the two records still agree.
+
+        Parameters:
+            amount (float): units to remove; reduced to what is on the shelf.
+
+        Returns:
+            float: the units removed.
+        """
+        amount = min(amount, self._level)
+        if amount > 0:
+            # SimPy would normally check here whether a request waiting to
+            # *add* units can now go ahead. There never is one:
+            # Inventory.put never adds more than the free space.
+            self._level -= amount
+        return max(amount, 0)
+
 class Inventory(NamedEntity, InfoMixin):
     """
     The Inventory class models stock management within a node in the supply network. 
@@ -2212,7 +2335,7 @@ class Inventory(NamedEntity, InfoMixin):
         inventory (simpy.Container): SimPy container managing inventory levels.
         last_update_t (float): Last timestamp when carrying cost was updated.
         shelf_life (float): Shelf life of perishable items (if applicable).
-        perish_queue (list): ``heapq`` min-heap of perishable batches as ``(manufacturing_date, quantity)`` tuples. Index 0 is always the oldest batch (earliest to expire); ``put`` uses ``heapq.heappush`` and ``get`` / ``remove_expired`` use ``heapq.heappop``.
+        perish_queue (list): ``heapq`` min-heap of perishable batches as ``(manufacturing_date, quantity)`` tuples. Index 0 is always the oldest batch (earliest to expire). ``put`` adds a batch with ``heapq.heappush``; a batch leaves the list (oldest first) at the moment its units leave the shelf, so the list always matches the units on the shelf.
         perish_changed (simpy.Event): Wake-up signal for the ``remove_expired`` daemon. ``put`` succeeds it when an inserted batch displaces the heap head (or arrives into an empty queue), so the daemon recomputes the next expiry instead of polling. Rotated on each wake-up.
         waste (float): Total quantity of expired items.
         instantaneous_levels (list): Recorded inventory levels over time.
@@ -2266,7 +2389,7 @@ class Inventory(NamedEntity, InfoMixin):
             inventory (simpy.Container): SimPy container managing inventory levels.
             last_update_t (float): Last timestamp when carrying cost was updated.
             shelf_life (float): Shelf life of perishable items (if applicable).
-            perish_queue (list): ``heapq`` min-heap of perishable batches as ``(manufacturing_date, quantity)`` tuples. Index 0 is always the oldest batch (earliest to expire); ``put`` uses ``heapq.heappush`` and ``get`` / ``remove_expired`` use ``heapq.heappop``.
+            perish_queue (list): ``heapq`` min-heap of perishable batches as ``(manufacturing_date, quantity)`` tuples. Index 0 is always the oldest batch (earliest to expire). ``put`` adds a batch with ``heapq.heappush``; a batch leaves the list (oldest first) at the moment its units leave the shelf, so the list always matches the units on the shelf.
             waste (float): Total quantity of expired items.
             instantaneous_levels (list): Recorded inventory levels over time.
 
@@ -2298,7 +2421,10 @@ class Inventory(NamedEntity, InfoMixin):
         self.holding_cost = holding_cost
         self.carry_cost = 0 # initial carrying cost based on the initial inventory level
         self.replenishment_policy = replenishment_policy
-        self.inventory = simpy.Container(env=self.env, capacity=capacity, init=self.init_level) # Inventory container setup
+        # The shelf. It picks the dated batches for each request at the moment
+        # the units leave it (see _Shelf).
+        self.inventory = _Shelf(env=self.env, capacity=capacity, init=self.init_level,
+                                pick_batches=self._take_oldest_batches)
         self.last_update_t = self.env.now # last time the carrying cost was updated
         
         if self.inv_type == "perishable":
@@ -2335,9 +2461,10 @@ class Inventory(NamedEntity, InfoMixin):
         bigger than the stock on hand) joins a line and is served, in turn, when
         enough stock arrives. Requests are served strictly in the order they
         arrived, so a request can also wait behind an earlier one. Besides
-        orders from other sites, the line can hold other requests, such as
-        removing expired goods. All of these units have already been taken off
-        `on_hand` but have not left the shelf yet.
+        orders from other sites, the line can hold other requests made with
+        `get`. All of these units have already been taken off `on_hand` but
+        have not left the shelf yet. (Expired goods and destroyed stock never
+        wait in this line: they are removed at once.)
 
         Returns:
             float: the total of all requests still waiting, or 0 if none are waiting.
@@ -2349,7 +2476,7 @@ class Inventory(NamedEntity, InfoMixin):
         How many units are owed to other sites whose orders are still waiting at the shelf.
 
         Only the requests made with `get(..., site_order=True)` count, so other
-        waiting requests (such as removing expired goods) are left out. These
+        waiting requests are left out. These
         are the orders that also appear in the node's backorders.
 
         Returns:
@@ -2442,51 +2569,81 @@ class Inventory(NamedEntity, InfoMixin):
                 (see `waiting_site_orders`). Defaults to False.
 
         Returns:
-            tuple: (SimPy get event, List of (manufacture_date, quantity)) for perishable items
+            tuple: (SimPy get event, list of (manufacture_date, quantity)). The
+                list holds the dated batches the units came from (perishable
+                goods only; empty otherwise). It is filled in when the units
+                really leave the shelf: at once if the shelf has them, or later,
+                when a request that had to wait is served. So read it after
+                yielding the event.
         """
+        # The request is labelled, so that among the requests still waiting at
+        # the shelf the node can tell the orders it owes to other sites apart
+        # from other requests (see `waiting_site_orders`).
         if self.inventory.level == float('inf'):
-            get_event = self.inventory.get(amount)
-            get_event.site_order = site_order
-            return get_event, []
+            get_event = self.inventory.get(amount, site_order=site_order)
+            return get_event, get_event.batches
 
-        man_date_ls = []
-        if self.inv_type == "perishable":
-            x_amount = amount
-            while x_amount > 0 and self.perish_queue:
-                mfg_date, qty = self.perish_queue[0]  # peek at the oldest batch
-                if qty <= x_amount:
-                    man_date_ls.append((mfg_date, qty))
-                    x_amount -= qty
-                    heapq.heappop(self.perish_queue)  # remove the oldest batch (fast)
-                else:
-                    man_date_ls.append((mfg_date, x_amount))
-                    # We only need part of this oldest batch. Replace it with the
-                    # same date and the smaller leftover quantity. It is still the
-                    # oldest batch, so the heap order stays correct.
-                    self.perish_queue[0] = (mfg_date, qty - x_amount)
-                    x_amount = 0
         self.update_carry_cost()
-        get_event = self.inventory.get(amount)
-        # Label the request, so that among the requests still waiting at the
-        # shelf the node can tell the orders it owes to other sites apart from
-        # other requests, such as removing expired goods (see
-        # `waiting_site_orders`).
-        get_event.site_order = site_order
+        get_event = self.inventory.get(amount, site_order=site_order)
         self.on_hand -= amount  # Update the on-hand inventory level
-        # Tell the node that stock went down. Its replenishment policy (if it
-        # has one) checks whether to reorder, and a supplier with a full shelf
-        # starts mining again. Every node is told, not only those with a
-        # policy: a supplier has no policy, and without this signal it would
-        # never mine again once its shelf had been full.
+        self._stock_went_down()
+        return get_event, get_event.batches
+
+    def _stock_went_down(self):
+        """
+        Tell the node that stock went down (or is about to, for an order that waits).
+
+        Its replenishment policy (if it has one) checks whether to reorder, a
+        supplier with a full shelf starts mining again, and a factory that
+        stopped because its shelf was full can carry on.
+        """
+        # Every node is told, not only those with a policy: a supplier has no
+        # policy, and without this signal it would never mine again once its
+        # shelf had been full.
         inventory_drop = getattr(self.node, "inventory_drop", None)
         if inventory_drop is not None and not inventory_drop.triggered:
             inventory_drop.succeed()
-        # A factory that stopped because its shelf was full can carry on once
-        # stock leaves the shelf. (Only manufacturers have this method.)
+        # Only manufacturers have this method.
         wake_production = getattr(self.node, "wake_production", None)
         if wake_production is not None:
             wake_production()
-        return get_event, man_date_ls
+
+    def _take_oldest_batches(self, amount):
+        """
+        Take `amount` units off the list of dated batches, oldest first.
+
+        This is the "clear the old stock first" rule: an order gets the units
+        with the least shelf life left, then units from the next oldest batch,
+        and so on. It only updates the list of dated batches (``perish_queue``);
+        the caller takes the same units off the shelf at the same moment, so the
+        two always agree.
+
+        Parameters:
+            amount (float): units to take.
+
+        Returns:
+            list: the batches taken, as (manufacturing_date, quantity). Empty for
+                goods that are not perishable, and for an endless supply.
+        """
+        if self.inv_type != "perishable" or self.inventory.level == float('inf'):
+            return []
+        taken = []
+        x_amount = amount
+        while x_amount > 0 and self.perish_queue:
+            mfg_date, qty = self.perish_queue[0]  # peek at the oldest batch
+            if qty <= x_amount:
+                if qty > 0:
+                    taken.append((mfg_date, qty))
+                x_amount -= qty
+                heapq.heappop(self.perish_queue)  # remove the oldest batch (fast)
+            else:
+                taken.append((mfg_date, x_amount))
+                # We only need part of this oldest batch. Replace it with the
+                # same date and the smaller leftover quantity. It is still the
+                # oldest batch, so the heap order stays correct.
+                self.perish_queue[0] = (mfg_date, qty - x_amount)
+                x_amount = 0
+        return taken
 
     def remove_expired(self):
         """
@@ -2529,19 +2686,23 @@ class Inventory(NamedEntity, InfoMixin):
             # fractional shelf lives because of floating-point rounding (e.g.
             # ``9.2 - 8`` becomes ``1.1999999999999993`` and fails a ``>= 1.2``
             # check), which could make this helper skip the removal and loop
-            # forever at the same time. ``self.get(qty)`` removes the consumed
-            # batch from the heap, so the explicit ``heappop`` below is only for
-            # the rare leftover empty (qty == 0) batch from an earlier partial
-            # take.
+            # forever at the same time.
+            #
+            # Expired units are thrown away at once, even when an order is
+            # waiting at the shelf. Every batch in the list is still physically
+            # on the shelf (a batch leaves the list only when its units leave
+            # the shelf), so the units are there to remove. Queueing the removal
+            # behind a waiting order would leave the expired units on the shelf,
+            # where that order could take them once it is served.
             while self.perish_queue and self.env.now >= self.perish_queue[0][0] + self.shelf_life:
-                mfg_date, qty = self.perish_queue[0]  # peek at oldest batch
+                mfg_date, qty = heapq.heappop(self.perish_queue)  # take the oldest batch off the list
                 if qty > 0:
-                    get_event, _ = self.get(qty) # get/remove expired items from the inventory
-                    yield get_event
-                    self.waste += qty  # update waste statistics
-                    self.node.logger.info(f"{self.env.now:.4f}: {qty} units expired (Mgf date:{mfg_date}).")
-                else:
-                    heapq.heappop(self.perish_queue)
+                    self.update_carry_cost()
+                    removed = self.inventory.take_now(qty)  # and the same units off the shelf
+                    self.on_hand -= removed
+                    self.waste += removed  # update waste statistics
+                    self.node.logger.info(f"{self.env.now:.4f}: {removed} units expired (Mgf date:{mfg_date}).")
+                    self._stock_went_down()
 
     def update_carry_cost(self):
         """
@@ -2556,13 +2717,17 @@ class Inventory(NamedEntity, InfoMixin):
         Wipe inventory at the current sim time, modeling physical loss from a
         disruption event (natural disaster, contamination, theft, etc.).
 
-        Removes the stock right away, so the caller (usually a ``Node``
-        disruption handler) sees the new ``level`` on the very next line. The
-        method does **not** fire ``inventory_drop`` — that event is what triggers
-        replenishment policies, and new orders are already blocked while the node
-        is ``"inactive"``. Firing it here would line up replenishment orders that
-        all go out the moment the node recovers, which is exactly the kind of
-        unwanted coupling we removed earlier.
+        Removes the stock right away, even when orders are waiting at the shelf,
+        so the caller (usually a ``Node`` disruption handler) sees the new
+        ``level`` on the very next line. The method does **not** fire
+        ``inventory_drop`` for nodes with a replenishment policy — that event is
+        what triggers replenishment policies, and new orders are already blocked
+        while the node is ``"inactive"``. Firing it here would line up
+        replenishment orders that all go out the moment the node recovers, which
+        is exactly the kind of unwanted coupling we removed earlier. It does
+        wake a supplier (which then mines to refill its shelf, as it does
+        whenever stock is taken) and a factory (which can make more now that
+        there is room on its shelf).
 
         For perishable inventory the oldest batches in ``perish_queue`` are used
         up first (oldest-out), the same as ``get``: destroying only part of the
@@ -2602,30 +2767,30 @@ class Inventory(NamedEntity, InfoMixin):
         # series doesn't keep accruing against units that no longer exist.
         self.update_carry_cost()
 
-        if self.inv_type == "perishable":
-            # FIFO drain matching ``get``: pop oldest batches whole, then
-            # shorten the new head if a remainder spills into it.
-            x = amount
-            while x > 0 and self.perish_queue:
-                mfg_date, qty = self.perish_queue[0]
-                if qty <= x:
-                    x -= qty
-                    heapq.heappop(self.perish_queue)
-                else:
-                    self.perish_queue[0] = (mfg_date, qty - x)
-                    x = 0
-
-        # Drain the underlying simpy.Container. ``Container.get(amount)``
-        # decrements ``_level`` synchronously when ``level >= amount``
-        # (BaseResource._trigger_get runs at construction time and calls
-        # _do_get, which succeeds the event and subtracts in place), so the
-        # next read of ``self.inventory.level`` reflects the destruction.
-        self.inventory.get(amount)
+        # Destroy the oldest batches first (perishable goods only), and take the
+        # same units off the shelf at once — even when an order is waiting at
+        # the shelf. An ordinary request would wait in line behind that order,
+        # so the stock would stay on the shelf and the units would instead be
+        # taken from the next delivery.
+        self._take_oldest_batches(amount)
+        amount = self.inventory.take_now(amount)
         self.on_hand -= amount
         self.node.logger.info(
             f"{self.env.now:.4f}:{self.node.ID}: {amount} units destroyed ({reason}). "
             f"Level={self.inventory.level}, on_hand={self.on_hand}."
         )
+        # There is room on the shelf again. A supplier whose shelf was full
+        # starts mining again, and a factory that stopped because its shelf was
+        # full carries on. Other nodes are not told, so their replenishment
+        # policies do not reorder (see above). Suppliers have no replenishment
+        # policy, so for them the "stock went down" signal only restarts mining.
+        if isinstance(self.node, Supplier):
+            inventory_drop = getattr(self.node, "inventory_drop", None)
+            if inventory_drop is not None and not inventory_drop.triggered:
+                inventory_drop.succeed()
+        wake_production = getattr(self.node, "wake_production", None)
+        if wake_production is not None:
+            wake_production()
         return amount
 
 class Supplier(Node):

@@ -470,7 +470,7 @@ In `examples/notebooks/simple_supplier_n_factory.ipynb` (365 days) the supplier 
 - `Inventory.get` signals `inventory_drop` for every node that has the event (looked up with `getattr`), not only for nodes with a replenishment policy. A supplier with a full shelf now starts mining as soon as a buyer takes stock. For a distributor with no policy nobody waits on the event, so the signal does nothing. Endless suppliers return from `get` before this point and do not have the event.
 - The extra signal in `InventoryNode.process_order` (sent when the supplier was short) is removed. `Inventory.get` now signals whenever an order is really taken from the supplier's shelf. The extra signal also fired when the supplier site was down and the order was never placed, which woke the supplying site's own policy for no reason (an open item from §3.18).
 
-**Not changed:** `InventoryNode.process_order` still records a shortage at the supplier before checking that the supplier site is working, so a down site gets a shortage for an order it never received. `Inventory.destroy` still does not signal anything (see the convention in `CLAUDE.md`), so a supplier whose shelf is destroyed while full waits for the next order before mining again. *The shortage part is fixed in §3.20.*
+**Not changed:** `InventoryNode.process_order` still records a shortage at the supplier before checking that the supplier site is working, so a down site gets a shortage for an order it never received. `Inventory.destroy` still does not signal anything (see the convention in `CLAUDE.md`), so a supplier whose shelf is destroyed while full waits for the next order before mining again. *The shortage part is fixed in §3.20, and the `destroy` part in §3.21.*
 
 **Verified:**
 
@@ -489,6 +489,34 @@ Open item from §3.18 and §3.19. `InventoryNode.process_order`.
 
 - `examples/py/intro_simple.py` unchanged (`profit: -4435.0`).
 - `pytest` — 240/240 passing. New `TestNoShortageAtASupplierSiteThatIsDown` (2 tests: three orders to a down site that is short record no shortage, demand or backorder anywhere; the same order to a working site is still counted as short, `[1, 15]`). The first fails on the old code.
+
+### 3.21 Perishable goods: dated batches picked when an order is placed, and expired stock shipped ✅ Resolved
+Reported in GitHub issue #1 (defect 7). `Inventory.get`, `Inventory.remove_expired`, `Inventory.destroy`, new `_Shelf` / `_ShelfRequest`.
+
+**How perishable stock is meant to work (user, 2026-10-11).** Every order gets the units with the least shelf life left first; if the oldest batch is not enough, it takes from the next oldest, and so on ("clear the old stock first"). Selling fresh units first would leave the old ones to expire. `perish_queue` (a list of dated batches, oldest first) implements this rule, and the rule itself was right.
+
+**Original issue.** A perishable inventory keeps two records of the same stock: the dated batches (`perish_queue`) and the plain unit count on the SimPy shelf. They changed at different moments. `Inventory.get` took batches off `perish_queue` at once, when the order was *placed*, but only *asked* the shelf for the units; an order the shelf could not fill waited in line and was served later. So, for an order that had to wait:
+
+- It got dates for only the units on the shelf when it was placed. The buyer stocks only the units its dates cover, so the rest were lost, while the buyer's inventory position still counted them. Example: a warehouse with 5 units gets an order for 20; when it is served, the buyer receives 5.
+- The fresh units that later filled the order stayed in `perish_queue`, so the list showed units that had left.
+- The old units' dates were already off the list, so `remove_expired` never saw them expire, and they were shipped after they had expired. The buyer threw them away on arrival.
+
+In addition, `remove_expired` and `Inventory.destroy` removed units with an ordinary shelf request, which waits in line behind an order the shelf cannot fill yet. Expired units stayed on the shelf until then (and the expiry helper was stuck, so later expiries waited too), and destroyed stock was really taken from the next delivery. `destroy` also did not wake a supplier or factory (open item from §3.19).
+
+**Fix applied:**
+
+- `Inventory.inventory` is now a `_Shelf`, a small `simpy.Container` subclass. Its `_do_get` (where SimPy hands units out) picks the dated batches, oldest first, at the same moment it takes the units off the shelf, and keeps them on the request (`_ShelfRequest.batches`, which also carries `site_order`). `Inventory.get` returns that list, so it is filled in when the order is served — at once if the shelf has the units, otherwise later. Callers already read it after `yield event`, so none had to change. The batch-picking loop moved to `Inventory._take_oldest_batches`. The two records now always agree: `perish_queue` adds up to the shelf's level.
+- `_Shelf.take_now(amount)` removes units at once, ahead of any waiting requests. `remove_expired` pops each expired batch and takes the same units off with it; `destroy` does the same for the oldest batches. Every batch in the list is physically on the shelf, so the units are there to remove.
+- After expired units are removed, the node is told stock went down (as before, when the removal went through `get`); the signalling moved to `Inventory._stock_went_down`. After `destroy`, a supplier is told (it has no replenishment policy, so this only restarts mining) and a factory's production is woken; nodes with a replenishment policy are still not told (§4.3).
+
+**Not changed:** an order and an expiry due at exactly the same moment are resolved in SimPy's event order, so a unit can occasionally be shipped at exactly the end of its shelf life. Units shipped close to the end of their life can still expire in transit or soon after arrival; that depends on the network's settings (stock levels, lead times, shelf life), not on the code. A site that starts with no stock still holds an empty `(0, 0)` batch until its expiry check clears it (an existing test relies on it).
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`). `sc_with_factory.py` and `newsvendor.py` outputs unchanged.
+- `examples/py/hybrid_big_sc.py` (perishable): customers receive 11,823 units instead of 1,007; total expired waste falls from 66,230 to 37,653; network shortage from 46,624 to 16,345 units.
+- `simple_supplier_n_factory.ipynb` (its simulation): no change in what customers get (about 80%). The warehouse still throws away 58,880 units (62,795 before): the factory holds up to 2,500 units of a product that lasts 10 days and ships the oldest first, so units reach the warehouse 1–11 days old. That comes from the example's settings, not from the code.
+- `pytest` — 245/245 passing. New `TestPerishableBatchesPickedWhenShipped` (5 tests: a waiting order gets every unit with its real dates; stock that expires while an order waits is thrown away, not shipped; `destroy` empties the shelf at once while an order waits; `destroy` restarts a full supplier; the two records agree throughout a busy perishable network). `TestSiteBackordersAreLive::test_waiting_expiry_removal_not_mistaken_for_a_site_order` became `test_expired_goods_removed_at_once_not_behind_a_site_order`. All six fail on the old code.
 
 ---
 

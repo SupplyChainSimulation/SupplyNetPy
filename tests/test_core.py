@@ -2143,13 +2143,12 @@ class TestSiteBackordersAreLive(unittest.TestCase):
         assert w1.inventory.waiting_orders() == 0
         assert w1.position() == -5
 
-    def test_waiting_expiry_removal_not_mistaken_for_a_site_order(self):
+    def test_expired_goods_removed_at_once_not_behind_a_site_order(self):
         # Perishable goods that last 2 days. The distributor holds 10 and owes
-        # the warehouse 50. On day 1, 20 more units arrive; they expire on
-        # day 3, and the request to remove them waits behind the warehouse's
-        # order. Only the warehouse's order is owed to a site. If the expiry
-        # request were also counted, the position would be 20 too high and
-        # the distributor would order too little.
+        # the warehouse 50. On day 1, 20 more units arrive. All 30 expire (on
+        # days 2 and 3) while the warehouse's order is still waiting. They are
+        # thrown away at once, not queued behind that order, so only the
+        # order waits in line and only it is owed to a site.
         env = simpy.Environment()
         def perishable_site(ID, initial_level):
             return scm.InventoryNode(
@@ -2165,8 +2164,10 @@ class TestSiteBackordersAreLive(unittest.TestCase):
         env.run(until=1)
         d1.inventory.put(20, 1)                # made on day 1
         env.run(until=3.5)
-        assert d1.inventory.waiting_orders() == 70       # the order and the expiry removal
-        assert d1.inventory.waiting_site_orders() == 50  # only the order is owed to a site
+        assert d1.inventory.level == 0                   # the expired units are gone
+        assert d1.inventory.waste == 30
+        assert d1.inventory.waiting_orders() == 50       # only the order waits in line
+        assert d1.inventory.waiting_site_orders() == 50
         assert d1.stats.backorder == [1, 50]
         assert d1.position() == d1.inventory.on_hand     # no customers are waiting
 
@@ -2533,6 +2534,128 @@ class TestNoShortageAtASupplierSiteThatIsDown(unittest.TestCase):
         env.run(until=1)
         assert w0.stats.shortage == [1, 15]
         assert w0.stats.demand_received == [1, 20]
+
+
+class TestPerishableBatchesPickedWhenShipped(unittest.TestCase):
+    """Dated batches are picked when units leave the shelf, oldest first.
+
+    The dates used to be picked when an order was *placed*. An order that had
+    to wait got dates for only the units on the shelf at that moment, so the
+    buyer received fewer units than it paid for, the old units' expiry was
+    missed and they were shipped already expired. Expired goods and destroyed
+    stock also waited in line behind orders instead of leaving at once.
+    """
+
+    def _site(self, env, ID, level, shelf_life=10):
+        return scm.InventoryNode(env=env, ID=ID, name=ID, node_type="warehouse", capacity=100,
+                                 initial_level=level, inventory_holding_cost=0, replenishment_policy=None,
+                                 policy_param=None, product_sell_price=5, product_buy_price=1,
+                                 inventory_type="perishable", shelf_life=shelf_life)
+
+    def _deliver(self, env, site, day, qty):
+        # Stock arriving at `site` on `day`, made that day.
+        yield env.timeout(day)
+        site.inventory.put(qty, env.now)
+        site.inventory.on_hand += qty
+
+    def _batches(self, site):
+        # The dated batches, oldest first, leaving out empty ones (a site that
+        # starts with no stock holds an empty batch until its expiry check
+        # clears it).
+        return sorted(b for b in site.inventory.perish_queue if b[1] > 0)
+
+    def _records_agree(self, site):
+        return sum(q for _, q in site.inventory.perish_queue) == site.inventory.level
+
+    def test_waiting_order_gets_every_unit_with_its_real_dates(self):
+        # W0 has 5 units (made on day 0); D1 orders 20. On day 2, 30 fresh
+        # units arrive and the order is served: 5 old units and 15 new ones.
+        env = simpy.Environment()
+        w0, d1 = self._site(env, "W0", 5), self._site(env, "D1", 0)
+        link = scm.Link(env=env, ID="L1", source=w0, sink=d1, cost=0, lead_time=lambda: 1)
+        env.process(d1.process_order(link, 20))
+        env.process(self._deliver(env, w0, 2, 30))
+        env.run(until=5)
+        assert d1.stats.fulfillment_received == [1, 20]
+        assert d1.inventory.level == 20
+        assert self._batches(d1) == [(0, 5), (2, 15)]
+        assert w0.inventory.level == 15
+        assert self._batches(w0) == [(2, 15)]
+        assert self._records_agree(w0) and self._records_agree(d1)
+
+    def test_stock_that_expires_while_an_order_waits_is_not_shipped(self):
+        # W0's 5 units (made on day 0) expire on day 3, while D1's order for
+        # 20 waits. W0 throws them away; the order gets fresh units on day 4.
+        env = simpy.Environment()
+        w0, d1 = self._site(env, "W0", 5, shelf_life=3), self._site(env, "D1", 0, shelf_life=3)
+        link = scm.Link(env=env, ID="L1", source=w0, sink=d1, cost=0, lead_time=lambda: 0.5)
+        env.process(d1.process_order(link, 20))
+        env.process(self._deliver(env, w0, 4, 30))
+        env.run(until=3.5)
+        assert w0.inventory.waste == 5
+        assert w0.inventory.level == 0
+        assert w0.inventory.waiting_orders() == 20       # the order still waits
+        env.run(until=6)
+        assert d1.stats.fulfillment_received == [1, 20]
+        assert self._batches(d1) == [(4, 20)]
+        assert d1.inventory.waste == 0
+        assert w0.inventory.level == 10
+        assert self._records_agree(w0) and self._records_agree(d1)
+
+    def test_destroy_empties_the_shelf_at_once_while_an_order_waits(self):
+        # D1's order for 20 waits at W0 (which has 5). Destroying W0's stock
+        # removes the 5 units at once; the next delivery goes to the order.
+        env = simpy.Environment()
+        w0, d1 = self._site(env, "W0", 5), self._site(env, "D1", 0)
+        link = scm.Link(env=env, ID="L1", source=w0, sink=d1, cost=0, lead_time=lambda: 1)
+        env.process(d1.process_order(link, 20))
+        env.run(until=1)
+        assert w0.inventory.destroy() == 5
+        assert w0.inventory.level == 0
+        assert self._batches(w0) == []
+        env.process(self._deliver(env, w0, 1, 30))       # day 2
+        env.run(until=4)
+        assert d1.stats.fulfillment_received == [1, 20]
+        assert self._batches(d1) == [(2, 20)]
+        assert w0.inventory.level == 10
+        assert self._records_agree(w0)
+
+    def test_destroy_restarts_a_full_supplier(self):
+        # A supplier mines only when its shelf is not full. After its full
+        # shelf is destroyed, it must start mining again.
+        env = simpy.Environment()
+        rm = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=5, extraction_time=1,
+                             mining_cost=0, cost=1)
+        sup = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier", capacity=20,
+                           initial_level=20, raw_material=rm)
+        env.run(until=1)
+        sup.inventory.destroy()
+        env.run(until=5)
+        assert sup.inventory.level == 20
+        assert sup.stats.total_raw_materials_mined == 20
+
+    def test_records_agree_in_a_busy_network(self):
+        # A perishable chain with a reorder rule, customers and expiry. At
+        # every check, the dated batches add up to the units on each shelf.
+        env = simpy.Environment()
+        sup = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        sites = {}
+        for ID, src in (("W1", sup), ("R1", None)):
+            sites[ID] = scm.InventoryNode(
+                env=env, ID=ID, name=ID, node_type="warehouse", capacity=200, initial_level=50,
+                inventory_holding_cost=0, replenishment_policy=scm.SSReplenishment,
+                policy_param={"s": 40, "S": 120}, product_sell_price=5, product_buy_price=1,
+                inventory_type="perishable", shelf_life=6)
+        scm.Link(env=env, ID="L1", source=sup, sink=sites["W1"], cost=0, lead_time=lambda: 2)
+        scm.Link(env=env, ID="L2", source=sites["W1"], sink=sites["R1"], cost=0, lead_time=lambda: 1)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=sites["R1"],
+                   order_arrival_model=lambda: 0.5, order_quantity_model=lambda: 7)
+        for day in range(1, 60):
+            env.run(until=day + 0.5)
+            for site in sites.values():
+                assert self._records_agree(site), (day, site.ID)
+        assert sites["R1"].stats.demand_fulfilled[1] > 0
+        assert sites["W1"].inventory.waste + sites["R1"].inventory.waste > 0   # expiry did happen
 
 
 class TestSupplierRawMaterialBackordersAreLive(unittest.TestCase):
