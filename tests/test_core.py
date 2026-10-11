@@ -2241,6 +2241,171 @@ class TestFactoryMakesWhatItOwes(unittest.TestCase):
         assert m1.stats.backorder == [0, 0]
 
 
+class TestFactoryKeepsProducing(unittest.TestCase):
+    """A factory keeps making batches until every planned unit is made.
+
+    A batch makes at most `batch_size` units. The factory used to make one
+    batch per raw-material delivery and then wait for the next delivery, so
+    raw material for the rest of the plan sat unused and the factory could
+    stop for good. Every planned unit must also have its raw material
+    ordered: units planned without it can never be made, yet the factory
+    counts on them and stops ordering.
+    """
+
+    def _factory(self, env, raw_materials=(("RM1", 1),), capacity=float("inf"), initial_level=0,
+                 batch_size=5, manufacturing_time=1, lead_time=1, policy=None, policy_param=None):
+        # One endless supplier per raw material, each on its own link.
+        rawmats = [scm.RawMaterial(ID=rid, name=rid, extraction_quantity=1, extraction_time=1,
+                                   mining_cost=0, cost=1) for rid, _ in raw_materials]
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=manufacturing_time,
+                              sell_price=5, buy_price=0, batch_size=batch_size,
+                              raw_materials=[(rm, qty) for rm, (_, qty) in zip(rawmats, raw_materials)])
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=capacity, initial_level=initial_level,
+                              inventory_holding_cost=0, replenishment_policy=policy, policy_param=policy_param,
+                              product_sell_price=5, product=product)
+        links = {}
+        for rm in rawmats:
+            sup = scm.Supplier(env=env, ID=f"S_{rm.ID}", name=f"S_{rm.ID}",
+                               node_type="infinite_supplier", raw_material=rm)
+            links[rm.ID] = scm.Link(env=env, ID=f"L_{rm.ID}", source=sup, sink=m1, cost=0,
+                                    lead_time=lambda: lead_time)
+        return m1, links
+
+    def test_one_delivery_is_made_into_every_batch_it_covers(self):
+        # The factory plans 25 units with a batch size of 5. The raw material
+        # for all 25 arrives on day 1; batches finish on days 2, 3, 4, 5, 6.
+        env = simpy.Environment()
+        m1, links = self._factory(env)
+        env.process(m1.process_order(links["RM1"], 25))
+        env.run(until=2.5)
+        assert m1.stats.total_products_manufactured == 5
+        env.run(until=10)
+        assert m1.stats.total_products_manufactured == 25
+        assert m1.raw_inventory_counts["RM1"] == 0
+        assert m1.stats.demand_placed == [1, 25]   # one delivery covered all five batches
+
+    def test_raw_material_ordered_while_an_earlier_order_is_on_its_way(self):
+        # Two plans, half a day apart. The raw material for the first is still
+        # on its way when the second comes in, but the second gets its own order.
+        env = simpy.Environment()
+        m1, links = self._factory(env, lead_time=2, batch_size=100)
+        env.process(m1.process_order(links["RM1"], 20))
+        env.run(until=0.5)
+        env.process(m1.process_order(links["RM1"], 30))
+        env.run(until=10)
+        assert m1.stats.demand_placed == [2, 50]
+        assert m1.stats.total_products_manufactured == 50
+        assert m1.raw_inventory_counts["RM1"] == 0
+
+    def test_leftover_raw_material_does_not_cancel_a_new_order(self):
+        # The factory plans 30 and slowly makes them, 5 per batch, 10 days per
+        # batch. On day 2 it holds 25 units of raw material, all set aside for
+        # the 25 units still to make. A new plan for 20 must still order 20.
+        env = simpy.Environment()
+        m1, links = self._factory(env, manufacturing_time=10)
+        env.process(m1.process_order(links["RM1"], 30))
+        env.run(until=2)
+        assert m1.raw_inventory_counts["RM1"] == 25
+        env.process(m1.process_order(links["RM1"], 20))
+        env.run(until=200)
+        assert m1.stats.demand_placed == [2, 50]
+        assert m1.stats.total_products_manufactured == 50
+        assert m1.raw_inventory_counts["RM1"] == 0
+
+    def test_factory_carries_on_once_its_full_shelf_has_space(self):
+        # The shelf is full (10 of 10), while 10 more units are planned and
+        # their raw material is on hand. The factory waits; as stock leaves
+        # the shelf, it carries on.
+        env = simpy.Environment()
+        m1, links = self._factory(env, capacity=10, initial_level=10)
+        env.run(until=1)
+        m1.inventory.on_hand += 10            # 10 more units planned...
+        m1.raw_inventory_counts["RM1"] = 10   # ...and their raw material is here
+        m1.wake_production()
+        env.run(until=5)
+        assert m1.stats.total_products_manufactured == 0   # no space
+        m1.inventory.get(7)
+        env.run(until=10)
+        assert m1.stats.total_products_manufactured == 7   # filled the space that was freed
+        assert m1.inventory.level == 10
+        m1.inventory.get(10)
+        env.run(until=15)
+        assert m1.stats.total_products_manufactured == 10  # all planned units made
+        assert m1.raw_inventory_counts["RM1"] == 0
+
+    def test_disrupted_raw_material_link_plans_nothing(self):
+        # The product needs flour and sugar. The sugar link is down until
+        # day 5. While it is down, the factory plans nothing and orders
+        # nothing (not even flour). Once it is back, the policy plans 40,
+        # both raw materials are ordered, and all 40 are made.
+        env = simpy.Environment()
+        m1, links = self._factory(env, raw_materials=(("flour", 1), ("sugar", 2)), capacity=100,
+                                  batch_size=50, policy=scm.SSReplenishment,
+                                  policy_param={"s": 10, "S": 40, "period": 1})
+        links["sugar"].status = "inactive"
+        def repair():
+            yield env.timeout(5)
+            links["sugar"].status = "active"
+        env.process(repair())
+        env.run(until=4)
+        assert m1.inventory.on_hand == 0
+        assert m1.stats.demand_placed == [0, 0]
+        assert links["flour"].source.stats.shortage == [0, 0]
+        env.run(until=10)
+        assert m1.stats.demand_placed == [2, 120]   # 40 flour + 80 sugar
+        assert m1.stats.total_products_manufactured == 40
+        assert m1.inventory.level == 40
+
+    def test_raw_material_ordered_from_one_working_supplier(self):
+        # Two suppliers sell the same raw material. The factory orders from
+        # the first one only; when the first one's link is down, from the second.
+        env = simpy.Environment()
+        m1, links = self._factory(env, batch_size=100)
+        rm = links["RM1"].source.raw_material
+        second = scm.Supplier(env=env, ID="S2", name="S2", node_type="infinite_supplier", raw_material=rm)
+        scm.Link(env=env, ID="L2", source=second, sink=m1, cost=0, lead_time=lambda: 1)
+        first = links["RM1"].source
+        env.process(m1.process_order(links["RM1"], 10))
+        env.run(until=3)
+        assert first.stats.demand_received == [1, 10]
+        assert second.stats.demand_received == [0, 0]
+        links["RM1"].status = "inactive"
+        env.process(m1.process_order(links["RM1"], 10))
+        env.run(until=6)
+        assert first.stats.demand_received == [1, 10]
+        assert second.stats.demand_received == [1, 10]
+        assert m1.stats.total_products_manufactured == 20
+
+    def test_reported_example_keeps_serving_customers(self):
+        # The example from GitHub issue #1 (batch size 5, 300 days). The
+        # factory used to make 10 units and stop for good on day 14, while
+        # customers got 4% of what they asked for.
+        rm = scm.RawMaterial(ID="rm1", name="rm1", extraction_quantity=1, extraction_time=1,
+                             mining_cost=0, cost=1)
+        bread = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1, sell_price=5,
+                            buy_price=0, batch_size=5, raw_materials=[(rm, 1)])
+        net = scm.create_sc_net(
+            nodes=[dict(ID="S1", name="S1", node_type="infinite_supplier", raw_material=rm),
+                   dict(ID="M1", name="M1", node_type="manufacturer", capacity=float("inf"),
+                        initial_level=30, inventory_holding_cost=0,
+                        replenishment_policy=scm.SSReplenishment,
+                        policy_param=dict(s=20, S=40, period=1), product_sell_price=5, product=bread),
+                   dict(ID="W1", name="W1", node_type="warehouse", capacity=float("inf"),
+                        initial_level=0, inventory_holding_cost=0,
+                        replenishment_policy=scm.SSReplenishment,
+                        policy_param=dict(s=10, S=15, period=1),
+                        product_buy_price=1, product_sell_price=2)],
+            links=[dict(ID="l1", source="S1", sink="M1", cost=0, lead_time=lambda: 1),
+                   dict(ID="l2", source="M1", sink="W1", cost=0, lead_time=lambda: 1)],
+            demands=[dict(ID="d", name="d", demand_node="W1", order_arrival_model=lambda: 1,
+                          order_quantity_model=lambda: 3, consume_available=True)])
+        net["env"].run(until=300)
+        m1, d = net["nodes"]["M1"], net["demands"]["d"]
+        assert m1.stats.total_products_manufactured > 850
+        assert d.stats.fulfillment_received[1] / d.stats.demand_placed[1] > 0.95
+        assert m1.raw_inventory_counts["rm1"] < 5   # no raw material left sitting unused
+
+
 class TestSupplierRawMaterialBackordersAreLive(unittest.TestCase):
     """A raw-material supplier's backorders show the orders it owes right now.
 
@@ -2281,13 +2446,19 @@ class TestSupplierRawMaterialBackordersAreLive(unittest.TestCase):
         assert m1.raw_inventory_counts["RM1"] == 30
 
     def test_disrupted_supplier_records_no_backorder(self):
+        # The factory checks that its suppliers are working before it plans
+        # anything, so a disrupted supplier gets no order at all: no
+        # backorder, no shortage, and nothing added to the factory's plan.
         env = simpy.Environment()
         s1, m1, link = self._supplier_and_factory(env)
         env.run(until=0.5)
         s1.node_status = "inactive"
-        env.process(m1.process_order_raw("RM1", link, 30))
+        env.process(m1.process_order(link, 30))
         env.run(until=5)
         assert s1.stats.backorder == [0, 0]
+        assert s1.stats.shortage == [0, 0]
+        assert s1.stats.demand_received == [0, 0]
+        assert m1.inventory.on_hand == 0
 
 
 class TestInventoryInvariants(unittest.TestCase):

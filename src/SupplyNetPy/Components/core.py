@@ -2476,6 +2476,11 @@ class Inventory(NamedEntity, InfoMixin):
         if(self.replenishment_policy):
             if(not self.node.inventory_drop.triggered):
                 self.node.inventory_drop.succeed()  # signal that inventory has been dropped
+        # A factory that stopped because its shelf was full can carry on once
+        # stock leaves the shelf. (Only manufacturers have this method.)
+        wake_production = getattr(self.node, "wake_production", None)
+        if wake_production is not None:
+            wake_production()
         return get_event, man_date_ls
 
     def remove_expired(self):
@@ -3106,22 +3111,26 @@ class Manufacturer(Node):
         sell_price (float): Selling price per unit of the product.
         production_cycle (bool): Indicates whether the production cycle is currently active.
         raw_inventory_counts (dict): Inventory levels of raw materials by raw material ID.
-        ongoing_order_raw (dict): Indicates whether a raw material order is currently in progress.
         pending_orders (int): Number of raw-material orders currently in flight (dispatched but not yet delivered).
         selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
         stats (Statistics): Statistics tracking object for the manufacturer.
+        production_wake (simpy.Event): Event that wakes the production loop when it is waiting (see `wake_production`).
 
     Functions:
         __init__: Initializes the Manufacturer object.
-        manufacture_product: Manufactures the product by consuming raw materials and updating product inventory.
-        behavior: Main behavior loop that checks inventory and triggers production if raw materials are available.
+        manufacture_product: Makes one batch of the product, consuming raw materials and adding the batch to the inventory.
+        behavior: Production loop that keeps making batches while there are planned units left to make.
+        wake_production: Wakes the production loop if it is waiting.
         process_order: Places an order for raw materials based on the quantity of products to be manufactured.
         process_order_raw: Places an individual order for a specific raw material from a supplier.
 
     Behavior:
-        The manufacturer continuously monitors raw material inventory levels and initiates production when raw materials 
-        are available. Finished products are added to the inventory upon completion of a manufacturing cycle. If raw 
-        materials are insufficient, the manufacturer places replenishment orders with connected suppliers.
+        When the replenishment policy asks for more stock, the manufacturer plans that many units and orders the raw
+        materials needed to make them. It then makes the planned units in batches: each batch makes at most
+        `product.batch_size` units and takes `product.manufacturing_time`. Batches follow one another until every
+        planned unit is made. If a batch cannot start (no raw material yet, or no free space on the shelf), the
+        manufacturer waits until raw material arrives, a new plan comes in, or stock leaves the shelf, and then
+        carries on.
 
     Assumptions:
         The manufacturer produces only a single type of product.
@@ -3179,10 +3188,10 @@ class Manufacturer(Node):
             sell_price (float): Selling price per unit of the product.
             production_cycle (bool): Indicates whether the production cycle is currently active.
             raw_inventory_counts (dict): Inventory levels of raw materials by raw material ID.
-            ongoing_order_raw (dict): Indicates whether a raw material order is currently in progress.
             pending_orders (int): Number of raw-material orders currently in flight (dispatched but not yet delivered).
             selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
             stats (Statistics): Statistics tracking object for the manufacturer.
+            production_wake (simpy.Event): Event that wakes the production loop when it is waiting (see `wake_production`).
 
         Returns:
             None
@@ -3209,10 +3218,11 @@ class Manufacturer(Node):
         self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self, inv_type=inventory_type, holding_cost=inventory_holding_cost, replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **inventory_kwargs)
         self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
         self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
-        # Event-driven trigger for the production loop: succeeds whenever
-        # ``process_order_raw`` deposits raw material into ``raw_inventory_counts``.
-        # ``behavior`` waits on it instead of polling every simulation tick.
-        self.raw_material_arrived = self.env.event()
+        # Wakes the production loop when it is waiting because it could not
+        # make anything. It is set off by anything that may let production go
+        # on: raw material arriving, a new production plan, or stock leaving
+        # the shelf (which frees space). See `wake_production`.
+        self.production_wake = self.env.event()
         self.product = product # product manufactured by the manufacturer
         # self.suppliers is already initialised to [] in Node.__init__.
         self.product.sell_price = product_sell_price
@@ -3220,7 +3230,6 @@ class Manufacturer(Node):
         
         self.production_cycle = False # production cycle status
         self.raw_inventory_counts = {} # dictionary to store inventory counts for raw products inventory
-        self.ongoing_order_raw = {} # dictionary to store order status
         self.pending_orders = 0 # count of raw-material orders currently in flight (dispatched but not yet delivered)
 
         if(self.product.buy_price <= 0): # if the product buy price is not given, calculate it
@@ -3239,8 +3248,10 @@ class Manufacturer(Node):
 
     def manufacture_product(self):
         """
-        Manufacture the product.
-        This method handles the production of the product, consuming raw materials and adding the manufactured product to the inventory.
+        Make one batch of the product.
+        A batch makes at most `product.batch_size` units and takes `product.manufacturing_time`. It can be smaller
+        when there is only raw material, shelf space, or planned work left for fewer units. The raw materials are
+        used up when the batch starts, and the finished units go on the shelf when it ends.
 
         Parameters:
             None
@@ -3249,7 +3260,7 @@ class Manufacturer(Node):
             None
 
         Returns:
-            None
+            int: Number of units made in this batch (0 if nothing could be made).
         """
         max_producible_units = self.product.batch_size 
         for raw_material in self.product.raw_materials:
@@ -3291,6 +3302,21 @@ class Manufacturer(Node):
             self.logger.info(f"{self.env.now:.4f}:{self.ID}: Product inventory levels:{self.inventory.level}")
             self.stats.update_stats(total_products_manufactured=max_producible_units, total_manufacturing_cost=max_producible_units*self.product.manufacturing_cost) # update statistics
             self.production_cycle = False
+            return max_producible_units
+        return 0
+
+    def wake_production(self):
+        """
+        Wake the production loop if it is waiting because it could not make anything.
+        Called when raw material arrives, when a new production plan comes in, and when stock leaves the shelf
+        (which frees space). Calling it while the loop is busy does no harm: the loop just checks once more
+        when it next stops.
+
+        Returns:
+            None
+        """
+        if not self.production_wake.triggered:
+            self.production_wake.succeed()
 
     def behavior(self):
         """
@@ -3317,20 +3343,28 @@ class Manufacturer(Node):
                     self.logger.error(f"{self.ID}:Supplier {supplier.source.ID} does not have a raw material. Please provide a raw material for the supplier.")
                     raise ValueError(f"Supplier {supplier.source.ID} does not have a raw material.")
                 self.raw_inventory_counts[supplier.source.raw_material.ID] = 0 # store initial levels
-                self.ongoing_order_raw[supplier.source.raw_material.ID] = False # store order status
                 
         if(len(self.suppliers)<len(self.product.raw_materials)):
             self.logger.warning(f"{self.ID}: {self.name}: The number of suppliers are less than the number of raw materials required to manufacture the product! This leads to no products being manufactured.")
 
-        # Production loop: make product whenever raw material arrives, then wait
-        # on ``raw_material_arrived`` for the next delivery. Because we wait for
-        # each ``manufacture_product`` call to finish before starting the next,
-        # only one production run happens at a time — so the old re-entry guard
-        # flag is no longer needed.
+        # Production loop: make one batch after another for as long as there
+        # are planned units left to make. The factory makes only one batch at a
+        # time (we wait for each batch to finish before starting the next).
+        #
+        # When nothing can be made (nothing planned, no raw material yet, or no
+        # free space on the shelf), wait for something that may change that:
+        # raw material arriving, a new production plan, or stock leaving the
+        # shelf. Waking only on raw-material deliveries is not enough. Picture
+        # a factory that plans 25 units with a batch size of 5: one delivery
+        # of raw material covers all 25, but would start only the first batch,
+        # leaving the factory idle with raw material for 20 units on hand.
         while len(self.suppliers) >= len(self.product.raw_materials): # check if required number of suppliers are connected
-            yield self.env.process(self.manufacture_product()) # produce the product (no-op if max_producible == 0)
-            yield self.raw_material_arrived
-            self.raw_material_arrived = self.env.event() # rotate for the next arrival
+            made = yield self.env.process(self.manufacture_product())
+            if made > 0:
+                continue # go straight on to the next batch
+            yield self.production_wake
+            # Replace the used event with a new one for the next wait.
+            self.production_wake = self.env.event()
 
     def process_order_raw(self, raw_mat_id, supplier, reorder_quantity):
         """
@@ -3343,74 +3377,63 @@ class Manufacturer(Node):
         Attributes:
             None
 
-        Returns:    
+        Returns:
             None
         """
-        # Link-disruption gate: mirrors the one in InventoryNode.process_order.
-        # A disrupted physical link blocks new raw-material dispatches; ongoing
-        # shipments already past this point keep flowing. We clear ongoing_order_raw
-        # so the per-material flag does not stick and the manufacturer can retry
-        # the order on the next replenishment tick, once the link recovers.
-        if supplier.status == "inactive":
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Raw-material order not placed.")
-            self.ongoing_order_raw[raw_mat_id] = False
-            yield self.env.timeout(1) # wait a tick before the policy retries
-            return
-
-        if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
+        # This order is always placed. `process_order` has already checked that
+        # the link and the supplier are working, and has already counted the
+        # units this raw material is for as planned production. This process
+        # starts at the same moment, before the clock moves on, so neither can
+        # have broken down in between.
+        #
+        # Raw material the factory already holds is not a reason to skip the
+        # order: it is set aside for units planned earlier. Using it for these
+        # new units would leave some planned units with no raw material to make
+        # them from, and the factory would wait for them forever.
+        if supplier.source.inventory.level < reorder_quantity:  # the supplier cannot fill this order right away: record the shortage
             shortage = reorder_quantity - supplier.source.inventory.level
             supplier.source.stats.update_stats(shortage=[1,shortage])
 
-        if(supplier.source.node_status == "active"): # check if the supplier is active and has enough inventory
-            if(self.raw_inventory_counts[raw_mat_id]>= reorder_quantity): # dont order if enough inventory is available (reorder_quantity depends on the number of product units that needs to be manufactured, there is no capcacity defined for raw material inventory)
-                self.logger.info(f"{self.env.now:.4f}:{self.ID}:Sufficient raw material inventory for {supplier.source.raw_material.name}, no order placed. Current inventory level: {self.raw_inventory_counts}.")
-                self.ongoing_order_raw[raw_mat_id] = False
-                return
+        self.pending_orders += 1  # count this raw-material order as in flight
+        self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
+        event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
+        supplier.source.stats.update_stats(demand_received=[1,reorder_quantity]) # update the supplier statistics for demand received
+        # The supplier owes this order only while it waits for stock: count
+        # it as a backorder now and remove it once it is served (the same
+        # as for orders between sites, see InventoryNode.process_order).
+        order_waits = not event.triggered
+        if order_waits:
+            supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
+        yield event
+        if order_waits:
+            # Served at last: the supplier no longer owes this order.
+            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
 
-            self.pending_orders += 1  # count this raw-material order as in flight
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
-            event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
-            supplier.source.stats.update_stats(demand_received=[1,reorder_quantity]) # update the supplier statistics for demand received
-            # The supplier owes this order only while it waits for stock: count
-            # it as a backorder now and remove it once it is served (the same
-            # as for orders between sites, see InventoryNode.process_order).
-            order_waits = not event.triggered
-            if order_waits:
-                supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
-            yield event
-            if order_waits:
-                # Served at last: the supplier no longer owes this order.
-                supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
+        self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
+        self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
+        lead_time = supplier.lead_time() # get the lead time from the supplier
+        validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
+        yield self.env.timeout(lead_time) # lead time for the order
 
-            self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
-            lead_time = supplier.lead_time() # get the lead time from the supplier
-            validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
-            yield self.env.timeout(lead_time) # lead time for the order
+        self.stats.update_stats(fulfillment_received=[1,reorder_quantity],inventory_spend_cost=reorder_quantity*supplier.source.sell_price)
+        supplier.source.stats.update_stats(demand_fulfilled=[1,reorder_quantity]) # update the supplier statistics for demand fulfilled
+        self.raw_inventory_counts[raw_mat_id] += reorder_quantity
+        self.logger.info(f"{self.env.now:.4f}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
+        self.pending_orders -= 1
+        self.wake_production() # raw material just arrived
 
-            self.stats.update_stats(fulfillment_received=[1,reorder_quantity],inventory_spend_cost=reorder_quantity*supplier.source.sell_price)
-            supplier.source.stats.update_stats(demand_fulfilled=[1,reorder_quantity]) # update the supplier statistics for demand fulfilled
-            self.ongoing_order_raw[raw_mat_id] = False
-            self.raw_inventory_counts[raw_mat_id] += reorder_quantity
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
-            self.pending_orders -= 1
-            # Wake the production loop — raw material just landed.
-            if not self.raw_material_arrived.triggered:
-                self.raw_material_arrived.succeed()
-        else:
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted.")
-            yield self.env.timeout(1) # wait for 1 time unit before checking again
-
-        self.ongoing_order_raw[raw_mat_id] = False
-    
     def process_order(self, supplier, reorder_quantity):
         """
-        Place an order for raw materials and replenish raw materials inventory.
-        
+        Plan the production of more product units and order the raw materials needed to make them.
+        Each raw material is ordered from the first connected supplier of that raw material whose link and site
+        are both working. If some raw material has no such supplier, nothing is planned and nothing is ordered;
+        the replenishment policy tries again later.
+
         Parameters:
-            supplier (Link): Supplier link
-            reorder_quantity (float): The quantity of the raw material to reorder.
-        
+            supplier (Link): Supplier link picked by the selection policy. Not used: each raw material is ordered
+                from its own supplier, as described above.
+            reorder_quantity (float): Number of product units to plan.
+
         Attributes:
             None
 
@@ -3427,25 +3450,48 @@ class Manufacturer(Node):
         if reorder_quantity <= 0:
             return # no need to place an order if reorder quantity is zero
 
+        # Units count as planned only if all their raw materials really get
+        # ordered. Otherwise the factory would count on units it can never
+        # make: its inventory position would include them, so the policy would
+        # not order again, and orders waiting for those units would wait
+        # forever. So first find a working supplier for every raw material,
+        # and plan nothing if any raw material cannot be ordered right now (a
+        # disrupted link or supplier). A distributor does the same: it places
+        # no order while its link is down. The replenishment policy tries
+        # again when stock drops again, or at its next periodic check.
+        raw_orders = [] # (raw material ID, supplier link, quantity to order)
+        for raw_mat, qty_per_unit in self.product.raw_materials:
+            supplier_link = None
+            for link in self.suppliers:
+                if (link.source.raw_material.ID == raw_mat.ID
+                        and link.status == "active" and link.source.node_status == "active"):
+                    supplier_link = link # order from the first working supplier only
+                    break
+            if supplier_link is None:
+                self.logger.info(f"{self.env.now:.4f}:{self.ID}:No working supplier for raw material {raw_mat.name} (link or supplier disrupted). No production planned.")
+                return
+            raw_orders.append((raw_mat.ID, supplier_link, qty_per_unit*reorder_quantity))
+
         # Count the planned production in on_hand right away (the same thing
         # InventoryNode.process_order does). Without this, the replenishment
         # policy could run again before the next production cycle, see an
         # out-of-date on_hand, and order raw materials a second time for product
         # units that are already on the way.
         self.inventory.on_hand += reorder_quantity
+        # New units are planned, so let the production loop know. Raw material
+        # already on hand may be enough to start on them.
+        self.wake_production()
 
-        for raw_mat in self.product.raw_materials: # place order for all raw materials required to produce the product
-            raw_mat_id = raw_mat[0].ID
-            raw_mat_reorder_sz = raw_mat[1]*reorder_quantity
-            for supplier in self.suppliers:
-                if(supplier.source.raw_material.ID == raw_mat_id and self.ongoing_order_raw[raw_mat_id] == False): # check if the supplier has the raw material and order is not already placed
-                    self.ongoing_order_raw[raw_mat_id] = True # set the order status to True
-                    self.env.process(self.process_order_raw(raw_mat_id, supplier, raw_mat_reorder_sz)) # place the order for the raw material
+        # Order the raw materials for these units. This happens even if an
+        # earlier raw-material order is still on its way: that order is for
+        # units planned earlier, so these new units need their own.
+        for raw_mat_id, supplier_link, quantity in raw_orders:
+            self.env.process(self.process_order_raw(raw_mat_id, supplier_link, quantity))
         # This method runs via ``env.process``, so it must be a generator and
         # therefore must yield at least once — but it has nothing to wait for.
         # Each raw-material order is started as its own separate process and is
-        # not awaited here (the production loop wakes up via
-        # ``raw_material_arrived``). So we yield a zero-length timeout, which
+        # not awaited here (the production loop is woken when the raw material
+        # arrives, see `wake_production`). So we yield a zero-length timeout, which
         # satisfies that requirement without pausing for any real time. (An
         # earlier version waited one time unit here for no real reason.)
         yield self.env.timeout(0)

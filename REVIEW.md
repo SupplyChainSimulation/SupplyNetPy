@@ -274,6 +274,8 @@ if gross + reorder_quantity > self.inventory.inventory.capacity:
 - The three policy dispatch sites (`SSReplenishment.run`, `RQReplenishment.run`, `PeriodicReplenishment.run`) no longer set the flag pre-dispatch; `process_order` is now solely responsible for maintaining the counter.
 - `ongoing_order_raw` (the per-raw-material dict, which *is* read at `core.py:2420` as a duplicate-dispatch guard inside a single `process_order` call) is left unchanged — it serves a different role and is out of scope for §3.12.
 
+*Updated in §3.18: `ongoing_order_raw` has been removed. It stayed set until the delivery arrived, so it also blocked raw orders for later plans, leaving their units with no raw material. A `break` after the first working supplier now does the job it was meant for. The "sufficient raw inventory" early return in `process_order_raw` is gone too.*
+
 **Verified:**
 - `examples/py/intro_simple.py` — canonical `profit: -4435.0` unchanged. `D1.get_info()["pending_orders"] == 1` at sim end, matching the in-transit order dispatched at t=19 in the trace.
 - `examples/py/sc_with_factory.py` — manufacturer-involving scenario; `profit: 49419.6` / `revenue: 75150.0` / `total_cost: 25730.4` unchanged from baseline.
@@ -296,7 +298,7 @@ if gross + reorder_quantity > self.inventory.inventory.capacity:
 **Fix applied:**
 
 1. `InventoryNode.process_order`: added a `supplier.status == "inactive"` gate immediately after the capacity clamp + `reorder_quantity <= 0` guard, *before* the shortage-bookkeeping update and the `pending_orders += 1` increment. A blocked order therefore does not inflate `pending_orders`, does not create a phantom backorder on the upstream supplier, and emits a distinct log line (`Link:L1 from S1 is disrupted. Order not placed.`). The replenishment policy re-triggers normally on the next `inventory_drop` or periodic tick; once the link recovers, the order flows through.
-2. `Manufacturer.process_order_raw`: same gate, placed before the shortage check and the `node_status == "active"` branch. Clears the per-raw-material `ongoing_order_raw[raw_mat_id]` flag and yields a 1-tick timeout so the outer loop in `process_order` can retry on the next cycle.
+2. `Manufacturer.process_order_raw`: same gate, placed before the shortage check and the `node_status == "active"` branch. Clears the per-raw-material `ongoing_order_raw[raw_mat_id]` flag and yields a 1-tick timeout so the outer loop in `process_order` can retry on the next cycle. *Updated in §3.18: the check moved to `Manufacturer.process_order`, before the planned units are added to `on_hand`, and covers the supplier site as well as the link. Checking only in `process_order_raw` left the planned units with no raw material.*
 3. `Link.disruption`: the stale TODO is replaced with a comment explicitly documenting that in-transit shipments are intentionally not interrupted.
 
 **Verified:**
@@ -404,7 +406,7 @@ The double count also hid a second bug (defect 2). `manufacture_product` capped 
 
 **Fix applied:**
 
-- **Backorders are live.** In both order methods, an order counts as a backorder at the supplying node only while it really waits: right after `inventory.get(...)`, `not event.triggered` means SimPy could not hand it out on the spot (the shelf is short, or an earlier request is ahead of it in line). It is removed once `yield event` returns. The whole order counts, because the shelf never sends part of a request. The bookkeeping sits inside the `node_status == "active"` branch. `shortage` is unchanged: it still records how short the node was when the order arrived and is never cleared.
+- **Backorders are live.** In both order methods, an order counts as a backorder at the supplying node only while it really waits: right after `inventory.get(...)`, `not event.triggered` means SimPy could not hand it out on the spot (the shelf is short, or an earlier request is ahead of it in line). It is removed once `yield event` returns. The whole order counts, because the shelf never sends part of a request. The bookkeeping sits inside the `node_status == "active"` branch (*in `process_order_raw` that branch is gone since §3.18: `Manufacturer.process_order` checks the supplier before any raw order starts*). `shortage` is unchanged: it still records how short the node was when the order arrived and is never cleared.
 - **New helpers `Inventory.waiting_orders()` and `Inventory.waiting_site_orders()`**, both reading the shelf's queue (`inventory.inventory.get_queue`). Reading the queue is always exact: SimPy removes a request once it is served, so there is no separate counter to keep in sync. Customers only take stock that is free for them, so they never wait in this queue, but other requests can: for perishable goods, `remove_expired` asks to take expired units away, and that request waits behind earlier ones like any other (in `examples/py/hybrid_big_sc.py`, the bakery had a 68-unit expiry request waiting between its site orders). So `Inventory.get` takes an optional `site_order` flag and labels every request it creates; the two order methods pass `site_order=True`. `waiting_site_orders()` sums only the labelled requests; `waiting_orders()` sums them all.
 - **`Node.position()`** subtracts only the units owed to waiting customers: `on_hand - (backorder[1] - inventory.waiting_site_orders())`. Both capacity clamps (§3.10) now call `self.position()`, so the formula lives in one place.
 - **`manufacture_product`** caps production at `on_hand - level + inventory.waiting_orders()`. This uses the full total, because every waiting request, expiry removals included, has been taken off `on_hand` but has not left the shelf.
@@ -418,6 +420,36 @@ The double count also hid a second bug (defect 2). `manufacture_product` capped 
 - Canonical `examples/py/intro_simple.py` unchanged (`profit: -4435.0`).
 - `pytest` — 227/227 passing.
 - New regression tests in `tests/test_core.py`: `TestSiteBackordersAreLive` (8 tests, including a waiting expiry removal that must not be mistaken for a site order), `TestFactoryMakesWhatItOwes` (the 10-on-the-shelf factory example: 50 received, 50 raw material bought, 50 made, nothing left over), and `TestSupplierRawMaterialBackordersAreLive` (2 tests).
+
+### 3.18 Factories stop for good: one batch per delivery, and planned units with no raw material ✅ Resolved
+Reported in GitHub issue #1 (defects 3, 4 and 5). `Manufacturer.behavior`, `Manufacturer.manufacture_product`, `Manufacturer.process_order`, `Manufacturer.process_order_raw`, `Inventory.get`.
+
+**How a factory is meant to work (user, 2026-10-11).** `batch_size` is the factory's capacity: it can make at most `batch_size` units at once, and each batch takes `manufacturing_time`. When the replenishment policy asks for more stock, the factory plans those units (adds them to `on_hand`) and orders the raw materials for them. It then makes batch after batch until every planned unit is made. If stock drops below s again in the meantime, the policy plans more units and orders their raw material; the factory just has more to make. A batch may be smaller than `batch_size` when there is only raw material, shelf space or planned work left for fewer units.
+
+**Original issue.**
+
+1. **One batch per raw-material delivery (defect 3).** The production loop made one batch and then waited for the next delivery (`raw_material_arrived`). A factory that planned 25 units with `batch_size` 5 got the raw material for all 25 in one delivery, made 5, and sat with raw material for 20. If its position stayed above s, no new plan came, so no delivery came, and it never woke again. The example from the issue (batch size 5, 300 days) made 10 units in 300 days and stopped for good on day 14, holding raw material for 39 more; customers got 4% of what they asked for. This came in with §5.1: the old loop checked once per day, so it made one batch per day; the event-driven loop made one batch per *delivery*.
+2. **Production paused at a full shelf never restarted (defect 5).** Same cause: freeing shelf space did not wake the loop.
+3. **Planned units with no raw material behind them (defect 4, and the rest of defect 3).** `Manufacturer.process_order` added the planned units to `on_hand` first and then tried to order raw material, but the order could be skipped:
+   - while an earlier order for that raw material was still on its way (`ongoing_order_raw`, see §3.12). It was meant only to stop one plan ordering the same raw material from several suppliers, but it stayed set until the delivery arrived;
+   - when the factory already held "enough" raw material (`process_order_raw`). That raw material was already set aside for units planned earlier;
+   - when the link or the supplier was disrupted (the early exits in `process_order_raw`). This case was not in the issue.
+
+   Units planned this way can never be made, yet they count in the factory's position, so the policy does not plan again, and orders waiting for those units wait forever. In `examples/py/hybrid_big_sc.py` (seed 2) the bakery planned 667 loaves while a flour order was on its way (four plans: 210, 140, 172 and 145). By day 120 it had made all 6,640 loaves it had raw material for, then stopped for good: its position was 350 (41 on the shelf + 667 planned − 358 owed), above s = 300, with no raw material and no raw order on its way.
+
+**Fix applied:**
+
+- **The production loop keeps going.** `manufacture_product` makes one batch and returns how many units it made. `behavior` starts the next batch straight away after a batch that made something. Only when nothing can be made (nothing planned, no raw material, or no free space) does it wait, on a new event `production_wake` (replacing `raw_material_arrived`).
+- **`Manufacturer.wake_production()`** fires that event. It is called when raw material arrives (`process_order_raw`), when a new plan comes in (`process_order`), and whenever stock leaves a manufacturer's shelf (`Inventory.get`, which looks the method up with `getattr`, since only manufacturers have it). A wake-up never makes anything by itself: the loop just checks again and goes back to waiting if nothing can be made. So waking it more often than needed costs one quick check, and no case can be missed. Expiry removals also go through `Inventory.get` and free space too. `Inventory.destroy` does not wake the loop yet (see defect 7).
+- **Every plan orders its own raw material.** The `ongoing_order_raw` flag is removed; `pending_orders` already counts raw orders on their way. Several raw orders on their way at once are fine, as for distributors (§3.12). The "already have enough raw material" check in `process_order_raw` is removed. There is no limit on raw-material storage yet, and every plan orders exactly what it needs, so raw material on hand always belongs to earlier plans.
+- **Check the suppliers before planning.** `process_order` first picks, for every raw material, the first connected supplier whose link and site are both working, and only then adds the units to `on_hand` and starts the raw orders. If any raw material has no working supplier, it plans nothing and orders nothing (not even the other raw materials); the policy tries again when stock drops or at its next periodic check. This is how `InventoryNode.process_order` already treats a down link. `process_order_raw` no longer has its own disruption checks. It starts at the same moment, before the clock moves on (SimPy starts a new process before any timed event at that moment), so nothing can break down in between. Its shortage is therefore recorded only for an order that is really placed. Picking the first working supplier, rather than the first connected one, also means a second supplier of the same raw material is used while the first one's link is down.
+
+**Verified:**
+
+- Canonical `examples/py/intro_simple.py` unchanged (`profit: -4435.0`; it has no factory). `examples/py/sc_with_factory.py` output identical.
+- The example from the issue: 889 units made instead of 10, no raw material left unused, customers get 99% instead of 4%.
+- `examples/py/hybrid_big_sc.py`: the bakery no longer stops (seed 2: 70,358 loaves made, raw material ordered for 70,558, the last 200 still on their way). Customers there still get only about 3%, but the bread now runs out downstream: most of it expires at the distributors and shops (defect 7).
+- `pytest` — 234/234 passing. New `TestFactoryKeepsProducing` (7 tests: one delivery made into every batch it covers; raw material ordered while an earlier order is on its way; leftover raw material does not cancel a new order; a full shelf restarts once space frees; a disrupted raw-material link plans nothing until it recovers; one working supplier per raw material; the example from the issue). `TestSupplierRawMaterialBackordersAreLive::test_disrupted_supplier_records_no_backorder` now places the order through `process_order`, where the check lives, and also checks that no shortage is recorded and nothing is planned.
 
 ---
 
@@ -735,6 +767,8 @@ while len(self.suppliers) >= len(self.product.raw_materials):
 ```
 
 `manufacture_product` is now awaited directly instead of spawned + guarded by `production_cycle` — at most one production cycle is in flight at a time, exactly as the old `not self.production_cycle` re-entry guard enforced. The flag itself is preserved (still set/cleared inside `manufacture_product`) for any external code that introspects it, but `behavior` no longer needs it. If `manufacture_product` produces nothing this round (insufficient raw across BOM, or `pending = on_hand - level == 0`), it returns immediately and `behavior` blocks on `raw_material_arrived` until the next delivery — no spin loop.
+
+*Corrected in §3.18: waiting for the next delivery after every batch was a bug. The old polling loop made one batch per day; this one made one batch per delivery, so raw material for the rest of a plan sat unused and the factory could stop for good. `behavior` now goes straight on to the next batch after a batch that made something, and waits on `production_wake` (raw material arrives, a new plan comes in, or stock leaves the shelf) only when nothing can be made.*
 
 **Fix applied (3) — `Statistics.update_stats_periodically` period is user-configurable:**
 
