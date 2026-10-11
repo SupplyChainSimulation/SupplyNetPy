@@ -11,61 +11,61 @@ img{
 
 # Estimating Safety Stock Level
 
-Safety inventory can help a supply chain improve product availability in the presence of supply and demand variability.
+Safety inventory (the textbook's name for safety stock, the extra units kept as a buffer) can help a supply chain make its product more available when supply and demand vary.
 
-![image.png](img/safety_inv_est_files/safety_inv_est_profile.png)
+![How the inventory level changes over time, with a safety inventory.](img/safety_inv_est_files/safety_inv_est_profile.png)
 
-<small> Image source: [Textbook] Supply Chain Management: Strategy, Planning, and Operation, (Chopra and Meindl) </small>
+<small> Image source, the textbook <b>Supply Chain Management: Strategy, Planning, and Operation</b> (Chopra and Meindl). </small>
 
 ## System Description
 
-__Bloomingdale__ sells Gucci purses. Demand is 100 per week. Gucci takes 3 weeks to deliver purses to Bloomingdale in response to an order. Therefore Bloomingdale can place an order when exactly 300 purses are remaining in the inventory.
+__Bloomingdale__ sells Gucci purses. Demand is 100 per week. Gucci takes 3 weeks to deliver purses to Bloomingdale after an order. So Bloomingdale could place an order when exactly 300 purses are left in its inventory.
 
-Given demand fluctuations, demand over three weeks may be higher or lower than that of 300. If it is higher, Bloomingdale will lose sales. The store manager decides to put an order of 400 purses (therefore, safety level is 100).
+Because demand varies, the demand over three weeks may be more or less than 300. If it is more, Bloomingdale will lose sales. The store manager decides to place an order when 400 purses are left (so the safety inventory is 100).
 
-__Goal:__ To determine the appropriate level of safety inventory.
+__Goal.__ To work out the right level of safety inventory.
 
-__Replenishment policies:__
+__Replenishment policies.__
 
-  1. __Continuous review:__ Inventory is tracked all the time, and an order for a fixed lot size *Q* is placed the moment the level falls to a pre-set threshold called the **reorder point (ROP)** — the stock level at which a refill is triggered. As an example, consider the store manager at B&M who continuously tracks the inventory of phones. She orders 600 phones the moment the inventory drops below the reorder point of 400. In this case, the size of each order is fixed (always 600); only the *time* between consecutive orders varies, depending on how fast demand consumes the stock.
+  1. __Continuous review.__ The inventory is tracked all the time, and an order for a fixed lot size *Q* is placed the moment the inventory falls to a set level called the **reorder point (ROP)**. For example, consider the store manager at B&M who tracks the inventory of phones all the time. She orders 600 phones the moment the inventory drops below the reorder point of 400. In this case, the size of each order is fixed (always 600), and only the *time* between orders varies, depending on how fast customers buy the phones. In SupplyNetPy, this is the (R, Q) policy.
 
-  2. __Periodic review:__ Inventory status is checked at regular periodic intervals, and an order is placed to raise the inventory level to a specified threshold. As an example, consider the purchase of film at B&M. The store manager does not track film inventory continuously. Every Thursday, employees check film inventory, and the manager orders enough so that the total of the available inventory and the size of the order equals 1,000 films. In this case, the time between orders is fixed. The size of each order, however, can fluctuate given variable demand.
+  2. __Periodic review.__ The inventory is checked at regular intervals, and an order is placed to raise the inventory to a set level. For example, consider the purchase of film at B&M. The store manager does not track film inventory all the time. Every Thursday, employees check the film inventory, and the manager orders enough so that the available inventory plus the order adds up to 1,000 films. In this case, the time between orders is fixed, but the size of each order can vary with demand.
 
 
 ## Numerical Example
 
 <p style="font-size: 20px;"><b>Evaluating Safety Inventory, Given an Inventory Policy</b></p>
 
-Assume that weekly demand for phones at B&M Office Supplies is normally distributed, with a mean of 2,500 and a standard deviation of 500. The manufacturer takes two weeks to fill an order placed by the B&M manager. The store manager currently orders 10,000 phones when the inventory on hand drops to 6,000. Evaluate the safety inventory and the average inventory carried by B&M. Also evaluate the average time a phone spends at B&M.
+Assume that weekly demand for phones at B&M Office Supplies is normally distributed, with a mean of 2,500 and a standard deviation of 500. The manufacturer takes two weeks to fill an order placed by the B&M manager. The store manager currently orders 10,000 phones when the inventory drops to 6,000. Evaluate the safety inventory and the average inventory carried by B&M. Also evaluate the average time a phone spends at B&M.
 
-__Analytical Solution:__<br>
+__Analytical solution.__<br>
 Under this replenishment policy, we have <br>
 Average demand per week, $D = 2500$ <br>
 Standard deviation of weekly demand, $\sigma_D = 500$ <br>
-Average lead tme for replenishment, $L = 2$ Weeks <br>
-Reorder point $ROP = 6000$ <br>
-Average lot size $Q = 10000$ <br>
+Average lead time, $L = 2$ weeks <br>
+Reorder point, $ROP = 6000$ <br>
+Average lot size, $Q = 10000$ <br>
 
-using eq 12.3 in the textbook,
+Using equation 12.3 in the textbook,
 
-safety inv, $ss = ROP - D^*L = 6000-5000 = 1000$ <br>
+Safety inventory, $ss = ROP - D^*L = 6000-5000 = 1000$ <br>
 B&M thus carries a safety inventory of 1,000 phones.<br>
 
-Cycle inventory = $\frac{Q}{3} = \frac{10000}{2} = 5000$
+Cycle inventory = $\frac{Q}{2} = \frac{10000}{2} = 5000$
 
 Average inventory = cycle inventory + safety inventory $= 5000 + 1000 = 6000$
 
 Average flow time = average inventory/throughput $= \frac{6000}{2500} = 2.4$ weeks
 
-__System:__
+__The network.__
 
-![image.png](img/safety_inv_est_files/safety_inv_est_sc.png)
+![The supply chain network for this example.](img/safety_inv_est_files/safety_inv_est_sc.png)
 
-Cost per unit, transportation cost is not given. So we can assume anything. We want to find<br> 
+The cost per unit and the transportation cost are not given, so any values can be used. We want to find the following.<br>
 
-- Safety inventory level (the average number of phones on hand when a replenishment order arrives).
-- Cycle inventory (average inventory levels) 
-- Average flowtime (average time spent by a product in the inventory)
+* Safety inventory level (the average number of phones in inventory when a replenishment order arrives).
+* Cycle inventory (the average inventory level).
+* Average flow time (the average time a unit spends in the inventory).
 
 
 ## Implementation
