@@ -2976,53 +2976,60 @@ class Supplier(Node):
 
 class InventoryNode(Node):
     """
-    The `InventoryNode` class represents an inventory management node in the supply network, 
-    such as a retailer, a store, a warehouse, or distributor. It manages inventory levels, replenishment policies, 
-    supplier selection, and order processing dynamically.
+    The `InventoryNode` class represents a site that buys a product from its suppliers, holds it, and sells it
+    on: a distributor, warehouse or retailer. It sells to buyers (other sites) and to customers.
 
-    The node can handle both perishable and non-perishable inventories and supports 
-    automatic replenishment using various replenishment policies. The node can also
-    interact with multiple supplier links and selects suppliers based on the 
-    configured selection policy.
+    It places replenishment orders according to its replenishment policy, and when it has more than one
+    supplier, it chooses one with its supplier-selection policy. Its inventory can be perishable or
+    non-perishable.
 
     Parameters:
         env (simpy.Environment): Simulation environment.
         ID (str): Unique identifier for the node.
-        name (str): Name of the inventory node.
-        node_type (str): Type of the inventory node (e.g., retailer or distributor).
-        capacity (float): Maximum capacity of the inventory.
-        initial_level (float): Initial inventory level.
-        inventory_holding_cost (float): Inventory holding cost per unit.
-        replenishment_policy (InventoryReplenishment): Replenishment policy object for the inventory.
-        policy_param (dict): Parameters for the replenishment policy.
-        product_sell_price (float): Selling price of the product.
-        product_buy_price (float): Buying price of the product.
+        name (str): Name of the node.
+        node_type (str): "distributor", "warehouse", "retailer", "store" or "shop" (they behave the same).
+        capacity (float): The largest inventory level the node can hold.
+        initial_level (float): Inventory level at the start.
+        inventory_holding_cost (float): Holding cost per unit per time unit.
+        replenishment_policy (InventoryReplenishment): The replenishment policy **class** (for example
+            ``scm.SSReplenishment``), not an object: the node creates the policy itself. None for no
+            replenishment policy.
+        policy_param (dict): Parameters for the replenishment policy (for example ``{'s': 20, 'S': 60}``).
+        product_sell_price (float): Sell price per unit.
+        product_buy_price (float): Buy price per unit.
         inventory_type (str): Type of inventory ("non-perishable" or "perishable").
-        shelf_life (float): Shelf life of the product for perishable items.
-        manufacture_date (callable): Function to model manufacturing date (used for perishable inventories).
-        product (Product): Product managed by the inventory node.
-        supplier_selection_policy (SupplierSelectionPolicy): Supplier selection policy class.
-        supplier_selection_mode (str): Mode for supplier selection (default is "fixed").
-        **kwargs: Additional keyword arguments for the Node class and logger.
+        shelf_life (float): Shelf life of the product, in time units (perishable goods only).
+        manufacture_date (callable): Function giving the manufacturing date of units that arrive without one
+            (perishable goods only). It is called with the arrival time; if it is not given, the arrival time
+            is used.
+        product (Product): The product this node sells (optional). The node keeps its own copy, with its own
+            prices.
+        supplier_selection_policy (SupplierSelectionPolicy): The supplier-selection policy class (default
+            ``SelectFirst``).
+        supplier_selection_mode (str): "fixed" (default) or "dynamic"; see `SupplierSelectionPolicy`.
+        **kwargs: Additional keyword arguments for the Node class and logger. Also accepts
+            ``periodic_stats`` (bool, default False: if True, its statistics are updated every
+            ``stats_period`` time units) and ``stats_period`` (float, default 1).
 
     Attributes:
         _info_keys (list): List of keys to include in the info dictionary.
-        replenishment_policy (InventoryReplenishment): Replenishment policy object.
-        inventory (Inventory): Inventory object managing stock.
-        inventory_drop (simpy.Event): Event triggered when inventory drops.
-        inventory_raised (simpy.Event): Event triggered when inventory is replenished.
-        manufacture_date (callable): Manufacturing date generation function.
-        sell_price (float): Selling price of the product.
-        buy_price (float): Buying price of the product.
-        product (Product): Product managed by the node.
-        suppliers (list): List of supplier links connected to this node.
-        pending_orders (int): Number of replenishment orders currently in flight (dispatched but not yet delivered).
-        selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
-        stats (Statistics): Statistics tracking object for this node.
+        replenishment_policy (InventoryReplenishment): The replenishment policy object the node created (or None).
+        inventory (Inventory): The node's inventory.
+        inventory_drop (simpy.Event): Fires when the inventory drops.
+        inventory_raised (simpy.Event): Fires when units are added to the inventory.
+        manufacture_date (callable): Function giving the manufacturing date of units that arrive without one.
+        sell_price (float): Sell price per unit.
+        buy_price (float): Buy price per unit.
+        product (Product): The node's own copy of the product (if one was given).
+        suppliers (list): The links to this node's suppliers.
+        pending_orders (int): Number of this node's replenishment orders placed but not yet arrived (waiting at a
+            supplier or in transit).
+        selection_policy (SupplierSelectionPolicy): The supplier-selection policy object.
+        stats (Statistics): The node's statistics.
 
     Functions:
         __init__: Initializes the InventoryNode object.
-        process_order: Places an order with the selected supplier and updates inventory upon delivery.
+        process_order: Places a replenishment order with one supplier and adds the units when they arrive.
     """
     _info_keys = Node._info_keys + ["sell_price", "buy_price", "pending_orders", "selection_policy"]
 
@@ -3051,50 +3058,59 @@ class InventoryNode(Node):
         Parameters:
             env (simpy.Environment): Simulation environment.
             ID (str): Unique identifier for the node.
-            name (str): Name of the inventory node.
-            node_type (str): Type of the inventory node (e.g., retailer or distributor).
-            capacity (float): Maximum capacity of the inventory.
-            initial_level (float): Initial inventory level.
-            inventory_holding_cost (float): Inventory holding cost per unit.
-            replenishment_policy (InventoryReplenishment): Replenishment policy object for the inventory.
-            policy_param (dict): Parameters for the replenishment policy.
-            product_sell_price (float): Selling price of the product.
-            product_buy_price (float): Buying price of the product.
+            name (str): Name of the node.
+            node_type (str): "distributor", "warehouse", "retailer", "store" or "shop" (they behave the same).
+            capacity (float): The largest inventory level the node can hold.
+            initial_level (float): Inventory level at the start.
+            inventory_holding_cost (float): Holding cost per unit per time unit.
+            replenishment_policy (InventoryReplenishment): The replenishment policy **class** (for example
+                ``scm.SSReplenishment``), not an object: the node creates the policy itself. None for no
+                replenishment policy.
+            policy_param (dict): Parameters for the replenishment policy (for example ``{'s': 20, 'S': 60}``).
+            product_sell_price (float): Sell price per unit.
+            product_buy_price (float): Buy price per unit.
             inventory_type (str): Type of inventory ("non-perishable" or "perishable").
-            shelf_life (float): Shelf life of the product for perishable items.
-            manufacture_date (callable): Function to model manufacturing date (used for perishable inventories).
-            product (Product): Product managed by the inventory node.
-            supplier_selection_policy (SupplierSelectionPolicy): Supplier selection policy class.
-            supplier_selection_mode (str): Mode for supplier selection (default is "fixed").
-            **kwargs: Additional keyword arguments for the Node class and logger.
+            shelf_life (float): Shelf life of the product, in time units (perishable goods only).
+            manufacture_date (callable): Function giving the manufacturing date of units that arrive without one
+                (perishable goods only). It is called with the arrival time; if it is not given, the arrival time
+                is used.
+            product (Product): The product this node sells (optional). The node keeps its own copy, with its own
+                prices.
+            supplier_selection_policy (SupplierSelectionPolicy): The supplier-selection policy class (default
+                ``SelectFirst``).
+            supplier_selection_mode (str): "fixed" (default) or "dynamic"; see `SupplierSelectionPolicy`.
+            **kwargs: Additional keyword arguments for the Node class and logger. Also accepts
+                ``periodic_stats`` (bool, default False: if True, its statistics are updated every
+                ``stats_period`` time units) and ``stats_period`` (float, default 1).
         
         Attributes:
             _info_keys (list): List of keys to include in the info dictionary.
-            replenishment_policy (InventoryReplenishment): Replenishment policy object.
-            inventory (Inventory): Inventory object managing stock.
-            inventory_drop (simpy.Event): Event triggered when inventory drops.
-            inventory_raised (simpy.Event): Event triggered when inventory is replenished.
-            manufacture_date (callable): Manufacturing date generation function.
-            sell_price (float): Selling price of the product.
-            buy_price (float): Buying price of the product.
-            product (Product): Product managed by the node.
-            suppliers (list): List of supplier links connected to this node.
-            pending_orders (int): Number of replenishment orders currently in flight (dispatched but not yet delivered).
-            selection_policy (SupplierSelectionPolicy): Supplier selection policy object.
-            stats (Statistics): Statistics tracking object for this node.
+            replenishment_policy (InventoryReplenishment): The replenishment policy object the node created (or None).
+            inventory (Inventory): The node's inventory.
+            inventory_drop (simpy.Event): Fires when the inventory drops.
+            inventory_raised (simpy.Event): Fires when units are added to the inventory.
+            manufacture_date (callable): Function giving the manufacturing date of units that arrive without one.
+            sell_price (float): Sell price per unit.
+            buy_price (float): Buy price per unit.
+            product (Product): The node's own copy of the product (if one was given).
+            suppliers (list): The links to this node's suppliers.
+            pending_orders (int): Number of this node's replenishment orders placed but not yet arrived (waiting at a
+                supplier or in transit).
+            selection_policy (SupplierSelectionPolicy): The supplier-selection policy object.
+            stats (Statistics): The node's statistics.
         
         Returns:
             None
 
         Behavior:
-            The inventory node stocks the product in inventory to make it available to the consumer node or demand node (end customer). 
-            It orders product from its supplier node to maintain the right inventory levels according to the replenishment policy.
-            The inventory node can have multiple suppliers. It chooses a supplier based on the specified supplier selection policy. 
-            The product buy and sell prices are set during initialization. The inventory node is expected to sell the product at 
-            a higher price than the buy price, but this is user-configured.
+            The node holds units of the product so that buyers (other sites) and customers can order them. It
+            places replenishment orders with its suppliers according to its replenishment policy, and chooses
+            among its suppliers with its supplier-selection policy. The buy and sell prices are set here; the
+            node is expected to sell at a higher price than it buys, but that is up to the user.
         """
-        # Pull periodic-stats kwargs out before forwarding to Node — exposes
-        # the ``Statistics`` periodic update cadence as a node-level kwarg.
+        # Take the statistics options out of kwargs before passing the rest on
+        # to Node. They belong to Statistics, but are accepted here so users can
+        # ask for regular statistics updates.
         periodic_stats = kwargs.pop('periodic_stats', False)
         stats_period = kwargs.pop('stats_period', 1)
         if periodic_stats:
@@ -3111,11 +3127,11 @@ class InventoryNode(Node):
         self.inventory = Inventory(env=self.env, capacity=capacity, initial_level=initial_level, node=self,
                                    inv_type=inventory_type, holding_cost=inventory_holding_cost,
                                    replenishment_policy=self.replenishment_policy, shelf_life=shelf_life, **inventory_kwargs)
-        self.inventory_drop = self.env.event()  # event to signal when inventory is dropped
-        self.inventory_raised = self.env.event() # signal to indicate that inventory has been raised
+        self.inventory_drop = self.env.event()  # fires when the inventory drops
+        self.inventory_raised = self.env.event() # fires when units are added
         self.manufacture_date = manufacture_date
-        self.sell_price = product_sell_price # set the sell price of the product
-        self.buy_price = product_buy_price # set the buy price of the product
+        self.sell_price = product_sell_price # sell price per unit
+        self.buy_price = product_buy_price # buy price per unit
         if product is not None:
             # Make a full copy so each InventoryNode that "sells" the same
             # Product can set its own sell_price / buy_price without changing the
@@ -3124,20 +3140,27 @@ class InventoryNode(Node):
             # assignments below.
             self.product = copy.deepcopy(product)
             self.product.sell_price = product_sell_price
-            self.product.buy_price = product_buy_price # set the buy price of the product to the product buy price
-        # self.suppliers is already initialised to [] in Node.__init__; inbound
-        # Links register themselves via Node.add_supplier_link.
-        self.pending_orders = 0 # count of replenishment orders currently in flight (dispatched but not yet delivered)
+            self.product.buy_price = product_buy_price # the node's own buy price
+        # self.suppliers is already set to [] in Node.__init__; the links to
+        # this node's suppliers register themselves via Node.add_supplier_link.
+        self.pending_orders = 0 # replenishment orders placed but not yet arrived
         self.selection_policy = supplier_selection_policy(self,supplier_selection_mode)
         self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the inventory node
 
     def process_order(self, supplier, reorder_quantity):
         """
-        Place an order for the product from the suppliers.
+        Place a replenishment order with one supplier, and add the units to the
+        inventory when they arrive. This runs as a SimPy process (``place_order``
+        starts it).
+
+        The order is not placed if the link is disrupted or the supplier's site
+        is disrupted; the replenishment policy tries again at its next check.
 
         Parameters:
-            supplier (Link): The supplier link from which the order is placed.
-            reorder_quantity (float): The quantity of the product to reorder.
+            supplier (Link): The **link** to the supplier, not the supplier
+                itself (the supplier is ``supplier.source``).
+            reorder_quantity (float): Units to order. Reduced if they would not
+                fit within the capacity.
 
         Attributes:
             None
@@ -3145,11 +3168,11 @@ class InventoryNode(Node):
         Returns:
             None
         """
-        # Check the order against the shelf's capacity using the inventory
-        # position (stock on the shelf and in transit, minus units owed to
-        # waiting customers). Units owed to customers leave the shelf as soon
-        # as the next delivery lands, so they do not take up space and must not
-        # count against the capacity.
+        # Check the order against the capacity using the inventory position
+        # (inventory level plus units in transit, minus units owed to other
+        # sites and to waiting customers). Units owed to customers leave the
+        # inventory as soon as the next delivery arrives, so they do not take
+        # up space and must not count against the capacity.
         gross = self.position()
         if(gross + reorder_quantity > self.inventory.capacity): # check if the inventory can accommodate the reordered quantity
                 reorder_quantity = self.inventory.capacity - gross # if not, adjust reorder quantity to order only what can fit
@@ -3157,23 +3180,23 @@ class InventoryNode(Node):
         if reorder_quantity <= 0:
             return  # no need to place an order if reorder quantity is zero
 
-        # A new order cannot be sent while the transport link is down. Shipments
-        # that already passed this check are not interrupted — a down link only
-        # blocks *new* orders. Checking here (before the shortage bookkeeping and
-        # before pending_orders is increased) means a blocked order is not
-        # counted as in transit and does not create a fake backorder on the
-        # supplier. The replenishment policy tries again when inventory drops
-        # again or on the next periodic check.
+        # A new order cannot be sent while the link is disrupted. Orders that
+        # already passed this check are not stopped — a disrupted link only
+        # blocks *new* orders. Checking here (before any shortage is recorded
+        # and before pending_orders is increased) means a blocked order is not
+        # counted as in transit and does not create a fake backorder at the
+        # supplier. The replenishment policy tries again when the inventory
+        # drops again or at its next periodic check.
         if supplier.status == "inactive":
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Order not placed.")
             return
 
-        self.pending_orders += 1  # count this order as in flight; decremented when delivery completes (or supplier disrupted)
+        self.pending_orders += 1  # count this order as placed; taken off again when it arrives (or when the supplier's site is disrupted and it is not placed)
 
         if(supplier.source.node_status == "active"):
-            # The supplier is short if it cannot fill the whole order from its
-            # shelf right now. This is checked only here, once we know the
-            # order is really placed: a supplier whose site is down never
+            # The supplier is short if its inventory level cannot fill the whole
+            # order right now. This is checked only here, once we know the
+            # order is really placed: a supplier whose site is disrupted never
             # receives the order, so it must not be counted as short for it.
             if supplier.source.inventory.level < reorder_quantity:
                 shortage = reorder_quantity - supplier.source.inventory.level
@@ -3187,12 +3210,13 @@ class InventoryNode(Node):
             self.inventory.on_hand += reorder_quantity
 
             # The supplier's backorders show what it owes *right now*: an order
-            # is counted while it waits for stock and removed once it is served.
-            # The shelf hands out a request on the spot if it can, so a request
-            # that has not been served at this point is really waiting — either
-            # the shelf is short, or an earlier request is ahead of it in line.
-            # (The whole order counts, because the shelf never sends part of a
-            # request: it waits until it can send all of it.)
+            # is counted while it waits for units and removed once it is served.
+            # The inventory hands out an order on the spot if it can, so an
+            # order that has not been served at this point is really waiting —
+            # either the inventory level is too low, or an earlier order is
+            # ahead of it in line. (The whole order counts, because the
+            # inventory never sends part of an order: it waits until it can
+            # send all of it.)
             order_waits = not event.triggered
             if order_waits:
                 supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
@@ -3202,52 +3226,52 @@ class InventoryNode(Node):
                 supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
 
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
-            lead_time = supplier.lead_time() # get the lead time from the supplier
+            lead_time = supplier.lead_time() # draw the lead time from the link
             validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
             yield self.env.timeout(lead_time) # lead time for the order
 
-            # Add the delivered units to the shelf, one fitting chunk at a time.
+            # Add the delivered units to the inventory, one part that fits at a time.
             #
             # Why loop instead of a single put()? A replenishment order can be
-            # bigger than the free space on the shelf. This is normal, not a
-            # mistake: when the node owes units to waiting customers (backorders),
-            # the (s, S) policy orders enough to BOTH refill the shelf AND cover
-            # those backorders. That combined amount can be larger than the shelf
+            # bigger than the free capacity. This is normal, not a mistake: when
+            # the node owes units to waiting customers (backorders), the (s, S)
+            # policy orders enough to BOTH refill the inventory AND cover those
+            # backorders. That combined amount can be more than the inventory
             # can hold at once, because the backordered units are meant to pass
-            # straight through to customers, not to sit on the shelf. A single
-            # put() would simply drop whatever did not fit — and the node would
-            # still have paid for those dropped units.
+            # straight through to customers, not to stay in the inventory. A
+            # single put() would simply drop whatever did not fit — and the node
+            # would still have paid for those dropped units.
             #
             # So we add what fits right now, then pause for one instant of
             # simulation time. `env.timeout(0)` does not advance the clock; it just
             # lets other events scheduled for this same instant run. During that
-            # pause, the units we just shelved are handed to the waiting customers,
-            # which empties shelf space again. We then add the next chunk, and
-            # repeat until the whole order has been shelved or handed out.
+            # pause, the units we just added are handed to the waiting customers,
+            # which frees capacity again. We then add the next part, and repeat
+            # until the whole order has been added or handed out.
             #
-            # Safety stop: if a pause frees no shelf space at all, the shelf is
+            # Safety stop: if a pause frees no capacity at all, the inventory is
             # genuinely full and the leftover cannot be stored. We stop there (so
             # the loop can never run forever inside a single instant) and drop the
-            # leftover. `on_hand` is the node's inventory position (units on the
-            # shelf plus units still in transit); it was increased by the full
-            # order amount when the order was placed, so we subtract the
-            # undeliverable leftover back out to keep it correct.
-            if man_date_ls:                                  # supplier sent dated batches (perishable goods)
+            # leftover. `on_hand` (the inventory position, apart from units owed
+            # to waiting customers) was increased by the full order amount when
+            # the order was placed, so we subtract the undeliverable leftover
+            # back out to keep it correct.
+            if man_date_ls:                                  # the supplier sent batches with their manufacturing dates (perishable goods)
                 batches = [(ele[0], ele[1]) for ele in man_date_ls]
-            elif self.inventory.inv_type == "perishable":    # perishable, but we set the made-on date ourselves
+            elif self.inventory.inv_type == "perishable":    # perishable, but we set the manufacturing date ourselves
                 mfg = self.manufacture_date(self.env.now) if self.manufacture_date else self.env.now
                 batches = [(mfg, reorder_quantity)]
             else:                                            # ordinary (non-perishable) goods
                 batches = [(None, reorder_quantity)]
 
-            accepted = 0  # how many units actually made it onto the shelf
+            accepted = 0  # how many units actually made it into the inventory
             for mfg_date, qty in batches:
                 # `remaining > 1e-9` rather than `> 0`: a tiny tolerance so
                 # floating-point rounding dust never triggers one extra loop.
                 remaining = qty
                 while remaining > 1e-9:
                     # put() returns how many units it actually accepted — it
-                    # never overfills the shelf, so this can be less than asked.
+                    # never goes over the capacity, so this can be less than asked.
                     if mfg_date is None:
                         put_now = self.inventory.put(remaining)
                     else:
@@ -3255,9 +3279,9 @@ class InventoryNode(Node):
                     accepted += put_now
                     remaining -= put_now
                     if remaining <= 1e-9:
-                        break  # the whole chunk is shelved; done
-                    # Shelf is full. Pause one instant so the units we just added
-                    # can be handed to waiting customers (freeing space), then retry.
+                        break  # the whole part is in the inventory; done
+                    # The inventory is full. Pause one instant so the units we just
+                    # added can be handed to waiting customers (freeing capacity), then retry.
                     prev_level = self.inventory.level
                     yield self.env.timeout(0)
                     if self.inventory.level >= prev_level:
