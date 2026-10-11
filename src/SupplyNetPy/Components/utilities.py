@@ -109,8 +109,8 @@ def process_info_dict(info_dict, logger):
 
 # Column position for each NodeType when drawing the network with
 # ``multipartite_layout``. Putting each type in its own column makes the
-# picture read left-to-right from raw materials to finished goods, which is the
-# natural order for a supply chain. The old default (``spectral_layout``) often
+# picture read left-to-right from raw-material suppliers to customers, which is
+# the natural order for a supply chain. The old default (``spectral_layout``) often
 # placed nodes badly for small networks, overlapping suppliers and retailers;
 # this column layout avoids that and is easier to read.
 _TIER_INDEX = {
@@ -133,28 +133,31 @@ def visualize_sc_net(supplychainnet):
 
     Lays the nodes out in columns by type (using
     `networkx.multipartite_layout`) so the drawing reads left-to-right
-    (suppliers → manufacturers → distributors → retailers → demand). The old
-    default, ``spectral_layout``, often placed nodes badly for small networks.
+    (raw-material suppliers → manufacturers → distributors and warehouses →
+    retailers → customer demands). Each link is labelled with one draw of its
+    lead time. The old default, ``spectral_layout``, often placed nodes badly
+    for small networks.
 
     Parameters:
-        supplychainnet (dict): The supply chain network containing nodes and edges.
+        supplychainnet (dict): The supply chain network: its nodes, links and customer demands.
 
     Returns:
         None
     """
     G = nx.DiGraph()
     nodes = supplychainnet["nodes"]
-    edges = supplychainnet["links"]
+    links = supplychainnet["links"]
 
-    # Tier each node by its NodeType so multipartite_layout can column it.
-    # ``demands`` are not in ``nodes`` but are still useful to visualise; add
-    # them as the right-most tier with edges from their demand_node.
+    # Put each node in a column by its NodeType, for multipartite_layout.
+    # Customer demands are kept apart from ``nodes`` in the dictionary, but are
+    # still drawn: as the right-most column, each joined to the site its
+    # customers order from (its ``demand_node``).
     for node_id, node in nodes.items():
         tier = _TIER_INDEX.get(str(node.node_type).lower(), 2)
         G.add_node(node_id, subset=tier, level=node.node_type)
 
-    for edge_id, edge in edges.items():
-        G.add_edge(edge.source.ID, edge.sink.ID, weight=round(edge.lead_time(), 2))
+    for link_id, link in links.items():
+        G.add_edge(link.source.ID, link.sink.ID, weight=round(link.lead_time(), 2))
 
     for demand_id, demand in supplychainnet.get("demands", {}).items():
         G.add_node(demand_id, subset=_TIER_INDEX["demand"], level="demand")
@@ -171,9 +174,11 @@ def visualize_sc_net(supplychainnet):
 
 def get_sc_net_info(supplychainnet):
     """
-    Get supply chain network information. 
+    Describe the supply chain network: how many nodes and links it has, the
+    settings of each node, link and customer demand, and the results of the
+    last simulation (if any). Everything is also logged to the screen.
 
-    Parameters: 
+    Parameters:  
         supplychainnet (dict): A dictionary representing the supply chain network.
 
     Attributes:
@@ -202,8 +207,8 @@ def get_sc_net_info(supplychainnet):
         parts.append(process_info_dict(node.get_info(), logger).rstrip("\n"))
     logger.info(f"Edges in the network: {list(supplychainnet['links'].keys())}")
     parts.append("Edges in the network:")
-    for edge_id, edge in supplychainnet["links"].items():
-        parts.append(process_info_dict(edge.get_info(), logger).rstrip("\n"))
+    for link_id, link in supplychainnet["links"].items():
+        parts.append(process_info_dict(link.get_info(), logger).rstrip("\n"))
     logger.info(f"Demands in the network: {list(supplychainnet['demands'].keys())}")
     parts.append("Demands in the network:")
     for demand_id, demand in supplychainnet["demands"].items():
@@ -231,19 +236,19 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
     ``env`` must be that same environment.
 
     Parameters:
-        nodes (list): A netlist of nodes in the supply chain network.
-        links (list): A netlist of links between the nodes.
-        demand (list): A netlist of demand nodes in the supply chain network.
+        nodes (list): The nodes (sites): dicts, or `Node` objects.
+        links (list): The links between them: dicts, or `Link` objects.
+        demands (list): The customer demands: dicts, or `Demand` objects.
         env (simpy.Environment, optional): A SimPy Environment object. If not provided, a new environment will be created.
 
     Attributes:
         global_logger (GlobalLogger): The global logger instance used for logging messages.
         supplychainnet (dict): A dictionary representing the supply chain network.
-        used_ids (list): A list to keep track of used IDs to avoid duplicates.
-        num_suppliers (int): Counter for the number of suppliers.
-        num_manufacturers (int): Counter for the number of manufacturers.
-        num_distributors (int): Counter for the number of distributors.
-        num_retailers (int): Counter for the number of retailers.
+        used_ids (set): The IDs used so far, to catch duplicates.
+        num_suppliers (int): Number of raw-material suppliers (finite and infinite).
+        num_manufacturers (int): Number of manufacturers.
+        num_distributors (int): Number of distributors and warehouses.
+        num_retailers (int): Number of retailers, stores and shops.
 
     Raises:
         ValueError: If the SimPy Environment object is not provided or if there are duplicate IDs in nodes, links, or demands.
@@ -251,7 +256,7 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
         ValueError: If a pre-built object's ``env`` does not match the provided ``env``.
         ValueError: If an invalid node type is encountered.
         ValueError: If an invalid source or sink node is specified in a link.
-        ValueError: If an invalid demand node is specified in a demand.
+        ValueError: If a customer demand names a ``demand_node`` (the site its customers order from) that is not among the nodes.
 
     Returns:
         dict: A dictionary representing the supply chain network.
@@ -377,7 +382,7 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
     for d in demands:
         if isinstance(d, dict):
             check_duplicate_id(used_ids, d["ID"], "demand ID")
-            demand_node = None # check for which node the demand is
+            demand_node = None # the site this customer demand's customers order from
             node_ids = supplychainnet["nodes"].keys()
             if d['demand_node'] in node_ids:
                 demand_node_id = d['demand_node']
@@ -401,11 +406,11 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
 
 def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
     """
-    Simulate the supply chain network for a given time period, and calculate performance measures.
+    Simulate the supply chain network up to a given time, and work out the network-wide results.
 
     Parameters:
         supplychainnet (dict): A supply chain network.
-        sim_time (int): Simulation time.
+        sim_time (int): The time unit at which the simulation stops.
         logging (bool): Whether to enable logging for the whole run. Defaults
             to ``True``. Mutually exclusive with ``log_window`` — pass
             ``log_window`` to confine logging to a sub-interval instead.
@@ -415,7 +420,31 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
             ``logging`` into a dedicated parameter (§6.2).
 
     Returns:
-        supplychainnet (dict): Updated dict with listed performance measures.
+        supplychainnet (dict): The same dictionary, with these results added. Counts are given as
+            ``[number of orders, units]``.
+
+            - ``available_inv``: total inventory level of all sites at the end (infinite suppliers left out).
+            - ``avg_available_inv``: the sum, over the sites that record their inventory level
+              (``record_inv_levels=True``), of each one's average recorded inventory level; 0 if none does.
+            - ``inventory_carry_cost``: total holding cost of all sites.
+            - ``inventory_spend_cost``: total paid by all sites for the units they received.
+            - ``inventory_waste``: total expired units thrown away.
+            - ``transportation_cost``: total transportation cost of replenishment orders, plus the delivery
+              costs of customer orders.
+            - ``revenue``: total revenue of all sites.
+            - ``total_cost``: total node cost of all sites and customer demands.
+            - ``profit``: revenue minus total cost.
+            - ``demand_by_customers``: customer orders placed.
+            - ``fulfillment_received_by_customers``: customer orders that reached the customers.
+            - ``demand_by_site``: replenishment orders placed by sites.
+            - ``fulfillment_received_by_site``: replenishment orders that arrived at sites.
+            - ``total_demand``: all orders placed (the two "demand" counts above added).
+            - ``total_fulfillment_received``: all orders received (the two "fulfillment" counts above added).
+            - ``shortage``: total shortage recorded at the sites.
+            - ``backorders``: total backorders at the sites at the end.
+            - ``avg_cost_per_order``: total cost divided by the number of orders in ``total_demand`` (0 if none).
+            - ``avg_cost_per_item``: total cost divided by the units in ``total_demand`` (0 if none); "item"
+              here means unit.
     """
     logger = global_logger
     env = supplychainnet["env"]
@@ -455,7 +484,7 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
         global_logger.disable_logging()
         env.run(sim_time) # Run the simulation
 
-    # Let's create some variables to store stats
+    # Network-wide totals, added up from every site and customer demand
     total_available_inv = 0
     avg_available_inv = 0
     total_inv_carry_cost = 0
@@ -465,14 +494,14 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
     total_revenue = 0
     total_cost = 0
     total_profit = 0
-    total_demand_by_customers = [0, 0] # [orders, products]
-    total_fulfillment_received_by_customers = [0, 0] # [orders, products]
-    total_demand_by_site = [0, 0] # [orders, products]
-    total_fulfillment_received_by_site = [0, 0] # [orders, products]
-    total_demand_placed = [0, 0] # [orders, products]
-    total_fulfillment_received = [0, 0] # [orders, products]
-    total_shortage = [0, 0] # [orders, products]
-    total_backorders = [0, 0] # [orders, products]
+    total_demand_by_customers = [0, 0] # [orders, units]
+    total_fulfillment_received_by_customers = [0, 0] # [orders, units]
+    total_demand_by_site = [0, 0] # [orders, units]
+    total_fulfillment_received_by_site = [0, 0] # [orders, units]
+    total_demand_placed = [0, 0] # [orders, units]
+    total_fulfillment_received = [0, 0] # [orders, units]
+    total_shortage = [0, 0] # [orders, units]
+    total_backorders = [0, 0] # [orders, units]
     
     for key, node in supplychainnet["nodes"].items():
         if(node.node_type == NodeType.INFINITE_SUPPLIER): # skip infinite suppliers
@@ -501,7 +530,7 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
         total_cost += node.stats.node_cost
         total_revenue += node.stats.revenue
         total_demand_by_customers[0] += node.stats.demand_placed[0] # orders
-        total_demand_by_customers[1] += node.stats.demand_placed[1] # products
+        total_demand_by_customers[1] += node.stats.demand_placed[1] # units
         total_fulfillment_received_by_customers[0] += node.stats.fulfillment_received[0]
         total_fulfillment_received_by_customers[1] += node.stats.fulfillment_received[1]
         total_shortage[0] += node.stats.shortage[0]
@@ -530,7 +559,7 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
     supplychainnet["total_fulfillment_received"] = total_fulfillment_received
     supplychainnet["shortage"] = total_shortage
     supplychainnet["backorders"] = total_backorders
-    # Calculate average cost per order and per item
+    # Average cost per order and per unit (the second key keeps its old name, avg_cost_per_item)
     if total_demand_placed[0] > 0:
         supplychainnet["avg_cost_per_order"] = total_cost / total_demand_placed[0]
     else:
@@ -648,11 +677,11 @@ class Network:
     """
     Object-oriented wrapper around a SupplyNetPy network.
 
-    ``Network`` owns the supply-chain dict that `create_sc_net` returns
-    and that `simulate_sc_net` mutates with KPIs after a run. It exposes
-    the construction metadata as plain attributes / dict views and the
-    post-simulation KPIs through `results`, so a caller can tell the
-    "before" and "after" states apart without inspecting key names.
+    ``Network`` holds the supply-chain dictionary that `create_sc_net` returns
+    and that `simulate_sc_net` adds the results to after a run. It gives the
+    setup information as plain attributes, and the network-wide results
+    through `results`, so a caller can tell setup and results apart without
+    knowing the dictionary keys.
 
     Construction (two interchangeable styles):
 
@@ -704,7 +733,7 @@ class Network:
     @classmethod
     def build(cls, nodes: list, links: list, demands: list, env: simpy.Environment = None) -> "Network":
         """
-        Build a network from netlists or pre-built domain objects.
+        Build a network from dicts or ready-made objects.
 
         Identical signature to `create_sc_net`; returns a wrapped
         `Network` instead of the bare dict.
@@ -722,22 +751,22 @@ class Network:
 
     @property
     def nodes(self) -> dict:
-        """Mapping ``{node_id: Node}`` for every supplier / manufacturer / inventory node."""
+        """Mapping ``{node_id: Node}`` for every site (raw-material supplier, manufacturer, distributor, warehouse, retailer)."""
         return self._sc["nodes"]
 
     @property
     def links(self) -> dict:
-        """Mapping ``{link_id: Link}`` for every transportation edge."""
+        """Mapping ``{link_id: Link}`` for every link."""
         return self._sc["links"]
 
     @property
     def demands(self) -> dict:
-        """Mapping ``{demand_id: Demand}`` for every demand source."""
+        """Mapping ``{demand_id: Demand}`` for every customer demand."""
         return self._sc["demands"]
 
     @property
     def node_count(self) -> int:
-        """Total number of inventory-bearing nodes (``num_of_nodes`` in the dict)."""
+        """Number of sites (``num_of_nodes`` in the dict; customer demands are not counted)."""
         return self._sc.get("num_of_nodes", 0)
 
     @property
@@ -766,7 +795,7 @@ class Network:
         (``Network.build(...).simulate(200)``).
 
         Parameters:
-            sim_time (float): Stop time for ``env.run``.
+            sim_time (float): The time unit at which the simulation stops.
             logging (bool): Whether logging is enabled for the whole run.
             log_window (tuple[float, float], optional): Window during which
                 logging is enabled (logging is disabled outside).
@@ -778,11 +807,11 @@ class Network:
         self._has_run = True
         return self
 
-    # ---- Post-run KPIs ----------------------------------------------------
+    # ---- Results after a run ----------------------------------------------
     @property
     def results(self) -> dict:
         """
-        Aggregated KPIs from the most recent `simulate` call.
+        The network-wide results of the most recent `simulate` call (see `simulate_sc_net` for what each one means).
 
         Empty dict before ``simulate`` runs. The values come straight from the
         underlying ``supplychainnet`` dict — `Network` simply picks out
