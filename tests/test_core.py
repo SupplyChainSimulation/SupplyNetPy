@@ -1001,12 +1001,14 @@ class TestBackorderAwareCapacityClamp(unittest.TestCase):
         # be clamped to zero by the pre-check — i.e. the formula uses gross, not raw on_hand.
         # This is a static documentation-test of the exact expression used in process_order.
         import inspect
+        # The clamp uses the inventory position, which subtracts the units owed
+        # to waiting customers (see Node.position).
         src = inspect.getsource(scm.InventoryNode.process_order)
-        assert "self.inventory.on_hand - self.stats.backorder[1]" in src, \
-            "§3.10 capacity clamp must subtract backorder[1] from on_hand"
+        assert "gross = self.position()" in src, \
+            "§3.10 capacity clamp must use the backorder-aware inventory position"
         src2 = inspect.getsource(scm.Manufacturer.process_order)
-        assert "self.inventory.on_hand - self.stats.backorder[1]" in src2, \
-            "§3.10 capacity clamp in Manufacturer must also subtract backorder[1]"
+        assert "gross = self.position()" in src2, \
+            "§3.10 capacity clamp in Manufacturer must also use the inventory position"
 
 
 class TestCanonicalIntroSimple(unittest.TestCase):
@@ -2039,6 +2041,253 @@ class TestCustomersOnlyTakeFreeStock(unittest.TestCase):
                    tolerance=5, order_min_split_ratio=0.5)
         env.run(until=10)
         assert w1.stats.backorder == [0, 0]
+
+
+class TestSiteBackordersAreLive(unittest.TestCase):
+    """A site's backorders show the orders from other sites it owes right now.
+
+    When a warehouse orders from a distributor that cannot fill the order
+    right away, the order waits at the distributor and counts as one of its
+    backorders. Once the distributor sends it, it must stop counting. Before
+    this fix the backorder was added but never removed, so the distributor
+    seemed to owe the order for the rest of the run. Shortage is different:
+    it records what could not be sent right away, and stays recorded.
+    """
+
+    def _site(self, env, ID, initial_level):
+        # A site with no reorder rule, so stock arrives only when the test adds it.
+        return scm.InventoryNode(
+            env=env, ID=ID, name=ID, node_type="warehouse",
+            capacity=float("inf"), initial_level=initial_level,
+            inventory_holding_cost=0, replenishment_policy=None, policy_param={},
+            product_buy_price=1, product_sell_price=2,
+        )
+
+    def _distributor_and_warehouse(self, env, distributor_stock):
+        d1 = self._site(env, "D1", distributor_stock)
+        w1 = self._site(env, "W1", 0)
+        link = scm.Link(env=env, ID="L1", source=d1, sink=w1, cost=0, lead_time=lambda: 2)
+        return d1, w1, link
+
+    def test_backorder_cleared_once_the_order_is_sent(self):
+        # The warehouse orders 50 from a distributor holding 10. The order
+        # waits until 40 more units reach the distributor on day 3.
+        env = simpy.Environment()
+        d1, w1, link = self._distributor_and_warehouse(env, distributor_stock=10)
+        env.process(w1.process_order(link, 50))
+        env.run(until=1)
+        assert d1.stats.backorder == [1, 50]   # owed while it waits
+        assert d1.stats.shortage == [1, 40]
+        env.run(until=3)
+        d1.inventory.put(40)
+        env.run(until=10)
+        assert d1.stats.backorder == [0, 0]    # sent, so no longer owed
+        assert d1.stats.shortage == [1, 40]    # the shortage stays recorded
+        assert w1.inventory.level == 50
+
+    def test_order_sent_right_away_is_never_a_backorder(self):
+        env = simpy.Environment()
+        d1, w1, link = self._distributor_and_warehouse(env, distributor_stock=100)
+        env.process(w1.process_order(link, 50))
+        env.run(until=1)
+        assert d1.stats.backorder == [0, 0]
+        env.run(until=10)
+        assert d1.stats.backorder == [0, 0]
+        assert w1.inventory.level == 50
+
+    def test_order_waiting_behind_an_earlier_request_is_a_backorder(self):
+        # The distributor's 10 units are promised to an earlier request for
+        # 50 that is still waiting. The warehouse's order for 5 waits behind
+        # it, even though 10 units sit on the shelf.
+        env = simpy.Environment()
+        d1, w1, link = self._distributor_and_warehouse(env, distributor_stock=10)
+        d1.inventory.get(50)
+        env.process(w1.process_order(link, 5))
+        env.run(until=1)
+        assert d1.stats.backorder == [1, 5]
+        d1.inventory.put(45)                   # enough for both requests
+        env.run(until=10)
+        assert d1.stats.backorder == [0, 0]
+        assert w1.inventory.level == 5
+
+    def test_disrupted_distributor_records_no_backorder(self):
+        # A disrupted distributor takes no order, so it owes nothing.
+        env = simpy.Environment()
+        d1, w1, link = self._distributor_and_warehouse(env, distributor_stock=10)
+        d1.node_status = "inactive"
+        env.process(w1.process_order(link, 50))
+        env.run(until=10)
+        assert d1.stats.backorder == [0, 0]
+        assert w1.pending_orders == 0
+
+    def test_waiting_site_order_counted_once_in_position(self):
+        # The distributor holds 10 and owes the warehouse 50. Its position is
+        # 10 - 50 = -40. The order was already taken off on_hand when it was
+        # placed, so it must not be subtracted a second time (-90).
+        env = simpy.Environment()
+        d1, w1, link = self._distributor_and_warehouse(env, distributor_stock=10)
+        env.process(w1.process_order(link, 50))
+        env.run(until=1)
+        assert d1.inventory.waiting_orders() == 50
+        assert d1.position() == -40
+
+    def test_waiting_customer_still_counted_in_position(self):
+        # A customer waiting for stock was not taken off on_hand, so the
+        # position must subtract them.
+        env = simpy.Environment()
+        w1 = self._site(env, "W1", 0)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 5,
+                   tolerance=float("inf"))
+        env.run(until=1)
+        assert w1.inventory.waiting_orders() == 0
+        assert w1.position() == -5
+
+    def test_waiting_expiry_removal_not_mistaken_for_a_site_order(self):
+        # Perishable goods that last 2 days. The distributor holds 10 and owes
+        # the warehouse 50. On day 1, 20 more units arrive; they expire on
+        # day 3, and the request to remove them waits behind the warehouse's
+        # order. Only the warehouse's order is owed to a site. If the expiry
+        # request were also counted, the position would be 20 too high and
+        # the distributor would order too little.
+        env = simpy.Environment()
+        def perishable_site(ID, initial_level):
+            return scm.InventoryNode(
+                env=env, ID=ID, name=ID, node_type="warehouse",
+                capacity=float("inf"), initial_level=initial_level,
+                inventory_holding_cost=0, replenishment_policy=None, policy_param={},
+                product_buy_price=1, product_sell_price=2,
+                inventory_type="perishable", shelf_life=2,
+            )
+        d1, w1 = perishable_site("D1", 10), perishable_site("W1", 0)
+        link = scm.Link(env=env, ID="L1", source=d1, sink=w1, cost=0, lead_time=lambda: 2)
+        env.process(w1.process_order(link, 50))
+        env.run(until=1)
+        d1.inventory.put(20, 1)                # made on day 1
+        env.run(until=3.5)
+        assert d1.inventory.waiting_orders() == 70       # the order and the expiry removal
+        assert d1.inventory.waiting_site_orders() == 50  # only the order is owed to a site
+        assert d1.stats.backorder == [1, 50]
+        assert d1.position() == d1.inventory.on_hand     # no customers are waiting
+
+    def test_distributor_reorders_only_what_it_owes(self):
+        # Distributor (s=20, S=60) holds 60. The warehouse orders 100, so the
+        # distributor's position drops to -40 and it orders 60 - (-40) = 100.
+        # Counting the warehouse's order twice made it order 200 and then sit
+        # on 100 extra units for the rest of the run.
+        env = simpy.Environment()
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        d1 = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="distributor",
+            capacity=float("inf"), initial_level=60, inventory_holding_cost=0,
+            replenishment_policy=scm.SSReplenishment, policy_param={"s": 20, "S": 60},
+            product_buy_price=1, product_sell_price=2,
+        )
+        scm.Link(env=env, ID="L1", source=s1, sink=d1, cost=0, lead_time=lambda: 2)
+        w1 = self._site(env, "W1", 0)
+        link = scm.Link(env=env, ID="L2", source=d1, sink=w1, cost=0, lead_time=lambda: 2)
+        env.process(w1.process_order(link, 100))
+        env.run(until=10)
+        assert d1.stats.demand_placed == [1, 100]
+        assert d1.inventory.level == 60        # back at S, nothing extra
+        assert d1.stats.backorder == [0, 0]
+        assert w1.inventory.level == 100
+
+
+class TestFactoryMakesWhatItOwes(unittest.TestCase):
+    """A factory must make the units it owes to sites waiting for its product.
+
+    The factory works out how many units it still has to make from on_hand
+    and its shelf. Orders from other sites that wait at its shelf have
+    already been taken off on_hand, so they must be added back. Without that,
+    a factory that receives an order bigger than its shelf decides there is
+    nothing to make, and the order waits forever.
+    """
+
+    def test_factory_fills_an_order_bigger_than_its_shelf(self):
+        # The factory (s=5, S=10) holds 10. The warehouse (s=40, S=50) starts
+        # empty and orders 50. The factory buys 50 units of raw material,
+        # makes 50, sends 50, and ends back at 10 with nothing left over.
+        def raw_material():
+            return scm.RawMaterial(ID="rm1", name="rm1", extraction_quantity=1,
+                                   extraction_time=1, mining_cost=0, cost=1)
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1,
+                              sell_price=5, buy_price=0, batch_size=1000,
+                              raw_materials=[(raw_material(), 1)])
+        net = scm.create_sc_net(
+            nodes=[dict(ID="S1", name="S1", node_type="infinite_supplier", raw_material=raw_material()),
+                   dict(ID="M1", name="M1", node_type="manufacturer", capacity=float("inf"),
+                        initial_level=10, inventory_holding_cost=0,
+                        replenishment_policy=scm.SSReplenishment,
+                        policy_param=dict(s=5, S=10, period=1),
+                        product_sell_price=5, product=product),
+                   dict(ID="W1", name="W1", node_type="warehouse", capacity=float("inf"),
+                        initial_level=0, inventory_holding_cost=0,
+                        replenishment_policy=scm.SSReplenishment,
+                        policy_param=dict(s=40, S=50, period=1),
+                        product_buy_price=1, product_sell_price=2)],
+            links=[dict(ID="l1", source="S1", sink="M1", cost=0, lead_time=lambda: 1),
+                   dict(ID="l2", source="M1", sink="W1", cost=0, lead_time=lambda: 1)],
+            demands=[dict(ID="d", name="d", demand_node="W1", order_arrival_model=lambda: 1e6,
+                          order_quantity_model=lambda: 1, consume_available=True)])
+        net["env"].run(until=200)
+        m1, w1 = net["nodes"]["M1"], net["nodes"]["W1"]
+        assert w1.stats.fulfillment_received[1] == 50
+        assert m1.stats.demand_placed[1] == 50             # raw material bought
+        assert m1.stats.total_products_manufactured == 50
+        assert m1.raw_inventory_counts["rm1"] == 0         # nothing left over
+        assert m1.inventory.level == 10
+        assert m1.inventory.waiting_orders() == 0
+        assert m1.stats.backorder == [0, 0]
+
+
+class TestSupplierRawMaterialBackordersAreLive(unittest.TestCase):
+    """A raw-material supplier's backorders show the orders it owes right now.
+
+    Same rule as for orders between sites (see TestSiteBackordersAreLive):
+    a factory's raw-material order counts as a backorder at the supplier
+    while it waits for stock, and stops counting once it is sent.
+    """
+
+    def _supplier_and_factory(self, env):
+        # The supplier starts empty and extracts 10 units a day, the first
+        # 10 on day 0. The factory has no reorder rule, so the test places
+        # the order itself.
+        rawmat = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=10,
+                                 extraction_time=1, mining_cost=0, cost=1)
+        product = scm.Product(ID="P1", name="P1", manufacturing_cost=1, manufacturing_time=1,
+                              raw_materials=[(rawmat, 1)], sell_price=5, buy_price=0, batch_size=100)
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier", capacity=100,
+                          initial_level=0, inventory_holding_cost=0, raw_material=rawmat)
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
+                              product_sell_price=5, product=product)
+        link = scm.Link(env=env, ID="L1", source=s1, sink=m1, cost=0, lead_time=lambda: 1)
+        return s1, m1, link
+
+    def test_backorder_cleared_once_the_raw_material_is_sent(self):
+        # On day 0.5 the factory orders 30 while the supplier holds 10. The
+        # supplier has 30 by day 2, sends the order, and it arrives on day 3.
+        env = simpy.Environment()
+        s1, m1, link = self._supplier_and_factory(env)
+        env.run(until=0.5)
+        env.process(m1.process_order_raw("RM1", link, 30))
+        env.run(until=1.5)
+        assert s1.stats.backorder == [1, 30]   # owed while it waits
+        assert s1.stats.shortage == [1, 20]
+        env.run(until=5)
+        assert s1.stats.backorder == [0, 0]    # sent, so no longer owed
+        assert s1.stats.shortage == [1, 20]    # the shortage stays recorded
+        assert m1.raw_inventory_counts["RM1"] == 30
+
+    def test_disrupted_supplier_records_no_backorder(self):
+        env = simpy.Environment()
+        s1, m1, link = self._supplier_and_factory(env)
+        env.run(until=0.5)
+        s1.node_status = "inactive"
+        env.process(m1.process_order_raw("RM1", link, 30))
+        env.run(until=5)
+        assert s1.stats.backorder == [0, 0]
 
 
 class TestInventoryInvariants(unittest.TestCase):

@@ -228,6 +228,8 @@ if gross + reorder_quantity > self.inventory.inventory.capacity:
 
 **Resolution (2026-04-23):** both `process_order` methods now compute `gross = self.inventory.on_hand - self.stats.backorder[1]` and use `gross` in place of `on_hand` in both the condition and the clamp. The formula now mirrors the SS/RQ/Periodic policies' own `on_hand - backorder[1]` inventory-position view, so capacity pre-check and reorder-point trigger stay in sync when customer backorders are outstanding. Verified via `examples/py/intro_simple.py` — canonical output unchanged (`profit: -4435.0`; the clamp path is not exercised at this scenario's shelf utilization, so behavior is identical in absence of backorders). `pytest`: 93/94 passing (same pre-existing `TestLink::test_invalid_lead_time` failure).
 
+*Updated in §3.17:* both clamps now call `self.position()`, which subtracts only the units owed to waiting customers (orders from other sites are already taken off `on_hand`).
+
 ### 3.11 `Manufacturer.process_order` never commits `on_hand` — duplicate raw-material orders possible ✅ Resolved
 `core.py:2382–2419` (process_order), `core.py:2260–2296` (manufacture_product)
 
@@ -248,6 +250,8 @@ if gross + reorder_quantity > self.inventory.inventory.capacity:
        max_producible_units = max(pending, 0)
    ```
    This caps production per cycle at what's been committed but not yet produced (`on_hand - level`). Without this cap, a large `batch_size` combined with a small `reorder_quantity` would grow `level` past `on_hand` and break the `level <= on_hand` invariant.
+
+   *Corrected in §3.17:* `level <= on_hand` is not true while orders from other sites wait at the shelf, and the cap is now `on_hand - level + inventory.waiting_orders()`.
 
 3. The existing §3.6 shortfall reconciliation (`self.inventory.on_hand -= shortfall` after `put()`) remains in place to cover any residual clamp in `Inventory.put`.
 
@@ -385,6 +389,35 @@ Both call sites carry an inline comment explaining why the yield is on the *oute
   - `TestLinkDisruptionProbabilisticIsTimePaced::test_hit_after_misses_flips_status_at_the_hitting_tick`: same shape against `Link.link_failure_p`.
 
 **Behavioral note for downstream users:** small `failure_p` values now actually produce small per-tick probabilities. Any user simulation tuned around the broken behavior will see different (much rarer) disruption frequency. The `validation/` numbers were not generated with `failure_p`-driven disruption (the cross-check uses scheduled `disrupt_time`, which lives on the `if disrupt_time` branch and was unchanged), so those still hold.
+
+### 3.17 Orders between sites counted twice as backorders and never cleared; factories stop making what they owe ✅ Resolved
+Reported in GitHub issue #1 (defects 1 and 2). `InventoryNode.process_order`, `Manufacturer.process_order_raw`, `Node.position`, `Manufacturer.manufacture_product`.
+
+**Original issue.** When a warehouse ordered from a site that could not fill the order right away:
+
+1. `Inventory.get` took the full order off the supplying site's `on_hand` straight away (the order then waits in SimPy's queue of requests until stock arrives), **and** `process_order` also added it to the site's `backorder`. `position = on_hand - backorder[1]` therefore subtracted the same units twice.
+2. Nothing ever removed that backorder, so the site behaved as if its rule were (s + B, S + B) for the rest of the run. Example: a distributor holding 10 that owed a warehouse 50 saw a position of −90 instead of −40, ordered 100 instead of 50, and kept 50 extra units forever.
+3. `Manufacturer.process_order_raw` had the same "add but never remove" pattern for a raw-material supplier's backorders. Suppliers have no reorder rule, so there it only made the reported numbers wrong.
+4. Both backorders were recorded before the check that the supplying node is active, so a disrupted supplier, which takes no order, still kept one forever.
+
+The double count also hid a second bug (defect 2). `manufacture_product` capped production at `on_hand - level` ("units still to make", see §3.11). Orders waiting at the factory's shelf have already been taken off `on_hand`, so this number is too small by exactly the amount the factory owes. A factory holding 10 that received an order for 50 decided there was nothing to make, and the order waited forever. It only worked before because the stuck backorder made the factory over-order.
+
+**Fix applied:**
+
+- **Backorders are live.** In both order methods, an order counts as a backorder at the supplying node only while it really waits: right after `inventory.get(...)`, `not event.triggered` means SimPy could not hand it out on the spot (the shelf is short, or an earlier request is ahead of it in line). It is removed once `yield event` returns. The whole order counts, because the shelf never sends part of a request. The bookkeeping sits inside the `node_status == "active"` branch. `shortage` is unchanged: it still records how short the node was when the order arrived and is never cleared.
+- **New helpers `Inventory.waiting_orders()` and `Inventory.waiting_site_orders()`**, both reading the shelf's queue (`inventory.inventory.get_queue`). Reading the queue is always exact: SimPy removes a request once it is served, so there is no separate counter to keep in sync. Customers only take stock that is free for them, so they never wait in this queue, but other requests can: for perishable goods, `remove_expired` asks to take expired units away, and that request waits behind earlier ones like any other (in `examples/py/hybrid_big_sc.py`, the bakery had a 68-unit expiry request waiting between its site orders). So `Inventory.get` takes an optional `site_order` flag and labels every request it creates; the two order methods pass `site_order=True`. `waiting_site_orders()` sums only the labelled requests; `waiting_orders()` sums them all.
+- **`Node.position()`** subtracts only the units owed to waiting customers: `on_hand - (backorder[1] - inventory.waiting_site_orders())`. Both capacity clamps (§3.10) now call `self.position()`, so the formula lives in one place.
+- **`manufacture_product`** caps production at `on_hand - level + inventory.waiting_orders()`. This uses the full total, because every waiting request, expiry removals included, has been taken off `on_hand` but has not left the shelf.
+
+**Correction to §3.11:** the invariant `level <= on_hand` does not hold while orders wait at the shelf (shelf 10, `on_hand` −40 in the example above). The quantity that is never negative is `on_hand - level + waiting_orders()`, the units still to be made.
+
+**Behavioral note for downstream users:** a node's `backorder` now means "orders owed right now", so the network-wide `backorders` figure at the end of a run is what is still owed then, not every order that ever had to wait. Sites in multi-level networks stop carrying the extra stock the stuck backorder used to cause, so their holding costs and orders change. `intro_simple.py` has only an endless supplier, which never makes an order wait, so its result is unchanged.
+
+**Verified:**
+
+- Canonical `examples/py/intro_simple.py` unchanged (`profit: -4435.0`).
+- `pytest` — 227/227 passing.
+- New regression tests in `tests/test_core.py`: `TestSiteBackordersAreLive` (8 tests, including a waiting expiry removal that must not be mistaken for a site order), `TestFactoryMakesWhatItOwes` (the 10-on-the-shelf factory example: 50 received, 50 raw material bought, 50 made, nothing left over), and `TestSupplierRawMaterialBackordersAreLive` (2 tests).
 
 ---
 

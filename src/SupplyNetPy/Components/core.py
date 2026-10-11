@@ -754,7 +754,8 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
     **How a custom policy should talk to its node.** A policy should use these four helper methods instead of reaching
     into the node's internal attributes:
 
-    - `self.node.position()` — the inventory position, counting backorders (`on_hand - stats.backorder[1]`).
+    - `self.node.position()` — the inventory position: units on the shelf and in transit, minus units owed to
+      waiting customers.
     - `self.node.place_order(quantity)` — picks a supplier using the node's selection policy and starts the order. This
       replaces calling `selection_policy.select(...)` and `env.process(process_order(...))` yourself.
     - `self.node.wait_for_drop()` — a generator used as `yield from self.node.wait_for_drop()` to wait until the
@@ -1931,17 +1932,27 @@ class Node(NamedEntity, InfoMixin):
         """
         Backorder-aware inventory position used by replenishment policies.
 
-        Returns ``inventory.on_hand - stats.backorder[1]`` — i.e. the current
-        physical plus in-transit stock, minus units already committed to
-        customer backorders. Replenishment policies use this single value in
-        place of reaching into ``node.inventory.on_hand`` and
-        ``node.stats.backorder[1]`` independently, so the arithmetic stays in
+        The inventory position is the stock the node can count on: units on
+        the shelf plus units in transit (``inventory.on_hand``), minus the units
+        it owes to waiting customers. Replenishment policies use this single
+        value instead of working it out themselves, so the arithmetic stays in
         one place.
+
+        The node's backorders hold two kinds of waiting orders, and only one of
+        them is subtracted here:
+
+        - Orders from other sites. These have already been taken off
+          ``on_hand`` when they were placed (they wait in the shelf's line,
+          see ``Inventory.waiting_site_orders``), so subtracting them again
+          would count them twice and make the node order too much.
+        - Customers who wait for stock. They have not been taken off
+          ``on_hand``, so they are subtracted here.
 
         Returns:
             float: The backorder-aware inventory position.
         """
-        return self.inventory.on_hand - self.stats.backorder[1]
+        customer_backorders = self.stats.backorder[1] - self.inventory.waiting_site_orders()
+        return self.inventory.on_hand - customer_backorders
 
     def place_order(self, quantity) -> None:
         """
@@ -2316,6 +2327,37 @@ class Inventory(NamedEntity, InfoMixin):
         """Inventory capacity, delegating to the underlying SimPy container."""
         return self.inventory.capacity
 
+    def waiting_orders(self):
+        """
+        How many units are asked for by requests still waiting at the shelf.
+
+        A request the shelf cannot fill right away (for example, a site's order
+        bigger than the stock on hand) joins a line and is served, in turn, when
+        enough stock arrives. Requests are served strictly in the order they
+        arrived, so a request can also wait behind an earlier one. Besides
+        orders from other sites, the line can hold other requests, such as
+        removing expired goods. All of these units have already been taken off
+        `on_hand` but have not left the shelf yet.
+
+        Returns:
+            float: the total of all requests still waiting, or 0 if none are waiting.
+        """
+        return sum(request.amount for request in self.inventory.get_queue)
+
+    def waiting_site_orders(self):
+        """
+        How many units are owed to other sites whose orders are still waiting at the shelf.
+
+        Only the requests made with `get(..., site_order=True)` count, so other
+        waiting requests (such as removing expired goods) are left out. These
+        are the orders that also appear in the node's backorders.
+
+        Returns:
+            float: the total of the waiting orders from other sites, or 0 if none are waiting.
+        """
+        return sum(request.amount for request in self.inventory.get_queue
+                   if getattr(request, "site_order", False))
+
     def record_inventory_levels(self):
         """
         Record inventory levels at regular intervals.
@@ -2390,18 +2432,22 @@ class Inventory(NamedEntity, InfoMixin):
             self.node.inventory_raised.succeed()  # signal that inventory has been raised
         return amount
 
-    def get(self, amount: float):
+    def get(self, amount: float, site_order: bool = False):
         """
         Remove items from inventory. For perishable items, oldest products are removed first.
 
         Parameters:
             amount (float): amount to remove
+            site_order (bool): True when the request is an order from another site
+                (see `waiting_site_orders`). Defaults to False.
 
         Returns:
             tuple: (SimPy get event, List of (manufacture_date, quantity)) for perishable items
         """
         if self.inventory.level == float('inf'):
-            return self.inventory.get(amount), []
+            get_event = self.inventory.get(amount)
+            get_event.site_order = site_order
+            return get_event, []
 
         man_date_ls = []
         if self.inv_type == "perishable":
@@ -2421,6 +2467,11 @@ class Inventory(NamedEntity, InfoMixin):
                     x_amount = 0
         self.update_carry_cost()
         get_event = self.inventory.get(amount)
+        # Label the request, so that among the requests still waiting at the
+        # shelf the node can tell the orders it owes to other sites apart from
+        # other requests, such as removing expired goods (see
+        # `waiting_site_orders`).
+        get_event.site_order = site_order
         self.on_hand -= amount  # Update the on-hand inventory level
         if(self.replenishment_policy):
             if(not self.node.inventory_drop.triggered):
@@ -2873,12 +2924,12 @@ class InventoryNode(Node):
         Returns:
             None
         """
-        # Use the true physical commitment (on_hand - customer backorders) as the
-        # reference for the capacity clamp. `on_hand` is inventory position, not
-        # physical on-hand; customer backorders that still count against on_hand
-        # will leave the shelf as soon as the next delivery lands, so they do not
-        # consume capacity and must be excluded from the clamp.
-        gross = self.inventory.on_hand - self.stats.backorder[1]
+        # Check the order against the shelf's capacity using the inventory
+        # position (stock on the shelf and in transit, minus units owed to
+        # waiting customers). Units owed to customers leave the shelf as soon
+        # as the next delivery lands, so they do not take up space and must not
+        # count against the capacity.
+        gross = self.position()
         if(gross + reorder_quantity > self.inventory.capacity): # check if the inventory can accommodate the reordered quantity
                 reorder_quantity = self.inventory.capacity - gross # if not, adjust reorder quantity to order only what can fit
 
@@ -2900,18 +2951,32 @@ class InventoryNode(Node):
 
         if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
             shortage = reorder_quantity - supplier.source.inventory.level
-            supplier.source.stats.update_stats(shortage=[1,shortage], backorder=[1,reorder_quantity])
+            supplier.source.stats.update_stats(shortage=[1,shortage])
             if(not supplier.source.inventory_drop.triggered):
-                supplier.source.inventory_drop.succeed()  # signal that inventory has been dropped (since backorder is created)
+                supplier.source.inventory_drop.succeed()  # signal that inventory has been dropped (the supplier is short of stock)
 
         if(supplier.source.node_status == "active"):
             self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
             supplier.source.stats.update_stats(demand_received=[1,reorder_quantity])
 
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
-            event, man_date_ls = supplier.source.inventory.get(reorder_quantity)
+            event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
             self.inventory.on_hand += reorder_quantity
+
+            # The supplier's backorders show what it owes *right now*: an order
+            # is counted while it waits for stock and removed once it is served.
+            # The shelf hands out a request on the spot if it can, so a request
+            # that has not been served at this point is really waiting — either
+            # the shelf is short, or an earlier request is ahead of it in line.
+            # (The whole order counts, because the shelf never sends part of a
+            # request: it waits until it can send all of it.)
+            order_waits = not event.triggered
+            if order_waits:
+                supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
             yield event
+            if order_waits:
+                # Served at last: the supplier no longer owes this order.
+                supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
 
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
             lead_time = supplier.lead_time() # get the lead time from the supplier
@@ -3194,11 +3259,21 @@ class Manufacturer(Node):
             max_producible_units = min(max_producible_units,int(current_raw_material_level/required_amount))
         if((self.inventory.level + max_producible_units)>self.inventory.capacity): # check if the inventory can accommodate the maximum producible units
             max_producible_units = self.inventory.capacity - self.inventory.level
-        # Don't produce more than what's been committed via process_order.
-        # on_hand already accounts for pending production (§3.11); producing
-        # beyond (on_hand - level) would grow level past on_hand, breaking
-        # the invariant level <= on_hand and masking true inventory position.
-        pending = self.inventory.on_hand - self.inventory.level
+        # Don't make more than the factory has planned to make. When the factory
+        # plans a production run, it adds those units to on_hand straight away
+        # (§3.11), so on_hand = shelf + units still to be made - orders from
+        # other sites that are waiting at the shelf (those were taken off
+        # on_hand when they were placed). Units still to be made is therefore
+        # on_hand - shelf + waiting orders.
+        #
+        # Leaving out the waiting orders makes this number too small, by
+        # exactly the amount the factory owes. Picture a factory with 10 on
+        # the shelf that receives an order for 50. on_hand drops from 10 to
+        # -40, and the factory plans a run of 50 (to fill the order and refill
+        # its shelf), which brings on_hand back to 10. Then on_hand - shelf =
+        # 10 - 10 = 0, so it would make nothing and the order would wait
+        # forever. Adding the 50 waiting units gives the correct 50.
+        pending = self.inventory.on_hand - self.inventory.level + self.inventory.waiting_orders()
         if pending < max_producible_units:
             max_producible_units = max(pending, 0)
         if(max_producible_units>0):
@@ -3284,7 +3359,7 @@ class Manufacturer(Node):
 
         if supplier.source.inventory.level < reorder_quantity:  # check if the supplier is able to fulfill the order, record shortage
             shortage = reorder_quantity - supplier.source.inventory.level
-            supplier.source.stats.update_stats(shortage=[1,shortage], backorder=[1,reorder_quantity])
+            supplier.source.stats.update_stats(shortage=[1,shortage])
 
         if(supplier.source.node_status == "active"): # check if the supplier is active and has enough inventory
             if(self.raw_inventory_counts[raw_mat_id]>= reorder_quantity): # dont order if enough inventory is available (reorder_quantity depends on the number of product units that needs to be manufactured, there is no capcacity defined for raw material inventory)
@@ -3294,9 +3369,18 @@ class Manufacturer(Node):
 
             self.pending_orders += 1  # count this raw-material order as in flight
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
-            event, man_date_ls = supplier.source.inventory.get(reorder_quantity)
+            event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
             supplier.source.stats.update_stats(demand_received=[1,reorder_quantity]) # update the supplier statistics for demand received
+            # The supplier owes this order only while it waits for stock: count
+            # it as a backorder now and remove it once it is served (the same
+            # as for orders between sites, see InventoryNode.process_order).
+            order_waits = not event.triggered
+            if order_waits:
+                supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
             yield event
+            if order_waits:
+                # Served at last: the supplier no longer owes this order.
+                supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
 
             self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
@@ -3333,10 +3417,11 @@ class Manufacturer(Node):
         Returns:
             None
         """
-        # Exclude customer backorders from the capacity clamp — they still count
-        # against on_hand but will leave the shelf on the next delivery, so they
-        # do not consume product-inventory capacity. See §3.10 for details.
-        gross = self.inventory.on_hand - self.stats.backorder[1]
+        # Check the order against the shelf's capacity using the inventory
+        # position, as InventoryNode.process_order does. Units owed to waiting
+        # customers leave the shelf on the next delivery, so they do not take
+        # up space. See §3.10 for details.
+        gross = self.position()
         if(gross + reorder_quantity > self.inventory.capacity): # check if the inventory can accommodate the reordered quantity
                 reorder_quantity = self.inventory.capacity - gross # if not, adjust reorder quantity to order only what can fit
         if reorder_quantity <= 0:
