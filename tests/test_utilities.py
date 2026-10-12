@@ -227,6 +227,15 @@ def test_print_node_wise_performance_prints(capsys):
     assert "Performance Metric" in out
     assert "Node1" in out and "Node2" in out
 
+def test_format_node_wise_performance_widens_long_entries():
+    # A metric name longer than the column width must not run into its value.
+    n1 = DummyNode("N1", "supplier", name="A node name longer than the column width")
+    n1.stats.get_statistics = lambda: {"total_raw_materials_mined": 79050}
+    lines = utilities.format_node_wise_performance([n1], col_width=25).splitlines()
+    assert lines[0].split("  ")[0] == "Performance Metric"
+    assert "A node name longer than the column width" in lines[0]
+    assert lines[1].split() == ["total_raw_materials_mined", "79050"]
+
 def test_print_node_wise_performance_empty(capsys):
     utilities.print_node_wise_performance([])
     out = capsys.readouterr().out

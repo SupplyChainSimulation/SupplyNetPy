@@ -617,7 +617,8 @@ def format_node_wise_performance(nodes_object_list, col_width: int = 25) -> str:
 
     Parameters:
         nodes_object_list (list): List of supply chain node objects.
-        col_width (int): Width of each column. Defaults to 25.
+        col_width (int): Smallest width of each column. Defaults to 25. A
+            column is made wider when one of its entries is too long for it.
 
     Returns:
         str: Multi-line table; an empty string when no nodes are provided.
@@ -626,17 +627,14 @@ def format_node_wise_performance(nodes_object_list, col_width: int = 25) -> str:
         return ""
     stats_per_node = {node.name: node.stats.get_statistics() for node in nodes_object_list}
     stat_keys = sorted(next(iter(stats_per_node.values())).keys())
-    lines = []
-    header_parts = ["Performance Metric".ljust(col_width)]
-    for name in stats_per_node:
-        header_parts.append(str(name).ljust(col_width))
-    lines.append("".join(header_parts))
+    table = [["Performance Metric"] + [str(name) for name in stats_per_node]]
     for key in stat_keys:
-        row_parts = [key.ljust(col_width)]
-        for name, node_stats in stats_per_node.items():
-            row_parts.append(str(node_stats.get(key, "N/A")).ljust(col_width))
-        lines.append("".join(row_parts))
-    return "\n".join(lines)
+        table.append([key] + [str(node_stats.get(key, "N/A")) for node_stats in stats_per_node.values()])
+    # A long entry, such as the metric name "total_raw_materials_mined", would
+    # otherwise run straight into the entry next to it. Each column is
+    # therefore made wide enough for its longest entry plus two spaces.
+    widths = [max(col_width, max(len(row[i]) for row in table) + 2) for i in range(len(table[0]))]
+    return "\n".join("".join(entry.ljust(width) for entry, width in zip(row, widths)) for row in table)
 
 
 def print_node_wise_performance(nodes_object_list):
