@@ -22,9 +22,19 @@ such as the quickstart example, give the same results as before.
   suppliers could send its order to the disrupted one and lose it, while the
   other supplier was working.
 * **[CHANGE]** `place_order` now checks that some supplier can take the order
-  before choosing one. If none can, no order is placed. New methods `Link.can_take_order`, `Node.can_place_order`,
-  `Node.wake_replenishment` and `Node.add_buyer_link`, and a new list
-  `Node.buyers` of the links to a node's buyers.
+  before choosing one. If none can, no order is placed. New methods
+  `Link.can_take_order`, `Node.can_place_order`, `Node.wake_replenishment` and
+  `Node.add_buyer_link`, and a new list `Node.buyers` of the links to a node's
+  buyers.
+* **[FIX]** The performance table (`get_node_wise_performance`,
+  `format_node_wise_performance`, `print_node_wise_performance`) now shows
+  every metric that any node has. Before, it showed only the metrics of the
+  first node in the list, so a raw-material supplier's mining figures were left
+  out when another node came first. Two nodes with the same name now each get
+  a column; the second is told apart by its ID.
+* **[FIX]** `disable_logging` and `set_log_file` now close the log file they
+  stop writing to. Before, the file stayed open until the program ended, which
+  caused a `ResourceWarning` and, on Windows, kept the file locked.
 
 ## 0.2.0 (2026-10-11)
 

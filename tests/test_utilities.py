@@ -236,6 +236,31 @@ def test_format_node_wise_performance_widens_long_entries():
     assert "A node name longer than the column width" in lines[0]
     assert lines[1].split() == ["total_raw_materials_mined", "79050"]
 
+def test_node_wise_performance_includes_metrics_of_every_node():
+    # The first node lacks a metric the second one has; the metric must still
+    # appear, with "N/A" for the node that does not have it.
+    n1 = DummyNode("N1", "retailer", name="Retailer")
+    n1.stats.get_statistics = lambda: {"profit": 5}
+    n2 = DummyNode("N2", "supplier", name="Supplier")
+    n2.stats.get_statistics = lambda: {"profit": 7, "total_raw_materials_mined": 100}
+    rows = utilities.get_node_wise_performance([n1, n2])
+    assert rows == [
+        {"Performance Metric": "profit", "Retailer": 5, "Supplier": 7},
+        {"Performance Metric": "total_raw_materials_mined", "Retailer": "N/A", "Supplier": 100},
+    ]
+    lines = utilities.format_node_wise_performance([n1, n2]).splitlines()
+    assert lines[2].split() == ["total_raw_materials_mined", "N/A", "100"]
+
+def test_node_wise_performance_keeps_nodes_with_the_same_name():
+    # Two nodes named alike must both get a column; the second is told apart by its ID.
+    n1 = DummyNode("D1", "distributor", name="Warehouse")
+    n1.stats.get_statistics = lambda: {"profit": 1}
+    n2 = DummyNode("D2", "distributor", name="Warehouse")
+    n2.stats.get_statistics = lambda: {"profit": 2}
+    rows = utilities.get_node_wise_performance([n1, n2])
+    assert rows == [{"Performance Metric": "profit", "Warehouse": 1, "Warehouse (D2)": 2}]
+    assert "Warehouse (D2)" in utilities.format_node_wise_performance([n1, n2])
+
 def test_print_node_wise_performance_empty(capsys):
     utilities.print_node_wise_performance([])
     out = capsys.readouterr().out

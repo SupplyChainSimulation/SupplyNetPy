@@ -137,7 +137,7 @@ class GlobalLogger(logging.LoggerAdapter):
         attached so the logger never triggers Python's "No handlers could be
         found" stderr fallback — the recommended default for library loggers.
         """
-        self.logger.handlers = [logging.NullHandler()]
+        self._replace_handlers([logging.NullHandler()])
 
         if self.log_to_screen:
             screen_handler = logging.StreamHandler()
@@ -170,6 +170,18 @@ class GlobalLogger(logging.LoggerAdapter):
         does not touch the global ``logging.disable`` switch, which would
         suppress the host application's own logging."""
         self.logger.disabled = True
-        self.logger.handlers = [logging.NullHandler()]
+        self._replace_handlers([logging.NullHandler()])
         self.log_to_file = False
         self.log_to_screen = False
+
+    def _replace_handlers(self, handlers):
+        """Close the logger's current handlers, then attach ``handlers``.
+
+        A file handler keeps its log file open until it is closed. Only taking
+        it off the logger's list would leave the file open for the rest of the
+        program: Python warns about it (a ``ResourceWarning``), and on Windows
+        the file stays locked, so it cannot be deleted or moved meanwhile.
+        Closing the screen handler does not close the screen output itself."""
+        for handler in self.logger.handlers:
+            handler.close()
+        self.logger.handlers = handlers

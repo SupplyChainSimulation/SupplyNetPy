@@ -1373,6 +1373,33 @@ class TestLoggerOptIn(unittest.TestCase):
         assert logging.root.manager.disable == 0
         scm.global_logger.enable_logging()  # restore for any subsequent tests
 
+    def test_disable_logging_closes_the_log_file(self):
+        # The file handler must be closed, not only taken off the logger, or
+        # the log file stays open (and locked on Windows) until the program ends.
+        import os, tempfile
+        from SupplyNetPy.Components.logger import GlobalLogger
+        with tempfile.TemporaryDirectory() as folder:
+            log = GlobalLogger(logger_name="test_close_on_disable",
+                               log_file=os.path.join(folder, "trace.log"))
+            log.enable_logging(log_to_file=True, log_to_screen=False)
+            handler = self._file_handlers(log.logger)[0]
+            log.disable_logging()
+            assert handler.stream is None
+            os.remove(os.path.join(folder, "trace.log"))  # fails on Windows if still open
+
+    def test_switching_log_file_closes_the_old_one(self):
+        import os, tempfile
+        from SupplyNetPy.Components.logger import GlobalLogger
+        with tempfile.TemporaryDirectory() as folder:
+            log = GlobalLogger(logger_name="test_close_on_switch",
+                               log_file=os.path.join(folder, "first.log"))
+            log.enable_logging(log_to_file=True, log_to_screen=False)
+            first = self._file_handlers(log.logger)[0]
+            log.set_log_file(os.path.join(folder, "second.log"))
+            assert first.stream is None
+            assert self._file_handlers(log.logger)[0].baseFilename.endswith("second.log")
+            log.disable_logging()
+
 
 class TestLoggerAdapter(unittest.TestCase):
     """§4.9: ``GlobalLogger`` is a proper :class:`logging.LoggerAdapter` so

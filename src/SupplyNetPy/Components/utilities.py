@@ -576,6 +576,34 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
         logger.info(f"{key.ljust(max_key_length)}: {supplychainnet[key]}")
     return supplychainnet
 
+def _collect_node_stats(nodes_object_list):
+    """
+    Gather every node's statistics for the performance table.
+
+    Parameters:
+        nodes_object_list (list): List of supply chain node objects.
+
+    Returns:
+        tuple: A dict from column name to that node's statistics, and the
+            sorted list of every metric name that any of the nodes has.
+    """
+    # Each column is headed by the node's name. Two nodes can have the same
+    # name, and the second would then replace the first, so a repeated name
+    # gets the node's ID added to it.
+    stats_per_node = {}
+    for node in nodes_object_list:
+        column = node.name
+        if column in stats_per_node:
+            column = f"{node.name} ({node.ID})"
+        stats_per_node[column] = node.stats.get_statistics()
+    # Different kinds of nodes have different metrics (a raw-material supplier
+    # also records the units it mined, for example). Take every metric that
+    # any node has, not only the first node's, so that none is left out of the
+    # table. A node without a metric shows "N/A" for it.
+    stat_keys = sorted(set().union(*(node_stats.keys() for node_stats in stats_per_node.values())))
+    return stats_per_node, stat_keys
+
+
 def get_node_wise_performance(nodes_object_list):
     """
     Collect per-node performance statistics into a structured form.
@@ -597,8 +625,7 @@ def get_node_wise_performance(nodes_object_list):
     """
     if not nodes_object_list:
         return []
-    stats_per_node = {node.name: node.stats.get_statistics() for node in nodes_object_list}
-    stat_keys = sorted(next(iter(stats_per_node.values())).keys())
+    stats_per_node, stat_keys = _collect_node_stats(nodes_object_list)
     rows = []
     for key in stat_keys:
         row = {"Performance Metric": key}
@@ -625,8 +652,7 @@ def format_node_wise_performance(nodes_object_list, col_width: int = 25) -> str:
     """
     if not nodes_object_list:
         return ""
-    stats_per_node = {node.name: node.stats.get_statistics() for node in nodes_object_list}
-    stat_keys = sorted(next(iter(stats_per_node.values())).keys())
+    stats_per_node, stat_keys = _collect_node_stats(nodes_object_list)
     table = [["Performance Metric"] + [str(name) for name in stats_per_node]]
     for key in stat_keys:
         table.append([key] + [str(node_stats.get(key, "N/A")) for node_stats in stats_per_node.values()])
