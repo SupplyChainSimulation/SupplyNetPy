@@ -7,7 +7,7 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
-## Unreleased
+## 0.2.1 (2026-10-12)
 
 Results change for networks with disruptions. Networks without disruptions,
 such as the quickstart example, give the same results as before.
