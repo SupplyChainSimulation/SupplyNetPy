@@ -53,7 +53,7 @@ SupplyNetPy provides these core components for supply chain modeling.
     * **RQReplenishment.** The (R, Q) policy.
     * **PeriodicReplenishment.** The periodic policy, which places a replenishment order at fixed intervals.
 
-* **SupplierSelectionPolicy.** The base class for supplier-selection policies. All built in policies skip suppliers whose link is disrupted. If every link is disrupted, they still choose a supplier, and the order is not sent until a link recovers.
+* **SupplierSelectionPolicy.** The base class for supplier-selection policies. All built in policies skip suppliers whose site or link is disrupted. If no supplier can take a replenishment order, the order is not placed, and the replenishment policy checks again as soon as a supplier or a link recovers.
     * **SelectFirst.** Chooses the first supplier.
     * **SelectAvailable.** Chooses the first supplier whose inventory level can fill the whole order.
     * **SelectCheapest.** Chooses the supplier with the lowest transportation cost.

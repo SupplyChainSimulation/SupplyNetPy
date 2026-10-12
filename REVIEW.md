@@ -532,6 +532,28 @@ Found during the comment sweep. `Demand.wait_for_order`.
 - `examples/py/intro_simple.py` unchanged (`profit: -4435.0`). No example or case study uses waiting customers (the only `tolerance=` in the examples is commented out), so none of their results change.
 - `pytest` — 248/248 passing. New `TestWaitingCustomerShortageCountedOnce` (3 tests: deliveries too small to fill the order; partial deliveries; one shortage per waiting customer). All three fail on the old code.
 
+### 3.23 A buyer never orders again after its supplier recovers; orders sent to a disrupted supplier site ✅ Resolved
+Found while updating `examples/notebooks/case_study_pharma.ipynb`. `Node.place_order`, `Node.disruption`, `Link.disruption`, the supplier-selection policies, `InventoryNode.process_order`, `Manufacturer.process_order`.
+
+**Original issue.** A replenishment policy without a review period checks its inventory position only when it is woken, and it was woken only by `inventory_drop` (units leaving the inventory, units expiring, or a waiting customer). An order it tried to place while its supplier, or the link to it, was disrupted was not placed (`process_order` logged "Order not placed" and stopped). If the site then had no units left, nothing could leave its inventory, so nothing woke the policy again, and the site never ordered again, even after the supplier recovered. In the pharma case study the pharmacy's units expired on day 180 while its only supplier was disrupted; the supplier recovered on day 215, and the pharmacy stayed empty for the rest of the run. Manufacturers had the same problem through `Manufacturer.process_order`, which plans nothing while a raw-material supplier is disrupted. The bug was already in 0.1.12; the pharma results are identical there.
+
+A second, related gap: the supplier-selection policies skipped suppliers whose *link* was disrupted, but not suppliers whose *site* was disrupted. A buyer with two suppliers could choose the disrupted site and lose the order while the other supplier was working.
+
+**Fix applied:**
+
+- `Link.can_take_order()` says whether an order can be sent over a link: neither the link nor its supplier's site is disrupted. It is the one place this rule lives.
+- `Node.place_order` checks `can_place_order()` first and places nothing if it is false. For `InventoryNode`, at least one supplier must be able to take the order; `Manufacturer` overrides it so every raw material needs one (otherwise the planned units could never be made). `InventoryNode.process_order` checks the chosen link again with `can_take_order()` when it starts, because that is when the order is really placed (recorded at the supplier and taken from its inventory); `place_order` only starts the process. The two can differ at time 0: processes queued before `process_order` run first, and these include the start of every disruption process, whose first random draw (`failure_p`, `link_failure_p`) can disrupt the chosen supplier or link. A link is always created after its buyer, so this happens whenever the buyer orders at time 0 and the link's first draw hits. A blocked order records nothing, and the recovery wake-up below makes the policy try again. `Manufacturer.process_order` picks a supplier per raw material (through the new `_raw_material_links`) when it starts, so it plans nothing in the same case.
+- The selection policies choose only among links with `can_take_order()` (`_active_suppliers`, and `_apply_mode` in fixed mode). `_active_suppliers` still falls back to every link if none can take the order, but `place_order` never calls `select` in that case.
+- Each node keeps `buyers`, the links to its buyers, registered by `Link.__init__` through the new `Node.add_buyer_link` (the mirror of `add_supplier_link`). When a node recovers, `Node.disruption` calls `wake_replenishment()` on every buyer; when a link recovers, `Link.disruption` calls it on its sink. `Node.wake_replenishment` fires `inventory_drop`, the event the policy already waits on, so the policy checks its position again and orders if needed. The order is sized from the position at the moment of recovery, not from before the disruption. An extra wake-up does no harm, and policies with a review period are not affected.
+
+**Not changed:** if the chosen supplier is disrupted at time 0 after `place_order` chose it, the order is dropped, not sent to another supplier; the buyer orders again when a supplier or link recovers or when units leave its inventory.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`).
+- Pharma case study (no review period, 200 runs, seed 7): mean cost 6.59 / 2.41 / 0.89 for (s, S) = (2000, 5000) / (100, 1000) / (1200, 2000), against 10.14 / 5.93 / 2.40 before and 6.75 / 2.61 / 0.89 with a daily review.
+- `pytest` — 259/259 passing. New `TestPolicyWokenWhenSupplierRecovers` (4 tests: a distributor orders as soon as its supplier site recovers; the same for a link; a manufacturer plans once its raw-material supplier recovers; a link is registered with its source) and `TestOrdersSkipDisruptedSupplierSites` (4 tests: the order goes to the supplier whose site is not disrupted; fixed mode skips its supplier while the site is disrupted; no order when every supplier is disrupted; a manufacturer needs a supplier for every raw material). All eight fail on the old code. Four existing tests that started `process_order` directly against a disrupted supplier now go through `place_order`. Two more tests in `TestOrdersSkipDisruptedSupplierSites` cover the time-0 case (a link, then a supplier site, disrupted by its first random draw after `place_order` chose it); both fail without the check in `process_order`.
+
 ---
 
 ## 4. Design / architecture issues

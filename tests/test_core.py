@@ -2185,7 +2185,7 @@ class TestSiteBackordersAreLive(unittest.TestCase):
         env = simpy.Environment()
         d1, w1, link = self._distributor_and_warehouse(env, distributor_stock=10)
         d1.node_status = "inactive"
-        env.process(w1.process_order(link, 50))
+        w1.place_order(50)
         env.run(until=10)
         assert d1.stats.backorder == [0, 0]
         assert w1.pending_orders == 0
@@ -2558,7 +2558,7 @@ class TestLimitedSupplierKeepsMining(unittest.TestCase):
         d1 = self._distributor(env)
         link = scm.Link(env=env, ID="L1", source=w0, sink=d1, cost=0, lead_time=lambda: 1)
         w0.node_status = "inactive"
-        env.process(d1.process_order(link, 10))
+        d1.place_order(10)
         env.run(until=1)
         assert not w0.inventory_drop.triggered
         assert d1.pending_orders == 0
@@ -2588,7 +2588,7 @@ class TestNoShortageAtASupplierSiteThatIsDown(unittest.TestCase):
         w0, d1, link = self._warehouse_and_distributor(env)
         w0.node_status = "inactive"
         for _ in range(3):   # the policy may try several times during an outage
-            env.process(d1.process_order(link, 20))
+            d1.place_order(20)
         env.run(until=1)
         assert w0.stats.shortage == [0, 0]
         assert w0.stats.demand_received == [0, 0]
@@ -2775,7 +2775,7 @@ class TestSupplierRawMaterialBackordersAreLive(unittest.TestCase):
         s1, m1, link = self._supplier_and_factory(env)
         env.run(until=0.5)
         s1.node_status = "inactive"
-        env.process(m1.process_order(link, 30))
+        m1.place_order(30)
         env.run(until=5)
         assert s1.stats.backorder == [0, 0]
         assert s1.stats.shortage == [0, 0]
@@ -3352,3 +3352,205 @@ class TestLinkDisruptionProbabilisticIsTimePaced(unittest.TestCase):
         assert link.status == "active"
         env.run(until=3)
         assert link.status == "inactive"
+
+
+class TestPolicyWokenWhenSupplierRecovers(unittest.TestCase):
+    """
+    A replenishment policy without a review period checks its inventory
+    position only when it is woken, normally when its inventory drops. An
+    order it tries to place while its supplier (or the link to it) is
+    disrupted is not placed. If the node then has no units left, nothing can
+    leave its inventory, so nothing would wake the policy again: the node
+    would never order again, even after the supplier recovered. The supplier
+    or link now wakes the buyer's policy when it recovers.
+    """
+
+    def _distributor(self, env, supplier_kwargs=None, link_kwargs=None):
+        # The distributor holds 20 units and sells 10 a day to customers who
+        # do not wait. It runs out on day 1 and wants to order then.
+        sup = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier",
+                           **(supplier_kwargs or {}))
+        d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor",
+                               capacity=100, initial_level=20, inventory_holding_cost=0,
+                               replenishment_policy=scm.SSReplenishment,
+                               policy_param={"s": 5, "S": 20},
+                               product_buy_price=1, product_sell_price=2)
+        link = scm.Link(env=env, ID="L1", source=sup, sink=d1, cost=0, lead_time=lambda: 1,
+                        **(link_kwargs or {}))
+        scm.Demand(env=env, ID="C1", name="C1", order_arrival_model=lambda: 1,
+                   order_quantity_model=lambda: 10, demand_node=d1)
+        return sup, d1, link
+
+    def test_buyer_orders_once_its_supplier_site_recovers(self):
+        # The supplier is disrupted from day 0.5 to day 5.5. The distributor's
+        # order on day 1 is not placed. When the supplier recovers on day 5.5,
+        # the distributor orders 20 units at once.
+        env = simpy.Environment()
+        sup, d1, link = self._distributor(env, supplier_kwargs={
+            "node_disrupt_time": lambda: 0.5, "node_recovery_time": lambda: 5})
+        env.run(until=5)
+        assert d1.inventory.level == 0
+        assert d1.stats.demand_placed == [0, 0]
+        env.run(until=5.75)
+        assert d1.stats.demand_placed == [1, 20]
+        env.run(until=7)
+        assert d1.stats.fulfillment_received == [1, 20]
+
+    def test_buyer_orders_once_its_link_recovers(self):
+        # The same, with the link disrupted instead of the supplier.
+        env = simpy.Environment()
+        sup, d1, link = self._distributor(env, link_kwargs={
+            "link_disrupt_time": lambda: 0.5, "link_recovery_time": lambda: 5})
+        env.run(until=5)
+        assert d1.stats.demand_placed == [0, 0]
+        env.run(until=5.75)
+        assert d1.stats.demand_placed == [1, 20]
+
+    def test_manufacturer_plans_once_its_raw_material_supplier_recovers(self):
+        # A manufacturer with no units and no review period wants to plan 40
+        # units on day 0, but its raw-material supplier is disrupted from day
+        # 0 (the start) to day 3. It plans and orders once the supplier is back.
+        env = simpy.Environment()
+        rm = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=1, extraction_time=1,
+                             mining_cost=0, cost=1)
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1,
+                              sell_price=5, buy_price=0, batch_size=100, raw_materials=[(rm, 1)])
+        sup = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier",
+                           raw_material=rm, node_disrupt_time=lambda: 0.1,
+                           node_recovery_time=lambda: 3)
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=scm.SSReplenishment,
+                              policy_param={"s": 10, "S": 40, "first_review_delay": 1},
+                              product_sell_price=5, product=product)
+        scm.Link(env=env, ID="L1", source=sup, sink=m1, cost=0, lead_time=lambda: 1)
+        env.run(until=3)
+        assert m1.stats.demand_placed == [0, 0]
+        env.run(until=6)
+        assert m1.stats.demand_placed == [1, 40]
+        assert m1.stats.total_products_manufactured == 40
+
+    def test_link_is_registered_with_its_source(self):
+        env = simpy.Environment()
+        sup, d1, link = self._distributor(env)
+        assert sup.buyers == [link]
+        assert d1.buyers == []
+
+
+class TestOrdersSkipDisruptedSupplierSites(unittest.TestCase):
+    """
+    place_order checks that some supplier can take the order, and the
+    supplier-selection policy chooses only among suppliers whose link and
+    site are both not disrupted. If none can take it, no order is placed.
+    """
+
+    def _two_suppliers(self, env, policy=scm.SelectFirst, mode="dynamic"):
+        # D1 buys from S1 (first in the list, cheaper) and S2.
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        s2 = scm.Supplier(env=env, ID="S2", name="S2", node_type="infinite_supplier")
+        d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor",
+                               capacity=100, initial_level=0, inventory_holding_cost=0,
+                               replenishment_policy=None, policy_param=None,
+                               supplier_selection_policy=policy, supplier_selection_mode=mode,
+                               product_buy_price=1, product_sell_price=2)
+        l1 = scm.Link(env=env, ID="L1", source=s1, sink=d1, cost=1, lead_time=lambda: 1)
+        l2 = scm.Link(env=env, ID="L2", source=s2, sink=d1, cost=5, lead_time=lambda: 1)
+        return s1, s2, d1, l1, l2
+
+    def test_order_goes_to_the_supplier_whose_site_is_not_disrupted(self):
+        env = simpy.Environment()
+        s1, s2, d1, l1, l2 = self._two_suppliers(env)
+        s1.node_status = "inactive"
+        d1.place_order(10)
+        env.run(until=2)
+        assert s1.stats.demand_received == [0, 0]
+        assert s2.stats.demand_received == [1, 10]
+        assert d1.stats.fulfillment_received == [1, 10]
+
+    def test_fixed_mode_skips_its_supplier_while_the_site_is_disrupted(self):
+        env = simpy.Environment()
+        s1, s2, d1, l1, l2 = self._two_suppliers(env, policy=scm.SelectCheapest, mode="fixed")
+        assert d1.selection_policy.select(10) is l1
+        s1.node_status = "inactive"
+        assert d1.selection_policy.select(10) is l2
+        assert d1.selection_policy.fixed_supplier is l1, "the remembered supplier stays"
+        s1.node_status = "active"
+        assert d1.selection_policy.select(10) is l1
+
+    def test_no_order_when_every_supplier_is_disrupted(self):
+        # S1's site and the link to S2 are both disrupted: nothing is placed,
+        # and nothing is counted anywhere.
+        env = simpy.Environment()
+        s1, s2, d1, l1, l2 = self._two_suppliers(env)
+        s1.node_status = "inactive"
+        l2.status = "inactive"
+        assert not d1.can_place_order()
+        d1.place_order(10)
+        env.run(until=2)
+        assert s1.stats.demand_received == [0, 0]
+        assert s2.stats.demand_received == [0, 0]
+        assert d1.stats.demand_placed == [0, 0]
+        assert d1.pending_orders == 0
+
+    def test_manufacturer_needs_a_supplier_for_every_raw_material(self):
+        # Flour can be ordered, sugar cannot: the manufacturer cannot place
+        # an order, because the units could never be made.
+        env = simpy.Environment()
+        flour = scm.RawMaterial(ID="flour", name="flour", extraction_quantity=1, extraction_time=1,
+                                mining_cost=0, cost=1)
+        sugar = scm.RawMaterial(ID="sugar", name="sugar", extraction_quantity=1, extraction_time=1,
+                                mining_cost=0, cost=1)
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1,
+                              sell_price=5, buy_price=0, batch_size=10,
+                              raw_materials=[(flour, 1), (sugar, 1)])
+        s_flour = scm.Supplier(env=env, ID="SF", name="SF", node_type="infinite_supplier", raw_material=flour)
+        s_sugar = scm.Supplier(env=env, ID="SS", name="SS", node_type="infinite_supplier", raw_material=sugar)
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
+                              product_sell_price=5, product=product)
+        scm.Link(env=env, ID="LF", source=s_flour, sink=m1, cost=0, lead_time=lambda: 1)
+        scm.Link(env=env, ID="LS", source=s_sugar, sink=m1, cost=0, lead_time=lambda: 1)
+        s_sugar.node_status = "inactive"
+        assert not m1.can_place_order()
+        m1.place_order(10)
+        env.run(until=2)
+        assert m1.inventory.on_hand == 0
+        assert s_flour.stats.demand_received == [0, 0]
+        s_sugar.node_status = "active"
+        assert m1.can_place_order()
+
+    def _orders_at_time_zero(self, env, supplier_kwargs=None, link_kwargs=None):
+        # D1 is created first and starts empty, so its policy orders at time 0,
+        # before the random disruption of S1 or L1 makes its first draw.
+        d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor",
+                               capacity=100, initial_level=0, inventory_holding_cost=0,
+                               replenishment_policy=scm.SSReplenishment,
+                               policy_param={"s": 5, "S": 20},
+                               product_buy_price=1, product_sell_price=2)
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier",
+                          **(supplier_kwargs or {}))
+        link = scm.Link(env=env, ID="L1", source=s1, sink=d1, cost=0, lead_time=lambda: 1,
+                        **(link_kwargs or {}))
+        return d1, s1, link
+
+    def test_link_disrupted_at_time_zero_after_place_order_gets_no_order(self):
+        # place_order finds L1 active, but L1's first draw (0.13 < 0.99)
+        # disrupts it before process_order runs. The order is not placed.
+        env = simpy.Environment()
+        d1, s1, link = self._orders_at_time_zero(env, link_kwargs={
+            "link_failure_p": 0.99, "link_recovery_time": lambda: 100, "rng": random.Random(1)})
+        env.run(until=0.5)
+        assert link.status == "inactive"
+        assert s1.stats.demand_received == [0, 0]
+        assert d1.stats.demand_placed == [0, 0]
+        assert d1.pending_orders == 0
+
+    def test_site_disrupted_at_time_zero_after_place_order_gets_no_order(self):
+        # The same, with S1's site disrupted instead of the link.
+        env = simpy.Environment()
+        d1, s1, link = self._orders_at_time_zero(env, supplier_kwargs={
+            "failure_p": 0.99, "node_recovery_time": lambda: 100, "rng": random.Random(1)})
+        env.run(until=0.5)
+        assert s1.node_status == "inactive"
+        assert s1.stats.demand_received == [0, 0]
+        assert d1.stats.demand_placed == [0, 0]
+        assert d1.pending_orders == 0

@@ -7,6 +7,25 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
+## Unreleased
+
+Results change for networks with disruptions. Networks without disruptions,
+such as the quickstart example, give the same results as before.
+
+* **[FIX]** A site whose replenishment order was blocked by a disruption now
+  orders as soon as its supplier, or the link to it, recovers. Before, a
+  replenishment policy without a review period could stop ordering for good. If
+  the site had no units left, nothing woke the policy again, even after the
+  supplier recovered.
+* **[FIX]** Supplier-selection policies now skip a supplier whose site is
+  disrupted, not only one whose link is disrupted. Before, a site with two
+  suppliers could send its order to the disrupted one and lose it, while the
+  other supplier was working.
+* **[CHANGE]** `place_order` now checks that some supplier can take the order
+  before choosing one. If none can, no order is placed. New methods `Link.can_take_order`, `Node.can_place_order`,
+  `Node.wake_replenishment` and `Node.add_buyer_link`, and a new list
+  `Node.buyers` of the links to a node's buyers.
+
 ## 0.2.0 (2026-10-11)
 
 Most of these fixes come from

@@ -1116,7 +1116,10 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
     There are two modes:
     (1) "dynamic": the supplier is chosen afresh for every replenishment order.
     (2) "fixed": the first supplier chosen is remembered and used for every later order (another one is used
-        only while the link to the remembered supplier is disrupted).
+        only while the remembered supplier or the link to it is disrupted).
+
+    Every policy skips a supplier whose site or link is disrupted (see `Link.can_take_order`).
+    `Node.place_order` calls `select` only when at least one supplier can take the order.
 
     Each policy is a subclass that overrides the `select` method with its own rule.
 
@@ -1193,16 +1196,19 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
 
     def _active_suppliers(self):
         """
-        Return the links to the suppliers whose link is not disrupted right now.
-        If every link is disrupted, return all of them instead, so the calling
-        policy always has at least one to choose from. In that case
-        ``process_order`` will not send the order over the disrupted link, and
-        the replenishment policy will try again at its next check.
+        Return the links to the suppliers that can take an order right now:
+        neither the link nor the supplier's site is disrupted.
+
+        ``Node.place_order`` calls ``select`` only when at least one supplier
+        can take an order. If ``select`` is called directly while every
+        supplier is disrupted, all links are returned instead, so the policy
+        always has at least one to choose from.
 
         Returns:
-            list: The links that are not disrupted, or all links if every one is.
+            list: The links to the suppliers that can take an order, or all
+                links if none can.
         """
-        active = [s for s in self.node.suppliers if s.status == "active"]
+        active = [s for s in self.node.suppliers if s.can_take_order()]
         return active if active else self.node.suppliers
 
     def _apply_mode(self, selected):
@@ -1210,23 +1216,23 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
         Apply the "fixed" or "dynamic" mode to a freshly chosen supplier.
 
         In ``"fixed"`` mode the first chosen supplier is remembered and used for
-        later orders. But if the link to the remembered supplier is disrupted,
-        the policy uses ``selected`` for this order instead (without forgetting
-        the remembered one): "fixed" means *prefer this supplier*, not *stop
-        ordering while its link is disrupted*. The remembered supplier is used
-        again as soon as its link recovers.
+        later orders. But if the remembered supplier's site or the link to it is
+        disrupted, the policy uses ``selected`` for this order instead (without
+        forgetting the remembered one): "fixed" means *prefer this supplier*,
+        not *stop ordering while it is disrupted*. The remembered supplier is
+        used again as soon as it recovers.
 
         Parameters:
             selected (Link): The link to the supplier chosen by the subclass's own rule.
 
         Returns:
             Link: in fixed mode, the link to the remembered supplier (or ``selected``
-                while that link is disrupted); in dynamic mode, ``selected``.
+                while that supplier or its link is disrupted); in dynamic mode, ``selected``.
         """
         if self.mode == "fixed":
             if self.fixed_supplier is None:
                 self.fixed_supplier = selected
-            if self.fixed_supplier.status == "inactive":
+            if not self.fixed_supplier.can_take_order():
                 return selected
             return self.fixed_supplier
         return selected
@@ -1234,7 +1240,7 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
 class SelectFirst(SupplierSelectionPolicy):
     """
     A supplier-selection policy that chooses the first supplier in the node's list of suppliers (the order in
-    which the links were created), skipping suppliers whose link is disrupted.
+    which the links were created), skipping suppliers whose site or link is disrupted.
 
     In dynamic mode, the choice is made afresh for each replenishment order.
     In fixed mode (the default for this policy), the first choice is remembered and used for later orders.
@@ -1252,7 +1258,7 @@ class SelectFirst(SupplierSelectionPolicy):
 
     Functions:
         __init__: Initializes the selection policy with node and mode.
-        select: Chooses the first supplier whose link is not disrupted.
+        select: Chooses the first supplier that can take the order.
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
 
@@ -1276,17 +1282,14 @@ class SelectFirst(SupplierSelectionPolicy):
 
     def select(self, order_quantity):
         """
-        Chooses the first supplier whose link is not disrupted right now.
+        Chooses the first supplier that can take the order right now.
 
-        Suppliers whose link is disrupted are skipped. If every link is
-        disrupted, the policy chooses the first supplier in the list
-        (``process_order`` then does not send the order over the disrupted link,
-        and the replenishment policy tries again at its next check).
+        Suppliers whose site or link is disrupted are skipped.
 
         In dynamic mode, the choice is made afresh for each order. In fixed
         mode, the first choice is remembered and used for later orders; while
-        its link is disrupted, the policy uses another supplier whose link is
-        not, without forgetting the remembered one.
+        it or its link is disrupted, the policy uses another supplier, without
+        forgetting the remembered one.
 
         Parameters:
             order_quantity (float): Units in the replenishment order.
@@ -1303,8 +1306,8 @@ class SelectAvailable(SupplierSelectionPolicy):
     """
     A supplier-selection policy that chooses the first supplier whose inventory level can fill the whole order.
 
-    If no supplier can fill the whole order, it chooses the first supplier in the list. Suppliers whose link is
-    disrupted are skipped. In dynamic mode the choice is made afresh for each replenishment order; in fixed mode
+    If no supplier can fill the whole order, it chooses the first supplier in the list. Suppliers whose site or
+    link is disrupted are skipped. In dynamic mode the choice is made afresh for each replenishment order; in fixed mode
     the first choice is remembered and used for later orders.
 
     Parameters:
@@ -1347,17 +1350,15 @@ class SelectAvailable(SupplierSelectionPolicy):
         """
         Chooses the first supplier whose inventory level can fill the whole order.
 
-        Suppliers whose link is disrupted are skipped first. Among those left,
-        it chooses the first one whose inventory level is at least
+        Suppliers whose site or link is disrupted are skipped first. Among
+        those left, it chooses the first one whose inventory level is at least
         ``order_quantity``; if none is, it chooses the first of them (the order
         then waits at that supplier until enough units arrive, and the supplier
-        records a shortage and a backorder). If every link is disrupted, it
-        chooses the first supplier in the list, and ``process_order`` does not
-        send the order over the disrupted link.
+        records a shortage and a backorder).
 
         In fixed mode, the first choice is remembered and used for later
-        orders. While its link is disrupted, the policy uses another supplier
-        whose link is not, without forgetting the remembered one.
+        orders. While it or its link is disrupted, the policy uses another
+        supplier, without forgetting the remembered one.
 
         Parameters:
             order_quantity (float): Units in the replenishment order.
@@ -1376,7 +1377,7 @@ class SelectCheapest(SupplierSelectionPolicy):
     A supplier-selection policy that chooses the supplier with the lowest transportation cost (the `cost` of
     the link to it).
 
-    Suppliers whose link is disrupted are skipped. In dynamic mode the choice is made afresh for each
+    Suppliers whose site or link is disrupted are skipped. In dynamic mode the choice is made afresh for each
     replenishment order; in fixed mode the first choice is remembered and used for later orders.
 
     Parameters:
@@ -1418,14 +1419,11 @@ class SelectCheapest(SupplierSelectionPolicy):
         """
         Chooses the supplier with the lowest transportation cost.
 
-        Suppliers whose link is disrupted are skipped first. If every link is
-        disrupted, the policy chooses the cheapest of all suppliers
-        (``process_order`` then does not send the order over the disrupted link,
-        and the replenishment policy tries again at its next check).
+        Suppliers whose site or link is disrupted are skipped first.
 
         In fixed mode, the first choice is remembered and used for later
-        orders. While its link is disrupted, the policy uses another supplier
-        whose link is not, without forgetting the remembered one.
+        orders. While it or its link is disrupted, the policy uses another
+        supplier, without forgetting the remembered one.
 
         Parameters:
             order_quantity (float): Units in the replenishment order.
@@ -1443,7 +1441,7 @@ class SelectFastest(SupplierSelectionPolicy):
     A supplier-selection policy that chooses the supplier with the shortest lead time.
 
     The lead time of each link is drawn once when the choice is made, so if lead times are random, the choice
-    can differ from one order to the next. Suppliers whose link is disrupted are skipped. In dynamic mode the
+    can differ from one order to the next. Suppliers whose site or link is disrupted are skipped. In dynamic mode the
     choice is made afresh for each replenishment order; in fixed mode the first choice is remembered and used
     for later orders.
 
@@ -1486,14 +1484,11 @@ class SelectFastest(SupplierSelectionPolicy):
         """
         Chooses the supplier with the shortest lead time.
 
-        Suppliers whose link is disrupted are skipped first. If every link is
-        disrupted, the policy chooses the fastest of all suppliers
-        (``process_order`` then does not send the order over the disrupted link,
-        and the replenishment policy tries again at its next check).
+        Suppliers whose site or link is disrupted are skipped first.
 
         In fixed mode, the first choice is remembered and used for later
-        orders. While its link is disrupted, the policy uses another supplier
-        whose link is not, without forgetting the remembered one.
+        orders. While it or its link is disrupted, the policy uses another
+        supplier, without forgetting the remembered one.
 
         Parameters:
             order_quantity (float): Units in the replenishment order.
@@ -1806,6 +1801,7 @@ class Node(NamedEntity, InfoMixin):
         self.node_recovery_time = node_recovery_time  # function: time units a disruption lasts
         self.rng = rng if rng is not None else _rng  # random number generator for random disruptions; the library's default if none is given
         self.suppliers = []  # links to this node's suppliers; filled in by Link.__init__ through add_supplier_link
+        self.buyers = []  # links to this node's buyers; filled in by Link.__init__ through add_buyer_link
         # Work out the disruption-impact function once, here. The setting as
         # given is kept as ``disruption_impact`` (shown by get_info); the
         # function that runs when a disruption starts is ``_disruption_impact_fn``.
@@ -1891,6 +1887,13 @@ class Node(NamedEntity, InfoMixin):
                 yield self.env.timeout(recovery_time)
                 self.node_status = "active"
                 self.logger.info(f"{self.env.now}:{self.ID}: Node recovered from disruption.")
+                # Orders from buyers were not placed while this node was
+                # disrupted. Wake each buyer's replenishment policy so that it
+                # checks its inventory position again now. Without this, a buyer
+                # with no units left would never order again: nothing would
+                # leave its inventory, so nothing else would wake its policy.
+                for link in self.buyers:
+                    link.sink.wake_replenishment()
 
     def add_supplier_link(self, link) -> None:
         """
@@ -1927,6 +1930,56 @@ class Node(NamedEntity, InfoMixin):
             )
             raise ValueError("link.sink must match the node add_supplier_link is called on.")
         self.suppliers.append(link)
+
+    def add_buyer_link(self, link) -> None:
+        """
+        Register a link to one of this node's buyers (a link whose ``source``
+        is this node).
+
+        The node uses this list when it recovers from a disruption, to wake
+        the replenishment policy of each buyer (see ``wake_replenishment``).
+        ``Link.__init__`` calls this automatically for its ``source``.
+
+        Parameters:
+            link (Link): The Link object whose ``source`` is this node.
+
+        Raises:
+            TypeError: If ``link`` is not a Link instance.
+            ValueError: If ``link.source`` is not this node.
+
+        Returns:
+            None
+        """
+        if not isinstance(link, Link):
+            global_logger.error("add_buyer_link expects a Link instance.")
+            raise TypeError("add_buyer_link expects a Link instance.")
+        if link.source is not self:
+            global_logger.error(
+                f"{self.ID}: add_buyer_link called with a link whose source is "
+                f"{link.source.ID}, not {self.ID}."
+            )
+            raise ValueError("link.source must match the node add_buyer_link is called on.")
+        self.buyers.append(link)
+
+    def wake_replenishment(self) -> None:
+        """
+        Make this node's replenishment policy check its inventory position now.
+
+        A policy without a review period checks only when it is woken, normally
+        when the node's inventory drops. A supplier or a link that recovers from
+        a disruption calls this on its buyer, because an order the policy tried
+        to place during the disruption was not placed. The policy then checks
+        again and orders if its inventory position is still too low. An extra
+        wake-up does no harm: if the position is fine, the policy just waits
+        again. A policy with a review period checks on its own timer and is not
+        affected.
+
+        Returns:
+            None
+        """
+        inventory_drop = getattr(self, "inventory_drop", None)
+        if inventory_drop is not None and not inventory_drop.triggered:
+            inventory_drop.succeed()
 
     # ---- Replenishment-policy contract -------------------------------------
     # The three methods below are what replenishment policies (the built-in
@@ -1970,24 +2023,46 @@ class Node(NamedEntity, InfoMixin):
         Choose a supplier with this node's supplier-selection policy and place a
         replenishment order with it.
 
-        This does in one call what a replenishment policy would otherwise do in
-        two steps: ``selection_policy.select(...)`` and
+        First it checks that some supplier can take the order (see
+        ``can_place_order``). If none can, no order is placed. The replenishment
+        policy then goes back to waiting, and it is woken when a supplier or a
+        link recovers (see ``wake_replenishment``), or when units leave the
+        inventory.
+
+        Otherwise it does in one call what a replenishment policy would
+        otherwise do in two steps: ``selection_policy.select(...)``, which
+        chooses among the suppliers that can take the order, and
         ``env.process(process_order(...))``. The order itself is handled by
         ``process_order``, which runs as its own SimPy process: it reduces the
-        order to fit the node's capacity, does not send it if the link is
-        disrupted, and records the order at the supplier. This method returns
-        at once.
+        order to fit the node's capacity and records the order at the
+        supplier. This method returns at once.
 
         Parameters:
             quantity (float): Units to order. ``process_order`` may still reduce
-                this to fit the capacity, or not send the order if the link is
-                disrupted.
+                this to fit the capacity.
 
         Returns:
             None
         """
+        if not self.can_place_order():
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}: No supplier can take an order (every supplier or the link to it is disrupted). Order not placed.")
+            return
+        # The order is really placed when process_order runs, a moment later
+        # at this same time. It checks the chosen supplier again then.
         supplier = self.selection_policy.select(quantity)
         self.env.process(self.process_order(supplier, quantity))
+
+    def can_place_order(self) -> bool:
+        """
+        Whether this node can place a replenishment order right now: at least
+        one supplier can take it, because neither the supplier's site nor the
+        link to it is disrupted. ``place_order`` checks this first.
+        ``Manufacturer`` replaces it with its own rule.
+
+        Returns:
+            bool: True if at least one supplier can take an order.
+        """
+        return any(link.can_take_order() for link in self.suppliers)
 
     def wait_for_drop(self):
         """
@@ -1995,7 +2070,8 @@ class Node(NamedEntity, InfoMixin):
 
         Replenishment policies use it as ``yield from node.wait_for_drop()``.
         It waits on the node's ``inventory_drop`` event, which fires when the
-        inventory drops. A SimPy event can fire only once, so after it fires it
+        inventory drops, and also when one of the node's suppliers or the link
+        to it recovers from a disruption (see ``wake_replenishment``). A SimPy event can fire only once, so after it fires it
         is replaced with a fresh one, ready for the next drop. Doing this here
         keeps that replacing step in one place.
 
@@ -2133,6 +2209,7 @@ class Link(NamedEntity, InfoMixin):
         # directly. Every Node starts with an empty ``suppliers`` list, so this
         # works for any valid sink.
         self.sink.add_supplier_link(self)
+        self.source.add_buyer_link(self)
         if(self.link_failure_p>0 or self.link_disrupt_time): # start the disruption process if the link can be disrupted
             self.env.process(self.disruption())
     
@@ -2152,8 +2229,8 @@ class Link(NamedEntity, InfoMixin):
             None
         """
         # Orders already in transit over this link are not stopped when the
-        # link is disrupted; only *new* orders are not sent (see the link checks
-        # in InventoryNode.process_order and Manufacturer.process_order).
+        # link is disrupted; only *new* orders are not sent (see
+        # Node.place_order, which checks Link.can_take_order).
         # Stopping orders in transit would need each one tracked as its own
         # process; that is left for later.
         while True:
@@ -2181,6 +2258,10 @@ class Link(NamedEntity, InfoMixin):
                 yield self.env.timeout(recovery_time)
                 self.status = "active"
                 global_logger.info(f"{self.env.now}:{self.ID}: Link recovered from disruption.")
+                # Orders were not sent over this link while it was disrupted.
+                # Wake the buyer's replenishment policy so it checks again now
+                # (see Node.wake_replenishment).
+                self.sink.wake_replenishment()
 
     def available_quantity(self) -> float:
         """
@@ -2194,6 +2275,19 @@ class Link(NamedEntity, InfoMixin):
             float: The supplier's inventory level.
         """
         return self.source.inventory.level
+
+    def can_take_order(self) -> bool:
+        """
+        Whether an order can be sent over this link right now: neither the
+        link nor its supplier's site is disrupted.
+
+        ``Node.place_order`` and the supplier-selection policies use it to skip
+        suppliers that cannot take an order.
+
+        Returns:
+            bool: True if neither the link nor the supplier's site is disrupted.
+        """
+        return self.status == "active" and self.source.node_status == "active"
 
 class _InventoryGet(ContainerGet):
     """
@@ -3153,8 +3247,10 @@ class InventoryNode(Node):
         inventory when they arrive. This runs as a SimPy process (``place_order``
         starts it).
 
-        The order is not placed if the link is disrupted or the supplier's site
-        is disrupted; the replenishment policy tries again at its next check.
+        ``place_order`` has already checked that some supplier can take the
+        order. This method checks the chosen supplier again when it starts,
+        because that is when the order is really placed. If the supplier's
+        site or the link to it is disrupted by then, the order is not placed.
 
         Parameters:
             supplier (Link): The **link** to the supplier, not the supplier
@@ -3180,139 +3276,135 @@ class InventoryNode(Node):
         if reorder_quantity <= 0:
             return  # no need to place an order if reorder quantity is zero
 
-        # A new order cannot be sent while the link is disrupted. Orders that
-        # already passed this check are not stopped — a disrupted link only
-        # blocks *new* orders. Checking here (before any shortage is recorded
-        # and before pending_orders is increased) means a blocked order is not
-        # counted as in transit and does not create a fake backorder at the
-        # supplier. The replenishment policy tries again when the inventory
-        # drops again or at its next periodic check.
-        if supplier.status == "inactive":
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Link:{supplier.ID} from {supplier.source.name} is disrupted. Order not placed.")
+        # The order is really placed here, not in place_order. place_order only
+        # starts this process, and SimPy runs it a moment later at the same
+        # time. Processes queued before it run first, and at time 0 these
+        # include the start of every disruption process, whose first random
+        # draw can disrupt the chosen supplier or link. So check again now. A
+        # blocked order records nothing (no shortage, backorder or pending
+        # order). The replenishment policy is woken when the supplier or the
+        # link recovers (see Node.wake_replenishment).
+        if not supplier.can_take_order():
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} or link:{supplier.ID} is disrupted. Order not placed.")
             return
 
-        self.pending_orders += 1  # count this order as placed; taken off again when it arrives (or when the supplier's site is disrupted and it is not placed)
+        self.pending_orders += 1  # count this order as placed; taken off again when it arrives
 
-        if(supplier.source.node_status == "active"):
-            # The supplier is short if its inventory level cannot fill the whole
-            # order right now. This is checked only here, once we know the
-            # order is really placed: a supplier whose site is disrupted never
-            # receives the order, so it must not be counted as short for it.
-            if supplier.source.inventory.level < reorder_quantity:
-                shortage = reorder_quantity - supplier.source.inventory.level
-                supplier.source.stats.update_stats(shortage=[1,shortage])
+        # The supplier is short if its inventory level cannot fill the whole
+        # order right now.
+        if supplier.source.inventory.level < reorder_quantity:
+            shortage = reorder_quantity - supplier.source.inventory.level
+            supplier.source.stats.update_stats(shortage=[1,shortage])
 
-            self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
-            supplier.source.stats.update_stats(demand_received=[1,reorder_quantity])
+        self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
+        supplier.source.stats.update_stats(demand_received=[1,reorder_quantity])
 
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
-            event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
-            self.inventory.on_hand += reorder_quantity
+        self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
+        event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
+        self.inventory.on_hand += reorder_quantity
 
-            # The supplier's backorders show what it owes *right now*: an order
-            # is counted while it waits for units and removed once it is served.
-            # The inventory hands out an order on the spot if it can, so an
-            # order that has not been served at this point is really waiting —
-            # either the inventory level is too low, or an earlier order is
-            # ahead of it in line. (The whole order counts, because the
-            # inventory never sends part of an order: it waits until it can
-            # send all of it.)
-            order_waits = not event.triggered
-            if order_waits:
-                supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
-            yield event
-            if order_waits:
-                # Served at last: the supplier no longer owes this order.
-                supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
+        # The supplier's backorders show what it owes *right now*: an order
+        # is counted while it waits for units and removed once it is served.
+        # The inventory hands out an order on the spot if it can, so an
+        # order that has not been served at this point is really waiting —
+        # either the inventory level is too low, or an earlier order is
+        # ahead of it in line. (The whole order counts, because the
+        # inventory never sends part of an order: it waits until it can
+        # send all of it.)
+        order_waits = not event.triggered
+        if order_waits:
+            supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
+        yield event
+        if order_waits:
+            # Served at last: the supplier no longer owes this order.
+            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
 
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
-            lead_time = supplier.lead_time() # draw the lead time from the link
-            validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
-            yield self.env.timeout(lead_time) # lead time for the order
+        self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
+        lead_time = supplier.lead_time() # draw the lead time from the link
+        validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative
+        yield self.env.timeout(lead_time) # lead time for the order
 
-            # Add the delivered units to the inventory, one part that fits at a time.
-            #
-            # Why loop instead of a single put()? A replenishment order can be
-            # bigger than the free capacity. This is normal, not a mistake: when
-            # the node owes units to waiting customers (backorders), the (s, S)
-            # policy orders enough to BOTH refill the inventory AND cover those
-            # backorders. That combined amount can be more than the inventory
-            # can hold at once, because the backordered units are meant to pass
-            # straight through to customers, not to stay in the inventory. A
-            # single put() would simply drop whatever did not fit — and the node
-            # would still have paid for those dropped units.
-            #
-            # So we add what fits right now, then pause for one instant of
-            # simulation time. `env.timeout(0)` does not advance the clock; it just
-            # lets other events scheduled for this same instant run. During that
-            # pause, the units we just added are handed to the waiting customers,
-            # which frees capacity again. We then add the next part, and repeat
-            # until the whole order has been added or handed out.
-            #
-            # Safety stop: if a pause frees no capacity at all, the inventory is
-            # genuinely full and the leftover cannot be stored. We stop there (so
-            # the loop can never run forever inside a single instant) and drop the
-            # leftover. `on_hand` (the inventory position, apart from units owed
-            # to waiting customers) was increased by the full order amount when
-            # the order was placed, so we subtract the undeliverable leftover
-            # back out to keep it correct.
-            if man_date_ls:                                  # the supplier sent batches with their manufacturing dates (perishable goods)
-                batches = [(ele[0], ele[1]) for ele in man_date_ls]
-            elif self.inventory.inv_type == "perishable":    # perishable, but we set the manufacturing date ourselves
-                mfg = self.manufacture_date(self.env.now) if self.manufacture_date else self.env.now
-                batches = [(mfg, reorder_quantity)]
-            else:                                            # ordinary (non-perishable) goods
-                batches = [(None, reorder_quantity)]
+        # Add the delivered units to the inventory, one part that fits at a time.
+        #
+        # Why loop instead of a single put()? A replenishment order can be
+        # bigger than the free capacity. This is normal, not a mistake: when
+        # the node owes units to waiting customers (backorders), the (s, S)
+        # policy orders enough to BOTH refill the inventory AND cover those
+        # backorders. That combined amount can be more than the inventory
+        # can hold at once, because the backordered units are meant to pass
+        # straight through to customers, not to stay in the inventory. A
+        # single put() would simply drop whatever did not fit — and the node
+        # would still have paid for those dropped units.
+        #
+        # So we add what fits right now, then pause for one instant of
+        # simulation time. `env.timeout(0)` does not advance the clock; it just
+        # lets other events scheduled for this same instant run. During that
+        # pause, the units we just added are handed to the waiting customers,
+        # which frees capacity again. We then add the next part, and repeat
+        # until the whole order has been added or handed out.
+        #
+        # Safety stop: if a pause frees no capacity at all, the inventory is
+        # genuinely full and the leftover cannot be stored. We stop there (so
+        # the loop can never run forever inside a single instant) and drop the
+        # leftover. `on_hand` (the inventory position, apart from units owed
+        # to waiting customers) was increased by the full order amount when
+        # the order was placed, so we subtract the undeliverable leftover
+        # back out to keep it correct.
+        if man_date_ls:                                  # the supplier sent batches with their manufacturing dates (perishable goods)
+            batches = [(ele[0], ele[1]) for ele in man_date_ls]
+        elif self.inventory.inv_type == "perishable":    # perishable, but we set the manufacturing date ourselves
+            mfg = self.manufacture_date(self.env.now) if self.manufacture_date else self.env.now
+            batches = [(mfg, reorder_quantity)]
+        else:                                            # ordinary (non-perishable) goods
+            batches = [(None, reorder_quantity)]
 
-            accepted = 0  # how many units actually made it into the inventory
-            for mfg_date, qty in batches:
-                # `remaining > 1e-9` rather than `> 0`: a tiny tolerance so
-                # floating-point rounding dust never triggers one extra loop.
-                remaining = qty
-                while remaining > 1e-9:
-                    # put() returns how many units it actually accepted — it
-                    # never goes over the capacity, so this can be less than asked.
-                    if mfg_date is None:
-                        put_now = self.inventory.put(remaining)
-                    else:
-                        put_now = self.inventory.put(remaining, mfg_date)
-                    accepted += put_now
-                    remaining -= put_now
-                    if remaining <= 1e-9:
-                        break  # the whole part is in the inventory; done
-                    # The inventory is full. Pause one instant so the units we just
-                    # added can be handed to waiting customers (freeing capacity), then retry.
-                    prev_level = self.inventory.level
-                    yield self.env.timeout(0)
-                    if self.inventory.level >= prev_level:
-                        # The pause freed nothing, so nothing more can be stored.
-                        # Drop the leftover and correct the inventory position.
-                        # Warn the user: the node paid for these units but has
-                        # nowhere to put them and no waiting customer to hand
-                        # them to. This usually means the node's storage
-                        # capacity is too small for the order sizes flowing
-                        # through it.
-                        self.logger.warning(
-                            f"{self.env.now:.4f}:{self.ID}:Dropped {remaining} units from the "
-                            f"delivered shipment — the shelf is full and no waiting customer "
-                            f"could take them. The node's storage capacity "
-                            f"({self.inventory.capacity}) may be too small for this order size."
-                        )
-                        self.inventory.on_hand -= remaining
-                        remaining = 0
-                        break
+        accepted = 0  # how many units actually made it into the inventory
+        for mfg_date, qty in batches:
+            # `remaining > 1e-9` rather than `> 0`: a tiny tolerance so
+            # floating-point rounding dust never triggers one extra loop.
+            remaining = qty
+            while remaining > 1e-9:
+                # put() returns how many units it actually accepted — it
+                # never goes over the capacity, so this can be less than asked.
+                if mfg_date is None:
+                    put_now = self.inventory.put(remaining)
+                else:
+                    put_now = self.inventory.put(remaining, mfg_date)
+                accepted += put_now
+                remaining -= put_now
+                if remaining <= 1e-9:
+                    break  # the whole part is in the inventory; done
+                # The inventory is full. Pause one instant so the units we just
+                # added can be handed to waiting customers (freeing capacity), then retry.
+                prev_level = self.inventory.level
+                yield self.env.timeout(0)
+                if self.inventory.level >= prev_level:
+                    # The pause freed nothing, so nothing more can be stored.
+                    # Drop the leftover and correct the inventory position.
+                    # Warn the user: the node paid for these units but has
+                    # nowhere to put them and no waiting customer to hand
+                    # them to. This usually means the node's storage
+                    # capacity is too small for the order sizes flowing
+                    # through it.
+                    self.logger.warning(
+                        f"{self.env.now:.4f}:{self.ID}:Dropped {remaining} units from the "
+                        f"delivered shipment — the shelf is full and no waiting customer "
+                        f"could take them. The node's storage capacity "
+                        f"({self.inventory.capacity}) may be too small for this order size."
+                    )
+                    self.inventory.on_hand -= remaining
+                    remaining = 0
+                    break
 
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, accepted={accepted}, Inventory levels:{self.inventory.level}")
+        self.logger.info(f"{self.env.now:.4f}:{self.ID}:Inventory replenished. reorder_quantity={reorder_quantity}, accepted={accepted}, Inventory levels:{self.inventory.level}")
 
-            # Record what actually arrived (`accepted`), not what was ordered.
-            # In the normal case these are equal. They differ only when part of an
-            # order could not be stored (the "safety stop" above), and in that case
-            # the node should be billed for, and credited with, only the units it
-            # truly received.
-            self.stats.update_stats(fulfillment_received=[1,accepted],inventory_spend_cost=accepted*self.buy_price)
-            supplier.source.stats.update_stats(demand_fulfilled=[1,accepted])
-        else:
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} is disrupted. Order not placed.")
+        # Record what actually arrived (`accepted`), not what was ordered.
+        # In the normal case these are equal. They differ only when part of an
+        # order could not be stored (the "safety stop" above), and in that case
+        # the node should be billed for, and credited with, only the units it
+        # truly received.
+        self.stats.update_stats(fulfillment_received=[1,accepted],inventory_spend_cost=accepted*self.buy_price)
+        supplier.source.stats.update_stats(demand_fulfilled=[1,accepted])
         self.pending_orders -= 1
 
 class Manufacturer(Node):
@@ -3648,10 +3740,9 @@ class Manufacturer(Node):
         Returns:
             None
         """
-        # This order is always placed. `process_order` has already checked that
-        # neither the link nor the supplier's site is disrupted, and has
-        # already counted the units this raw material is for as planned
-        # production. This process starts at the same moment, before the clock
+        # This order is always placed. `process_order` has already chosen a
+        # supplier whose site and link are not disrupted, and has already
+        # counted the units this raw material is for as planned production. This process starts at the same moment, before the clock
         # moves on, so neither can have become disrupted in between.
         #
         # Raw material the manufacturer already holds is not a reason to skip
@@ -3690,13 +3781,45 @@ class Manufacturer(Node):
         self.pending_orders -= 1
         self.wake_production() # raw material just arrived
 
+    def _raw_material_links(self):
+        """
+        For each raw material of the product, the link to the first
+        raw-material supplier of it that can take an order (neither the link
+        nor the supplier's site is disrupted).
+
+        Returns:
+            list: ``(raw material, quantity per product unit, link)`` for each
+                raw material; the link is ``None`` if no supplier of that raw
+                material can take an order.
+        """
+        raw_links = []
+        for raw_mat, qty_per_unit in self.product.raw_materials:
+            supplier_link = None
+            for link in self.suppliers:
+                if link.source.raw_material.ID == raw_mat.ID and link.can_take_order():
+                    supplier_link = link # order from the first such supplier only
+                    break
+            raw_links.append((raw_mat, qty_per_unit, supplier_link))
+        return raw_links
+
+    def can_place_order(self) -> bool:
+        """
+        Whether this manufacturer can plan production right now: every raw
+        material of the product has a raw-material supplier that can take an
+        order. If even one raw material cannot be ordered, the units could
+        never be made, so nothing is planned (see ``process_order``).
+
+        Returns:
+            bool: True if every raw material can be ordered.
+        """
+        return all(link is not None for _, _, link in self._raw_material_links())
+
     def process_order(self, supplier, reorder_quantity):
         """
         Plan the production of more product units and order the raw materials needed to make them.
         Each raw material is ordered from the first raw-material supplier of that raw material whose link and
-        site are both not disrupted. If some raw material has no such supplier, nothing is planned and nothing
-        is ordered; the replenishment policy tries again later. This runs as a SimPy process (``place_order``
-        starts it).
+        site are both not disrupted. ``place_order`` starts this as a SimPy process only when every raw material
+        has such a supplier (see ``can_place_order``).
 
         Parameters:
             supplier (Link): The link chosen by the supplier-selection policy. Not used: each raw material is
@@ -3723,22 +3846,15 @@ class Manufacturer(Node):
         # ordered. Otherwise the manufacturer would count on units it can
         # never make: its inventory position would include them, so the policy
         # would not order again, and orders waiting for those units would wait
-        # forever. So first find, for every raw material, a raw-material
-        # supplier whose link and site are not disrupted, and plan nothing if
-        # any raw material cannot be ordered right now. A distributor does the
-        # same: it places no order while its link is disrupted. The
-        # replenishment policy tries again when the inventory drops again, or
-        # at its next periodic check.
+        # forever. place_order has already checked that every raw material can
+        # be ordered (can_place_order); here we choose the supplier for each.
+        # The check below matters only if a supplier was disrupted after
+        # place_order checked (possible at time 0, see
+        # InventoryNode.process_order), or if process_order is called directly.
         raw_orders = [] # (raw material ID, supplier link, quantity to order)
-        for raw_mat, qty_per_unit in self.product.raw_materials:
-            supplier_link = None
-            for link in self.suppliers:
-                if (link.source.raw_material.ID == raw_mat.ID
-                        and link.status == "active" and link.source.node_status == "active"):
-                    supplier_link = link # order from the first such supplier only
-                    break
+        for raw_mat, qty_per_unit, supplier_link in self._raw_material_links():
             if supplier_link is None:
-                self.logger.info(f"{self.env.now:.4f}:{self.ID}:No working supplier for raw material {raw_mat.name} (link or supplier disrupted). No production planned.")
+                self.logger.info(f"{self.env.now:.4f}:{self.ID}:No supplier can take an order for raw material {raw_mat.name}. No production planned.")
                 return
             raw_orders.append((raw_mat.ID, supplier_link, qty_per_unit*reorder_quantity))
 

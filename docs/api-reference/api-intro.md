@@ -16,8 +16,8 @@ scm.Supplier(env=env, ID="S1", name="S1", node_type=scm.NodeType.SUPPLIER)
 The built in replenishment policies (_SSReplenishment_, _RQReplenishment_, _PeriodicReplenishment_) work with the node they belong to through a small set of helper methods on _Node_, rather than reading or changing the node's internal attributes directly. Your own `InventoryReplenishment` subclass should use the same helpers, so that it does not depend on how `Node` is built inside.
 
 * `node.position()` returns the inventory position (the inventory level, plus the units in transit, minus the units the node still owes to other sites and to waiting customers). Use it instead of working the position out yourself from `node.inventory.on_hand` and `node.stats.backorder`.
-* `node.place_order(quantity)` chooses a supplier with the node's supplier-selection policy and places the replenishment order. Use it instead of calling `selection_policy.select(...)` and `env.process(process_order(...))` yourself.
-* `node.wait_for_drop()` waits until the node's inventory drops, then gets ready for the next drop. Use it as `yield from node.wait_for_drop()` in the policy's `run()` loop.
+* `node.place_order(quantity)` first checks that some supplier can take the order, then chooses a supplier with the node's supplier-selection policy and places the replenishment order. If every supplier, or the link to it, is disrupted, no order is placed. Use it instead of calling `selection_policy.select(...)` and `env.process(process_order(...))` yourself.
+* `node.wait_for_drop()` waits until the node's inventory drops, or until one of its suppliers or the link to it recovers from a disruption, then gets ready for the next time. A policy that found no supplier to order from is woken this way, so it can check again. Use it as `yield from node.wait_for_drop()` in the policy's `run()` loop.
 
 For supplier-selection policies, _Link_ offers `link.available_quantity()`, which gives the supplier's inventory level. A custom `SupplierSelectionPolicy` subclass can use it to compare suppliers without reaching past the link.
 
