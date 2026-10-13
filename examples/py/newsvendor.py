@@ -4,10 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import SupplyNetPy.Components as scm
 
-cost = 2
-sell_price = 5
-salvage = 1
-
+random.seed(42) # fixed seed for repeatable results
 mean = 100
 std_dev = 15
 num_samples = 1000
