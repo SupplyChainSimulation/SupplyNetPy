@@ -127,7 +127,7 @@ def setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time):
 
     link = scm.Link(env, "l1", supplier, distributor, cost=o, lead_time=lambda: l)
 
-    demand = scm.Demand(env, "d1", "demand 1", order_arrival_model=lambda: 1,
+    demand = scm.Demand(env, "d1", "demand 1", order_arrival_model=lambda: 1, consume_available=True,
                         order_quantity_model=st.poisson_demand, demand_node=distributor)
 
     return supplier, distributor, demand, link
@@ -143,11 +143,13 @@ def single_sim_run(S, s, ini_level):
     supplier, distributor, demand, link = setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time)
 
     pharma_chain = scm.create_sc_net(env=env, nodes=[supplier, distributor], links=[link], demands=[demand])
-    pharma_chain = scm.simulate_sc_net(pharma_chain, sim_time=30, logging=False)
+    # warm-up: days 1 to 30 (SimPy stops just before sim_time, so 31 includes day 30)
+    pharma_chain = scm.simulate_sc_net(pharma_chain, sim_time=31, logging=False)
     supplier.stats.reset()
     distributor.stats.reset()
     demand.stats.reset()
-    pharma_chain = scm.simulate_sc_net(pharma_chain, sim_time=T, logging=False)
+    # days 31 to T, as in the paper (T + 1 includes day T)
+    pharma_chain = scm.simulate_sc_net(pharma_chain, sim_time=T + 1, logging=False)
 
     shortage = distributor.stats.shortage[1]
     waste = distributor.stats.inventory_waste

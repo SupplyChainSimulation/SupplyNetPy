@@ -153,7 +153,7 @@ def setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time):
     link = scm.Link(env=env, ID="l1", source=supplier, sink=distributor,
                     cost=o, lead_time=lambda: l)
 
-    demand = scm.Demand(env=env, ID="d1", name="demand 1", order_arrival_model=lambda: 1,
+    demand = scm.Demand(env=env, ID="d1", name="demand 1", order_arrival_model=lambda: 1, consume_available=True,
                         order_quantity_model=st.poisson_demand, demand_node=distributor)
 
     return supplier, distributor, demand, link
@@ -168,11 +168,11 @@ def single_sim_run(S, s, ini_level, logging=True):
     supplier, distributor, demand, link = setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time)
     
     pharma_chain = scm.create_sc_net(env=env, nodes=[supplier, distributor], links=[link], demands=[demand])
-    pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=30,logging=logging)
+    pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=31,logging=logging)
     supplier.stats.reset()
     distributor.stats.reset()
     demand.stats.reset()
-    pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T,logging=logging)
+    pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T + 1,logging=logging)
 
     shortage = distributor.stats.shortage[1]
     waste = distributor.stats.inventory_waste
@@ -206,11 +206,11 @@ def run_for_s(s_low, s_high, s_step, capacity, ini_level, num_replications):
             supplier, distributor, demand, link = setup_simulation(env, s, capacity, ini_level, st, disrupt_time, recovery_time)
             
             pharma_chain = scm.create_sc_net(env=env, nodes=[supplier, distributor], links=[link], demands=[demand])
-            pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=30,logging=False)
+            pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=31,logging=False)
             supplier.stats.reset()
             distributor.stats.reset()
             demand.stats.reset()
-            pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T,logging=False)
+            pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T + 1,logging=False)
 
             shortage = distributor.stats.shortage[1]
             waste = distributor.stats.inventory_waste
@@ -258,11 +258,11 @@ for replications in [1000, 2000, 3000, 4000, 5000]:
 
 ```
 
-    R =1000, exe_time:50.722 sec, mean:43.972224718, std:10.49248764343415, std_err:0.33180159274424575
-    R =2000, exe_time:99.963 sec, mean:43.3527119, std:9.909155828362033, std_err:0.22157546031855743
-    R =3000, exe_time:151.053 sec, mean:43.520380665666664, std:10.226089362082226, std_err:0.1867019939558683
-    R =4000, exe_time:198.059 sec, mean:43.51909975574999, std:10.178074826387085, std_err:0.1609294932350302
-    R =5000, exe_time:297.961 sec, mean:43.3941828502, std:10.090806492807223, std_err:0.1427055539741046
+    R =1000, exe_time:51.769 sec, mean:50.048060053, std:7.4660307713637595, std_err:0.2360966231841331
+    R =2000, exe_time:101.864 sec, mean:49.9624304385, std:7.811992134196132, std_err:0.1746814545175621
+    R =3000, exe_time:149.301 sec, mean:50.108267019, std:7.6860393971748335, std_err:0.14032723852353549
+    R =4000, exe_time:209.294 sec, mean:49.780505389750004, std:7.452137829370824, std_err:0.11782864489157517
+    R =5000, exe_time:308.672 sec, mean:49.6810310832, std:7.299895652439416, std_err:0.10323611435588215
     
 
 ## Estimating Confidence Interval
