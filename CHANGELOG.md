@@ -7,7 +7,10 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
-## Unreleased
+## 0.2.2 (2026-10-13)
+
+Simulation results are the same as in 0.2.1. This release adds warnings for
+mistakes in how a model is set up, and makes the source package smaller.
 
 * **[NEW]** A replenishment policy now warns about keys in `policy_param`
   that it does not use, and asks whether another policy was meant. For
@@ -22,6 +25,12 @@ action from you, and **[DOCS]** documentation only.
   `FutureWarning`), and `logging=(start, stop)` together with `log_window`.
   Events during a run, such as a delivery that does not fit in the inventory,
   are still only logged.
+* **[CHANGE]** The source archive on PyPI now carries only the library, its
+  tests, README, LICENSE and CHANGELOG, so it is about 115 KB instead of over
+  4 MB. The docs and examples stay in the repository. The wheel is unchanged.
+* **[DOCS]** The docs now say that a run stops just before its end time, so
+  events due at exactly `sim_time` do not happen. This is how SimPy works. To
+  include them, run to a slightly later time, such as `sim_time + 1`.
 
 ## 0.2.1 (2026-10-12)
 
