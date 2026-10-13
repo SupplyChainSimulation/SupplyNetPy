@@ -77,6 +77,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import SupplyNetPy.Components as scm
 
+np.random.seed(42) # fixed seed for repeatable results
+
 daily_demand_mean = 2500/7
 daily_demand_std = 500/(7**0.5)
 simlen = 3650 # simulation length in days
@@ -93,7 +95,7 @@ env = simpy.Environment()
 supplier1 = scm.Supplier(env=env, ID="S1", name="Supplier1", node_type="infinite_supplier")
 #create the distributor
 distributor1 = scm.InventoryNode(env=env, ID="D1", name="Distributor1", node_type="distributor", capacity=float('inf'), initial_level=6000, inventory_holding_cost=0.1,
-                                product_buy_price=0, replenishment_policy=scm.RQReplenishment, policy_param={'R':6000,'Q':10000}, product_sell_price=399)
+                                product_buy_price=0, replenishment_policy=scm.RQReplenishment, policy_param={'R':6000,'Q':10000}, product_sell_price=399, record_inv_levels=True)
 link1 = scm.Link(env=env,ID="l1", source=supplier1, sink=distributor1, cost=100, lead_time=lambda: 14)
 demand1 = scm.Demand(env=env,ID="d1", name="demand_d1", order_arrival_model=lambda: 1, order_quantity_model=normal_quantity, demand_node=distributor1)
 scm.global_logger.disable_logging() # disable logging
@@ -132,9 +134,9 @@ plt.show()
 
     
     	***
-    Safety Stock Level:  1315.2294619614904
-    Average Inventory Level: 6207.3688497299245
-    Average Flow Time:  13.57089552238806 days 
+    Safety Stock Level:  1260.7957571939298
+    Average Inventory Level: 6115.0800971596045
+    Average Flow Time:  13.371323529411764 days 
     
 
 ![png](img/safety_inv_est_files/safety_inv_est_2_1.png)
@@ -144,6 +146,8 @@ Since the demand at the B&M office is unpredictable, we will estimate the safety
 
 
 ```python
+np.random.seed(42) # fixed seed for repeatable results
+
 def bnmoffice():
     env = simpy.Environment()
 
@@ -152,7 +156,7 @@ def bnmoffice():
 
     #create the distributor
     distributor1 = scm.InventoryNode(env=env, ID="D1", name="Distributor1", node_type="distributor", capacity=16000, initial_level=6000, inventory_holding_cost=0.1,
-                                    product_buy_price=0, replenishment_policy=scm.SSReplenishment, policy_param={'s':6000,'S':16000}, product_sell_price=399)
+                                    product_buy_price=0, replenishment_policy=scm.SSReplenishment, policy_param={'s':6000,'S':16000}, product_sell_price=399, record_inv_levels=True)
 
     link1 = scm.Link(env=env,ID="l1", source=supplier1, sink=distributor1, cost=100, lead_time=lambda: 14)
 
@@ -197,10 +201,10 @@ print("Average Flow Time: ", np.mean(ana_arr[:,2]), "days","\n", " Std:",  np.st
 ## Results
     
     	***
-    Safety Stock Level: Mean:  1347.9523813366336  Std: 54.85624022638165
-    Average Inventory Level: 6315.472134834441  Std: 42.11831759963809
-    Average Flow Time:  13.820451583252883 days 
-      Std: 0.1074252955034431
+    Safety Stock Level: Mean:  1339.5033048247421  Std: 49.96583138717028
+    Average Inventory Level: 6310.421891038721  Std: 40.27311395206424
+    Average Flow Time:  13.806400122912272 days 
+      Std: 0.10341730434846103
     
 
 We obtain a slightly higher safety level, and average inventory levels from the simulation because sampling from a normal distribution can yield a few values less than zero. In our method, `normal_quantity()`, we resample in such cases to ensure that we only get numbers that are greater than or equal to zero, as negative demand is not possible. This resampling increases the probability of obtaining positive values. We will demonstrate this further below.
@@ -237,6 +241,7 @@ def normal_quantity_wn():
     sample = np.random.normal(daily_demand_mean, daily_demand_std, 1)[0]
     return sample
 
+np.random.seed(42) # fixed seed for repeatable results
 samples = []
 samples_wn = []
 samples_mean = []
