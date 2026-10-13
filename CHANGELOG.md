@@ -7,6 +7,22 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
+## Unreleased
+
+* **[NEW]** A replenishment policy now warns about keys in `policy_param`
+  that it does not use, and asks whether another policy was meant. For
+  example, `'T'` is read only by the periodic policy, so passing it to the
+  (s, S) policy now gives a warning instead of being silently ignored.
+* **[CHANGE]** Problems in how a model is set up are now shown with Python's
+  warnings, so they appear even when logging is off. They are still written to
+  the trace log. This covers the unused policy parameters above, a manufacturer
+  without a supplier for every raw material, an unknown statistic name passed
+  to `update_stats`, and these `simulate_sc_net` calls: a `sim_time` that is not
+  later than the current time, `logging=(start, stop)` (deprecated, now a
+  `FutureWarning`), and `logging=(start, stop)` together with `log_window`.
+  Events during a run, such as a delivery that does not fit in the inventory,
+  are still only logged.
+
 ## 0.2.1 (2026-10-12)
 
 Results change for networks with disruptions. Networks without disruptions,

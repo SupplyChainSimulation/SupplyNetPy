@@ -7,6 +7,7 @@ from simpy.resources.container import ContainerGet
 import copy
 import random
 import numbers
+import warnings
 from typing import Callable
 
 # Public API — the names re-exported by Components/__init__.py. The module-level
@@ -543,7 +544,12 @@ class Statistics(InfoMixin):
                     attr += value
                     setattr(self, key, attr) # update the attribute with the new value
             else:
-                global_logger.warning(f"{self.node.ID}: (Updaing stats) Attribute {key} not found in Statistics class.")
+                # Most likely a typo in a custom policy or callback. The value is
+                # ignored, so the user is warned (the text leaves out the node,
+                # so each unknown name is shown once).
+                global_logger.warning(f"{self.node.ID}: update_stats got an unknown statistic '{key}'; it is ignored.")
+                warnings.warn(f"update_stats got an unknown statistic '{key}', so it is ignored. "
+                              f"Check the name for a typo.", UserWarning, stacklevel=2)
         if hasattr(self.node, 'inventory'):
             if self.node.inventory.level != float('inf'):
                 self.inventory_level = self.node.inventory.level if hasattr(self.node, 'inventory') else 0
@@ -777,8 +783,14 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
         node (object): Node to which this policy applies.
         params (dict): Parameters for the replenishment policy.
 
+    **Parameters a policy does not use.** Each built-in policy lists the keys it reads from ``params`` in
+    `_param_keys`. Any other key is ignored by the policy, so a warning names it and asks whether another
+    policy was meant (for example, ``'T'`` is read only by the periodic policy). A custom policy can set its
+    own `_param_keys` to get the same check; if it does not, nothing is checked.
+
     Attributes:
         _info_keys (list): List of keys to include in the info dictionary.
+        _param_keys (tuple): Keys this policy reads from ``params``, or None if it does not say.
         env (simpy.Environment): Simulation environment.
         node (object): Node to which this policy applies.
         params (dict): Parameters for the replenishment policy.
@@ -788,6 +800,7 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
         run: Placeholder method to be overridden by subclasses.
     """
     _info_keys = ["node", "params"]
+    _param_keys = None  # keys the policy reads from params; None means nothing is checked
 
     def __init__(self,
                  env: simpy.Environment,
@@ -815,6 +828,34 @@ class InventoryReplenishment(InfoMixin, NamedEntity):
         self.env = env  # simulation environment
         self.node = node  # node to which this policy applies
         self.params = params  # parameters for the replenishment policy
+        self._warn_unused_params()
+
+    def _warn_unused_params(self) -> None:
+        """
+        Warn about keys in ``params`` that this policy does not use.
+
+        A policy simply ignores a key it does not read. Without a warning, a
+        typo or a key meant for another policy would change nothing, and
+        nobody would notice: the policy would quietly run without it. The
+        warning goes through Python's ``warnings`` module, so it is shown even
+        when the library's logging is off; the trace log also records which
+        node it was. Its text does not name the node, so Python shows each
+        distinct warning once instead of once for every node.
+
+        Returns:
+            None
+        """
+        if self._param_keys is None or not isinstance(self.params, dict):
+            return
+        unused = sorted(str(key) for key in self.params if key not in self._param_keys)
+        if not unused:
+            return
+        message = (f"{type(self).__name__} does not use the parameter(s) {', '.join(repr(key) for key in unused)} "
+                   f"in policy_param, so they are ignored. It uses only "
+                   f"{', '.join(repr(key) for key in self._param_keys)}. "
+                   f"Check whether you meant to use another replenishment policy.")
+        global_logger.warning(f"{getattr(self.node, 'ID', '?')}: {message}")
+        warnings.warn(message, UserWarning)
 
     def run(self):
         """
@@ -851,6 +892,7 @@ class SSReplenishment(InventoryReplenishment):
         run: Checks the inventory position and places replenishment orders by the (s, S) rule.
     """
     _info_keys = InventoryReplenishment._info_keys + ["name", "first_review_delay", "period"]
+    _param_keys = ("s", "S", "safety_stock", "first_review_delay", "period")
 
     def __init__(self, env, node, params):
         """ 
@@ -955,6 +997,7 @@ class RQReplenishment(InventoryReplenishment):
         run: Checks the inventory position and places a replenishment order when it reaches the reorder point.
     """
     _info_keys = InventoryReplenishment._info_keys + ["name", "first_review_delay", "period"]
+    _param_keys = ("R", "Q", "first_review_delay", "period")
 
     def __init__(self, env, node, params):
         """ 
@@ -1045,6 +1088,7 @@ class PeriodicReplenishment(InventoryReplenishment):
         run: Places a replenishment order of Q units every T time units.
     """
     _info_keys = InventoryReplenishment._info_keys + ["name", "first_review_delay"]
+    _param_keys = ("T", "Q", "safety_stock", "first_review_delay")
 
     def __init__(self, env, node, params):
         """ 
@@ -3699,7 +3743,11 @@ class Manufacturer(Node):
                 self.raw_inventory_counts[supplier.source.raw_material.ID] = 0 # store initial levels
                 
         if(len(self.suppliers)<len(self.product.raw_materials)):
-            self.logger.warning(f"{self.ID}: {self.name}: The number of suppliers are less than the number of raw materials required to manufacture the product! This leads to no products being manufactured.")
+            message = (f"Manufacturer {self.ID} ({self.name}) has fewer suppliers ({len(self.suppliers)}) than the raw "
+                       f"materials its product needs ({len(self.product.raw_materials)}), so it cannot make any units. "
+                       f"Connect a raw-material supplier for each raw material.")
+            self.logger.warning(message)
+            warnings.warn(message, UserWarning)
 
         # Production loop: make one production batch after another for as long
         # as there are planned units left to make. The manufacturer makes only

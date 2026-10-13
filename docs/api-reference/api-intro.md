@@ -19,6 +19,8 @@ The built in replenishment policies (_SSReplenishment_, _RQReplenishment_, _Peri
 * `node.place_order(quantity)` first checks that some supplier can take the order, then chooses a supplier with the node's supplier-selection policy and places the replenishment order. If every supplier, or the link to it, is disrupted, no order is placed. Use it instead of calling `selection_policy.select(...)` and `env.process(process_order(...))` yourself.
 * `node.wait_for_drop()` waits until the node's inventory drops, or until one of its suppliers or the link to it recovers from a disruption, then gets ready for the next time. A policy that found no supplier to order from is woken this way, so it can check again. Use it as `yield from node.wait_for_drop()` in the policy's `run()` loop.
 
+A built in policy warns when `policy_param` has a key it does not use, because the policy would otherwise ignore that key without telling anyone. To give your own policy the same check, list the keys it reads in a class attribute, for example `_param_keys = ("s", "S")`. A policy without such a list is not checked.
+
 For supplier-selection policies, _Link_ offers `link.available_quantity()`, which gives the supplier's inventory level. A custom `SupplierSelectionPolicy` subclass can use it to compare suppliers without reaching past the link.
 
 #### Modeling what a disruption does to stored inventory

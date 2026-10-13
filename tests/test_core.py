@@ -1730,7 +1730,8 @@ class TestEndToEndIntegration(unittest.TestCase):
         # so existing user code does not break in the same release as the
         # rename. The shim emits a warning but still runs the simulation.
         sc = self._build_canonical_net()
-        scm.simulate_sc_net(sc, sim_time=20, logging=(3, 7))
+        with pytest.warns(FutureWarning, match="deprecated"):
+            scm.simulate_sc_net(sc, sim_time=20, logging=(3, 7))
         assert sc["profit"] == -4435.0
 
 
@@ -3581,3 +3582,75 @@ class TestOrdersSkipDisruptedSupplierSites(unittest.TestCase):
         assert s1.stats.demand_received == [0, 0]
         assert d1.stats.demand_placed == [0, 0]
         assert d1.pending_orders == 0
+
+
+class TestUnusedPolicyParams(unittest.TestCase):
+    """A replenishment policy warns about keys in policy_param that it does not use,
+    and asks whether another policy was meant."""
+
+    def _node(self, policy, params):
+        env = simpy.Environment()
+        return scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor", capacity=100,
+                                 initial_level=50, inventory_holding_cost=0, replenishment_policy=policy,
+                                 policy_param=params, product_buy_price=1, product_sell_price=2)
+
+    def test_ss_policy_warns_about_a_key_it_does_not_use(self):
+        with pytest.warns(UserWarning, match=r"SSReplenishment does not use the parameter\(s\) 'T'.*another replenishment policy"):
+            self._node(scm.SSReplenishment, {"s": 10, "S": 50, "T": 1})
+
+    def test_rq_policy_names_every_unused_key(self):
+        with pytest.warns(UserWarning, match=r"RQReplenishment does not use the parameter\(s\) 'S', 's'"):
+            self._node(scm.RQReplenishment, {"R": 10, "Q": 40, "s": 10, "S": 50})
+
+    def test_periodic_policy_warns_about_period(self):
+        # The periodic policy reads T, not period.
+        with pytest.warns(UserWarning, match=r"PeriodicReplenishment does not use the parameter\(s\) 'period'"):
+            self._node(scm.PeriodicReplenishment, {"T": 1, "Q": 10, "period": 1})
+
+    def test_no_warning_for_keys_the_policy_uses(self):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self._node(scm.SSReplenishment, {"s": 10, "S": 50, "safety_stock": 5, "period": 1, "first_review_delay": 2})
+            self._node(scm.RQReplenishment, {"R": 10, "Q": 40, "period": 1, "first_review_delay": 2})
+            self._node(scm.PeriodicReplenishment, {"T": 1, "Q": 10, "safety_stock": 5, "first_review_delay": 2})
+
+    def test_custom_policy_without_a_key_list_is_not_checked(self):
+        import warnings
+
+        class MyPolicy(scm.InventoryReplenishment):
+            def run(self):
+                yield self.env.timeout(1)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self._node(MyPolicy, {"anything": 1})
+
+
+class TestSetupWarnings(unittest.TestCase):
+    """Problems in how a model is set up are shown with Python's warnings, so the
+    user sees them even when the library's logging is off."""
+
+    def test_update_stats_warns_about_an_unknown_statistic(self):
+        env = simpy.Environment()
+        d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor", capacity=100,
+                               initial_level=50, inventory_holding_cost=0, replenishment_policy=None,
+                               policy_param=None, product_buy_price=1, product_sell_price=2)
+        with pytest.warns(UserWarning, match="unknown statistic 'no_such_stat'"):
+            d1.stats.update_stats(no_such_stat=1)
+
+    def test_manufacturer_without_a_supplier_for_every_raw_material_warns(self):
+        env = simpy.Environment()
+        flour = scm.RawMaterial(ID="flour", name="flour", extraction_quantity=1, extraction_time=1,
+                                mining_cost=0, cost=1)
+        sugar = scm.RawMaterial(ID="sugar", name="sugar", extraction_quantity=1, extraction_time=1,
+                                mining_cost=0, cost=1)
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1, sell_price=5,
+                              buy_price=0, batch_size=10, raw_materials=[(flour, 1), (sugar, 1)])
+        s_flour = scm.Supplier(env=env, ID="SF", name="SF", node_type="infinite_supplier", raw_material=flour)
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
+                              product_sell_price=5, product=product)
+        scm.Link(env=env, ID="LF", source=s_flour, sink=m1, cost=0, lead_time=lambda: 1)
+        with pytest.warns(UserWarning, match="Manufacturer M1 .* fewer suppliers"):
+            env.run(until=1)

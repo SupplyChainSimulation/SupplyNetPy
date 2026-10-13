@@ -1,4 +1,5 @@
 import simpy
+import warnings
 import networkx as nx
 import matplotlib.pyplot as plt
 # Import only the names we need (no ``*`` wildcard imports). ``global_logger``
@@ -455,14 +456,24 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
     # only deals with one form of each argument.
     if isinstance(logging, tuple) and len(logging) == 2:
         if log_window is not None:
-            logger.warning("simulate_sc_net: both logging=tuple and log_window= were provided; log_window takes precedence.")
+            message = "simulate_sc_net: both logging=(start, stop) and log_window= were given; log_window is used."
+            logger.warning(message)
+            warnings.warn(message, UserWarning, stacklevel=2)
         else:
-            logger.warning("simulate_sc_net: logging=(start, stop) is deprecated; use log_window=(start, stop) instead.")
+            # FutureWarning, not DeprecationWarning: Python shows FutureWarning
+            # to everyone, while DeprecationWarning is hidden outside the main script.
+            message = "simulate_sc_net: logging=(start, stop) is deprecated; use log_window=(start, stop) instead."
+            logger.warning(message)
+            warnings.warn(message, FutureWarning, stacklevel=2)
             log_window = logging
         logging = True
 
     if(sim_time<=env.now):
-        logger.warning(f"You have already ran simulation for this network! \n To create a new network use create_sc_net(), or specify the simulation time grater than {env.now} to run it further.")
+        message = (f"simulate_sc_net: sim_time ({sim_time}) is not later than the current simulation time "
+                   f"({env.now}), so nothing more is simulated. To start again, create a new network with "
+                   f"create_sc_net(); to run this one further, give a later sim_time.")
+        logger.warning(message)
+        warnings.warn(message, UserWarning, stacklevel=2)
         logger.info(f"Performance measures for the supply chain network are calculated and returned.")
     elif log_window is not None:
         assert isinstance(log_window, tuple) and len(log_window) == 2, "log_window must be a (start, stop) tuple"

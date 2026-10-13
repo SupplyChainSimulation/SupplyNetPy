@@ -206,7 +206,18 @@ def test_simulate_sc_net_with_logging_tuple(monkeypatch):
     l = DummyLink("L1", n, n)
     d = DummyDemand("D1", n)
     scnet = utilities.create_sc_net([n], [l], [d], env=env)
-    result = utilities.simulate_sc_net(scnet, 10, logging=(2, 5))
+    with pytest.warns(FutureWarning, match="deprecated"):
+        result = utilities.simulate_sc_net(scnet, 10, logging=(2, 5))
+    assert "profit" in result
+
+def test_simulate_sc_net_warns_if_logging_tuple_and_log_window_both_given():
+    env = simpy.Environment()
+    n = DummyNode("N1", "supplier")
+    l = DummyLink("L1", n, n)
+    d = DummyDemand("D1", n)
+    scnet = utilities.create_sc_net([n], [l], [d], env=env)
+    with pytest.warns(UserWarning, match="log_window is used"):
+        result = utilities.simulate_sc_net(scnet, 10, logging=(2, 5), log_window=(1, 4))
     assert "profit" in result
 
 def test_simulate_sc_net_warns_if_sim_time_less(monkeypatch):
@@ -216,7 +227,8 @@ def test_simulate_sc_net_warns_if_sim_time_less(monkeypatch):
     d = DummyDemand("D1", n)
     scnet = utilities.create_sc_net([n], [l], [d], env=env)
     scnet["env"].run(5)
-    result = utilities.simulate_sc_net(scnet, 3)
+    with pytest.warns(UserWarning, match="not later than the current simulation time"):
+        result = utilities.simulate_sc_net(scnet, 3)
     assert "profit" in result
 
 def test_print_node_wise_performance_prints(capsys):
