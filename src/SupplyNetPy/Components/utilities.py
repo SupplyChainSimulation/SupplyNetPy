@@ -411,7 +411,10 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
 
     Parameters:
         supplychainnet (dict): A supply chain network.
-        sim_time (int): The time unit at which the simulation stops.
+        sim_time (int): The time at which the simulation stops. The run stops just
+            before this time, so events due at exactly ``sim_time`` (for example a
+            customer order or an expiry at that time) do not happen. To include
+            them, pass a slightly later time, such as ``sim_time + 1``.
         logging (bool): Whether to enable logging for the whole run. Defaults
             to ``True``. Mutually exclusive with ``log_window`` — pass
             ``log_window`` to confine logging to a sub-interval instead.
@@ -830,7 +833,9 @@ class Network:
         (``Network.build(...).simulate(200)``).
 
         Parameters:
-            sim_time (float): The time unit at which the simulation stops.
+            sim_time (float): The time at which the simulation stops. The run stops
+                just before this time, so events due at exactly ``sim_time`` do not
+                happen; pass a slightly later time to include them.
             logging (bool): Whether logging is enabled for the whole run.
             log_window (tuple[float, float], optional): Window during which
                 logging is enabled (logging is disabled outside).

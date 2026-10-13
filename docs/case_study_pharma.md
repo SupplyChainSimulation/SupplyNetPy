@@ -73,6 +73,7 @@ The costs of interest are the shortage, waste, holding and ordering costs. <br>
 ## System Configuration
 
  * T = number of days (360)
+ * Costs are counted from day 31 to day 360, after a warm up of 30 days, as in the paper. A SupplyNetPy run stops just before its end time, so the warm up runs to time 31 and the main run to time T + 1.
  * l = lead time (6 days)
  * e = shelf life of the drugs (3 months, that is 90 days)
  * R = number of simulation runs, or replications (5000)
@@ -168,10 +169,12 @@ def single_sim_run(S, s, ini_level, logging=True):
     supplier, distributor, demand, link = setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time)
     
     pharma_chain = scm.create_sc_net(env=env, nodes=[supplier, distributor], links=[link], demands=[demand])
+    # warm-up: days 1 to 30 (a run stops just before sim_time, so 31 includes day 30)
     pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=31,logging=logging)
     supplier.stats.reset()
     distributor.stats.reset()
     demand.stats.reset()
+    # days 31 to T, as in the paper (T + 1 includes day T)
     pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T + 1,logging=logging)
 
     shortage = distributor.stats.shortage[1]
@@ -206,10 +209,12 @@ def run_for_s(s_low, s_high, s_step, capacity, ini_level, num_replications):
             supplier, distributor, demand, link = setup_simulation(env, s, capacity, ini_level, st, disrupt_time, recovery_time)
             
             pharma_chain = scm.create_sc_net(env=env, nodes=[supplier, distributor], links=[link], demands=[demand])
+            # warm-up: days 1 to 30 (a run stops just before sim_time, so 31 includes day 30)
             pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=31,logging=False)
             supplier.stats.reset()
             distributor.stats.reset()
             demand.stats.reset()
+            # days 31 to T, as in the paper (T + 1 includes day T)
             pharma_chain = scm.simulate_sc_net(pharma_chain,sim_time=T + 1,logging=False)
 
             shortage = distributor.stats.shortage[1]
