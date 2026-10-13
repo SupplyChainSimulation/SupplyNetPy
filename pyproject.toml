@@ -42,5 +42,17 @@ classifiers = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/SupplyNetPy"]
 
+# The source archive carries the library, its tests and the top-level files.
+# The docs, examples, case-study data and validation files stay in the
+# repository only; they are large and are not needed to build or test the package.
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src/SupplyNetPy",
+  "/tests",
+  "/README.md",
+  "/LICENSE",
+  "/CHANGELOG.md",
+]
+
 [project.urls]
 Homepage = "https://supplychainsimulation.github.io/SupplyNetPy/"
