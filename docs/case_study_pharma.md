@@ -147,7 +147,7 @@ def setup_simulation(env, s, S, ini_level, st, disrupt_time, recovery_time):
                                     inventory_holding_cost=h, inventory_type="perishable",
                                     manufacture_date=manufacturer_date_cal, shelf_life=e,
                                     replenishment_policy=scm.SSReplenishment,
-                                    policy_param={'s': s, 'S': S},
+                                    policy_param={'s': s, 'S': S, 'period': 1},
                                     product_buy_price=0, product_sell_price=price)
 
     link = scm.Link(env=env, ID="l1", source=supplier, sink=distributor,
@@ -180,7 +180,7 @@ def single_sim_run(S, s, ini_level, logging=True):
     transport = distributor.stats.transportation_cost
 
     total_cost = (shortage * b + waste * z + holding + transport)
-    norm_cost = total_cost / ((T - 30) * (b + z + h + o)) * price
+    cost_per_day = total_cost / (T - 30) * price
 
     if logging:
         print("Shortage cost:", shortage * b)
@@ -188,7 +188,7 @@ def single_sim_run(S, s, ini_level, logging=True):
         print("Holding cost:", holding)
         print("Transportation cost:", transport)
     
-    return norm_cost
+    return cost_per_day
 
 def run_for_s(s_low, s_high, s_step, capacity, ini_level, num_replications):
     """Run simulations across reorder point values and report results."""
@@ -218,8 +218,8 @@ def run_for_s(s_low, s_high, s_step, capacity, ini_level, num_replications):
             transport = distributor.stats.transportation_cost
 
             total_cost = (shortage * b + waste * z + holding + transport)
-            norm_cost = total_cost / ((T - 30) * (b + z + h + o)) * price
-            costs.append(norm_cost)
+            cost_per_day = total_cost / (T - 30) * price
+            costs.append(cost_per_day)
 
         mean_cost = np.mean(costs)
         std_dev = np.std(costs)
@@ -253,16 +253,16 @@ for replications in [1000, 2000, 3000, 4000, 5000]:
         exp_cost_arr.append(single_sim_run(s=2000,S=5000,ini_level=5000,logging=False))
     exp_cost_arr = np.array(exp_cost_arr)
     exe_time = time.time() - start_time
-    print(f"R ={replications}, exe_time:{exe_time} sec, mean:{np.mean(exp_cost_arr)}, std:{np.std(exp_cost_arr)}, std_err:{np.std(exp_cost_arr)/np.sqrt(R)}")
+    print(f"R ={replications}, exe_time:{exe_time} sec, mean:{np.mean(exp_cost_arr)}, std:{np.std(exp_cost_arr)}, std_err:{np.std(exp_cost_arr)/np.sqrt(replications)}")
     stats.append((replications, exe_time, np.mean(exp_cost_arr), np.std(exp_cost_arr), np.std(exp_cost_arr)/np.sqrt(replications)))
 
 ```
 
-    R =1000, exe_time:22.119476795196533 sec, mean:51.75029532053344, std:23.668711396825312, std_err:0.33472612661285
-    R =2000, exe_time:45.451146602630615 sec, mean:51.80183997566808, std:23.633314688276155, std_err:0.33422554155991413
-    R =3000, exe_time:68.95947742462158 sec, mean:51.01044921449537, std:23.62288667057547, std_err:0.3340780671193043
-    R =4000, exe_time:86.83561849594116 sec, mean:51.584926030610674, std:23.706247962166834, std_err:0.3352569738107588
-    R =5000, exe_time:106.06455659866333 sec, mean:52.27106894743466, std:23.863645906143574, std_err:0.3374829168813743
+    R =1000, exe_time:50.722 sec, mean:43.972224718, std:10.49248764343415, std_err:0.33180159274424575
+    R =2000, exe_time:99.963 sec, mean:43.3527119, std:9.909155828362033, std_err:0.22157546031855743
+    R =3000, exe_time:151.053 sec, mean:43.520380665666664, std:10.226089362082226, std_err:0.1867019939558683
+    R =4000, exe_time:198.059 sec, mean:43.51909975574999, std:10.178074826387085, std_err:0.1609294932350302
+    R =5000, exe_time:297.961 sec, mean:43.3941828502, std:10.090806492807223, std_err:0.1427055539741046
     
 
 ## Estimating Confidence Interval
@@ -276,11 +276,12 @@ exp_cost_per_day = np.array(exp_cost_per_day)
 figure(figsize=(25, 10), dpi=60)
 plt.plot(exp_cost_per_day[:,0], exp_cost_per_day[:,1],marker='o', linestyle='-', color='b', label='S=5000')
 plt.fill_between(exp_cost_per_day[:,0], exp_cost_per_day[:,1]-2*exp_cost_per_day[:,3], exp_cost_per_day[:,1]+2*exp_cost_per_day[:,3],alpha=0.2, color='b', label='95% CI')
-plt.xlabel('Reorder Point (s)')
-plt.ylabel('Expected Cost per Day')
-plt.xticks(np.arange(s_low, s_high, 200))
-plt.title('Expected Cost per Day vs Reorder Point (s)')
-plt.legend()
+plt.xlabel('Reorder Point (s)', fontsize=20)
+plt.ylabel('Expected Cost per Day', fontsize=20)
+plt.xticks(np.arange(s_low, s_high, 200), rotation=90)
+plt.tick_params(labelsize=18)
+plt.title('Expected Cost per Day vs Reorder Point (s)', fontsize=22)
+plt.legend(fontsize=18)
 plt.grid()
 plt.show()
 ```
@@ -315,11 +316,12 @@ plt.plot(exp_cost_per_day2[:,0], exp_cost_per_day2[:,1],marker='o', linestyle='-
 plt.plot(exp_cost_per_day3[:,0], exp_cost_per_day3[:,1],marker='o', linestyle='-', color='g', label='S=3000')
 plt.plot(exp_cost_per_day4[:,0], exp_cost_per_day4[:,1],marker='o', linestyle='-', color='c', label='S=2000')
 plt.plot(exp_cost_per_day5[:,0], exp_cost_per_day5[:,1],marker='o', linestyle='-', color='r', label='S=1000')
-plt.xticks(np.arange(s_low, s_high, 200))
-plt.xlabel('Reorder Point (s)')
-plt.ylabel('Expected Cost per Day')
-plt.title('Expected Cost per Day vs Reorder Point (s)')
-plt.legend()
+plt.xticks(np.arange(s_low, s_high, 200), rotation=90)
+plt.tick_params(labelsize=18)
+plt.xlabel('Reorder Point (s)', fontsize=20)
+plt.ylabel('Expected Cost per Day', fontsize=20)
+plt.title('Expected Cost per Day vs Reorder Point (s)', fontsize=22)
+plt.legend(fontsize=18)
 plt.grid()
 plt.show()
 ``` 

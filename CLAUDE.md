@@ -11,28 +11,9 @@ The public import surface is `SupplyNetPy.Components`, conventionally aliased as
 ## Common commands
 
 ```bash
-# Install in editable mode for development
-pip install -e .
-
-# Run the test suite (CI runs this on push/PR to main, Python 3.11)
-pytest
-
-# Run a single test file / test class / test
-pytest tests/test_core.py
-pytest tests/test_core.py::TestRawMaterial
-pytest tests/test_core.py::TestRawMaterial::test_raw_material_init
-
 # Run the canonical quick-start example as a sanity check.
 # Expected: profit = -4435.0. Any change that touches core semantics should preserve this.
 python examples/py/intro_simple.py
-
-# Build the distribution (hatchling)
-python -m build
-
-# Build and serve docs locally
-pip install -r docs/requirements.txt
-mkdocs serve
-mkdocs build
 ```
 
 CI (`.github/workflows/ci.yml`) pins Python 3.11 and installs both `requirements.txt` and `docs/requirements.txt` before running `pytest` — match that setup when reproducing CI locally.
@@ -57,23 +38,6 @@ Many "Conventions to preserve" bullets below cite section numbers (§4.3, §5.1,
 
 ## Architecture
 
-### Module layout
-
-```
-src/SupplyNetPy/
-├── __init__.py           # empty; users import SupplyNetPy.Components
-└── Components/
-    ├── __init__.py       # explicit re-exports (no wildcards); top-level __all__ lists the 39 public names
-    ├── core.py           # all domain classes (~3600 lines); __all__ = 28 names
-    ├── utilities.py      # create_sc_net, simulate_sc_net, Network wrapper, info helpers; __all__ = 10 names
-    └── logger.py         # GlobalLogger — file + screen logging, toggleable per-node; __all__ = ["GlobalLogger"]
-
-tests/
-├── conftest.py           # prepends src/ to sys.path so tests resolve in-tree source even without `pip install -e .`
-├── test_core.py
-└── test_utilities.py
-```
-
 ### The two construction styles
 
 Users can build a network in two interchangeable ways, and `create_sc_net` accepts either:
@@ -82,30 +46,6 @@ Users can build a network in two interchangeable ways, and `create_sc_net` accep
 2. **Direct instantiation**: construct a `simpy.Environment` yourself, build `Supplier` / `InventoryNode` / `Manufacturer` / `Link` / `Demand` objects directly, then either call `env.run(until=...)` or pass them to `create_sc_net(env=env, ...)` and `simulate_sc_net`.
 
 Mixing the two *within the same list* is not supported and rejected up-front: each of `nodes` / `links` / `demands` must be all dicts or all pre-built domain objects. `create_sc_net` scans every element (not just `[0]`), so a dict at index 0 followed by a `Node` instance at index 1 — the exact pattern that used to bypass the env-required guard — now raises `ValueError("<list> mixes dicts and <Cls> instances")`. When any list contains pre-built objects, `env` must be passed explicitly *and* every object's own `env` must match it (a pre-built instance tied to a different `simpy.Environment` also raises).
-
-### Class hierarchy (all in `core.py`)
-
-- `NamedEntity`, `InfoMixin` — base mixins providing `__str__`/`__repr__` and `get_info()`/`get_statistics()` driven by `_info_keys` / `_stats_keys`.
-- `Node(NamedEntity, InfoMixin)` — common base for every supply-chain actor. Owns the per-node `GlobalLogger`, handles disruption/recovery (`failure_p`, `node_disrupt_time`, `node_recovery_time`). Subclasses: `Supplier`, `InventoryNode`, `Manufacturer`, `Demand`.
-- `Link` — transportation edge with `cost`, `lead_time` (callable), and its own disruption model.
-- `Inventory` — SimPy `Container` wrapper; tracks perishables (shelf life, FIFO expiry via `perish_queue`), carrying cost, and optionally instantaneous levels. `level` and `capacity` are read-only `@property`s that delegate to the underlying `simpy.Container` — the container is the single source of truth, don't shadow either attribute on the wrapper.
-- `InventoryReplenishment` (base) → `SSReplenishment` (s, S), `RQReplenishment` (R, Q), `PeriodicReplenishment`. Instantiated **by** the node that owns them — the user passes the class and a `policy_param` dict, not an instance.
-- `SupplierSelectionPolicy` (base) → `SelectFirst`, `SelectAvailable`, `SelectCheapest`, `SelectFastest`. Same pattern: pass the class to the node.
-- `Statistics` — per-node KPI tracker attached as `node.stats`. Exposes `get_statistics()` and optional periodic updates.
-- `RawMaterial`, `Product` — product BOM primitives used by `Manufacturer`; `Product.raw_materials` is a list of `(RawMaterial, quantity)` tuples.
-
-### Simulation lifecycle
-
-1. `create_sc_net` validates IDs for duplicates, instantiates nodes/links/demands, wires them into a `supplychainnet` dict (`nodes`, `links`, `demands`, `env`, counts).
-2. Each node registers its SimPy processes in its own `__init__` (e.g. `env.process(self.disruption())`, replenishment policy's `run()`, `Demand` generator).
-3. `simulate_sc_net(supplychainnet, sim_time, logging=True)` calls `env.run(until=sim_time)` and then aggregates network-wide KPIs (total demand, shortage, backorders, revenue, profit, transportation cost, etc.) back into the same dict.
-4. Per-node stats are always available via the `stats` attribute, e.g. `supplychainnet["nodes"]["D1"].stats.get_statistics()`.
-
-### Logging
-
-`GlobalLogger` subclasses `logging.LoggerAdapter`, so callers use `node.logger.info(...)` / `global_logger.error(...)` directly (no more `node.logger.logger.info(...)` double-hop). The underlying `logging.Logger` is still reachable as `node.logger.logger` for code that already learned the old shape. **The wrapper is inert by default**: `GlobalLogger()` attaches only a `logging.NullHandler` and does not open any file — output is opt-in via `enable_logging(log_to_file=True, log_to_screen=True)`. `simulate_sc_net(logging=True)` (the canonical entry point) calls that for the user, so simply running a simulation still produces `simulation_trace.log` in the working directory (gitignored via `*.log`). Users who drive `env.run(...)` themselves and want a trace file must call `scm.global_logger.enable_logging(log_to_file=True)` explicitly.
-
-Per-node loggers are hierarchical children of the library root: `Node.__init__` creates `f"sim_trace.{node.ID}"` (or `f"sim_trace.{logger_name}"` if a custom `logger_name=` kwarg is supplied) and **does not** attach its own handlers — records propagate up to `global_logger` so the trace file is opened exactly once. A `_ShortNameFilter` strips the `sim_trace.` prefix in display so per-node lines remain `INFO D1 - ...` (not `INFO sim_trace.D1 - ...`). Node-level logging can be switched off by passing `logging=False` to a node, or by calling `node.logger.disable_logging()` (which sets `disabled=True` on that specific child logger only — it no longer fires Python's process-wide `logging.disable(CRITICAL)` switch).
 
 ## Conventions to preserve
 
@@ -116,6 +56,7 @@ Per-node loggers are hierarchical children of the library root: `Node.__init__` 
 - `_info_keys` and `_stats_keys` drive `get_info()` / `get_statistics()` and are declared at **class level**, not in `__init__`. Add a new attribute by extending the class list declaratively: `class Supplier(Node): _info_keys = Node._info_keys + ["raw_material", "sell_price"]`. The `+` expression creates a fresh list per subclass, so siblings don't share mutation. Do **not** reintroduce `self._info_keys = [...]` or `self._info_keys.extend([...])` inside `__init__` — the §4.6 cleanup removed every one of those. Special case: `Statistics._stats_keys` and `Statistics._cost_components` are also class-level, but `Statistics.__init__` clones them onto the instance (`self._stats_keys = list(type(self)._stats_keys)`) because `Supplier` and `Manufacturer` append their own KPIs onto the instance — without the clone those appends would leak across every Statistics instance. New cost attributes still need to be appended to `self.stats._cost_components` so `Statistics.update_stats` picks them up — there is no substring-match fallback.
 - **RNG control.** `core.py` owns a module-level `_rng = random.Random()` and exports `set_seed(seed)`. `Node.__init__` and `Link.__init__` accept an optional `rng: random.Random = None`; `None` falls back to `_rng`. Probabilistic disruption calls `self.rng.random()`, never the global `random.random()`. Seeding once (`scm.set_seed(42)`) before building the network is enough to make disruption deterministic. New probabilistic draws inside the library should resolve RNG the same way.
 - **Kwarg filtering.** Node subclasses (`Supplier`, `InventoryNode`, `Manufacturer`, `Demand`) take `**kwargs` and forward them to both `Node` (via `super().__init__`) and `Inventory`. Two whitelist sets in `core.py` keep these clean: `_LOGGER_KWARGS` (`log_to_file`, `log_file`, `log_to_screen`) and `_NODE_KWARGS` (`failure_p`, `node_disrupt_time`, `node_recovery_time`, `logging`, `rng`, `logger_name`). Every call site that constructs `Inventory` must strip both sets out first — `Inventory.__init__` has a strict signature and will `TypeError` on unknowns (this is how typos like `shelf_live=` get caught instead of silently ignored).
+- **`Inventory.level` and `Inventory.capacity` are read-only properties** that delegate to the underlying `simpy.Container` — the container is the single source of truth; don't shadow either attribute on the wrapper (§3.7).
 - **`Inventory.put` returns the accepted amount.** The container's free-capacity clamp and the infinite/full/non-positive early-return paths make it possible for a `put(amount)` to accept less than `amount`. Callers that pre-increment `node.inventory.on_hand` before `yield`ing on `put` (`InventoryNode.process_order`, `Manufacturer.produce_product`) must reconcile by subtracting the shortfall (`requested - accepted`) from `on_hand`. Suppliers clamp upstream and don't need to reconcile.
 - **Pending orders are counted, not flagged.** `InventoryNode` and `Manufacturer` expose `self.pending_orders: int` (starts at 0). `process_order` (resp. `process_order_raw`) increments it right after the capacity-clamp / early-return guards, at the real dispatch point, and decrements it on completion. Concurrent in-flight orders are intentional — a node may have more than one outstanding order if the replenishment policy keeps triggering. **Do not** reintroduce a boolean guard against re-entry.
 - **Backorder-aware inventory position.** Everywhere replenishment quantity is computed or clamped, go through `node.position()`, which returns `on_hand - (stats.backorder[1] - inventory.waiting_site_orders())`. `on_hand` is inventory position (shelf + in-transit). A node's backorders hold two kinds of waiting orders: customers waiting for stock (not taken off `on_hand`, so `position()` subtracts them) and orders from other sites waiting in the shelf's SimPy queue (`Inventory.get` already took them off `on_hand`, so subtracting them again would count them twice — the §3.17 bug). The queue can also hold other requests made with `get`, so site orders are labelled: `InventoryNode.process_order` and `Manufacturer.process_order_raw` call `inventory.get(qty, site_order=True)`, `Inventory.get` passes `site_order` to every shelf request it creates, and `Inventory.waiting_site_orders()` sums only the labelled requests in `inventory.inventory.get_queue`. `Inventory.waiting_orders()` sums every waiting request. Any new code that places an order from another site must pass `site_order=True`, or `position()` will count that order twice. The capacity pre-check in both `process_order` methods uses `gross = self.position()`, so the clamp can't strand backordered orders behind a saturated shelf. `Manufacturer.manufacture_product` caps production at `on_hand - level + inventory.waiting_orders()` (units still to make — every waiting request was taken off `on_hand` but has not left the shelf, so this one uses the full total); dropping the `waiting_orders()` term makes a factory that owes more than its shelf holds stop producing for good. Do not compute `on_hand - stats.backorder[1]` by hand anywhere.
@@ -142,13 +83,3 @@ Per-node loggers are hierarchical children of the library root: `Node.__init__` 
 - **User-facing docs target a non-programmer audience.** The hand-written prose in `docs/*.md` and `README.md` was rewritten in the May 2026 audit pass to be readable by readers without a Python background. New or edited prose should follow the same style: introduce technical terms (`(s, S)`, `ROP`, `multi-echelon`, `lead time`, `inventory position`) with a one-line plain-English gloss on first use; open lead paragraphs with a concrete narrative or scenario before the formal abstraction (the newsvendor page is the template — it now starts "Imagine a newspaper vendor who buys copies wholesale every morning…" rather than "a decision-maker must determine the optimal order quantity"); avoid Python-internal jargon like *"generator function"* when the API just wants a zero-arg callable; and accurately describe SupplyNetPy as **event-driven** (it jumps from one event to the next via SimPy), never *"time-stepped"* or *"steps through time"* — the latter is technically false and was caught in review. The detailed `disruption_impact` discussion lives in `docs/api-reference/api-intro.md`; `docs/ten_min.md` is the quickstart and intentionally does *not* mention it. Five orphan tooltip definitions (`[qt]`, `[ss]`, `[sssafety]`, `[rq]`, `[periodic]`) used to sit at the top of `ten_min.md` with no body references — they were removed; do not paste them back in.
 - **Code comments and docstrings are written in plain, simple language too.** The plain-language rule above is not limited to `docs/*.md` and `README` — it applies to *in-code* comments, docstrings, and any explanatory text. SupplyNetPy is a public library, so people who use or extend it must be able to follow the code easily. Avoid internal jargon and shorthand (e.g. *"delta cycle"*, *"drain"*, *"on_hand pre-increment"*, *"zero-time spin"*, *"(s,S) position math"*); when a technical term is genuinely needed, gloss it in plain words on first use. Explain *why*, not just *what*, and use a concrete picture where it helps. The looped-`put` comments in `InventoryNode.process_order` (core.py ~2917) are the template: they describe an over-capacity replenishment as "an order bigger than the free space on the shelf," explain `env.timeout(0)` as "pause one instant of simulation time — it does not advance the clock, it just lets other events for this same instant run," and gloss `on_hand` as "the node's inventory position: units on the shelf plus units still in transit." Keep Google-style docstring sections (`Parameters` / `Attributes` / `Returns`) intact for `mkdocstrings`, but phrase their prose plainly.
 - **One word per idea: use the glossary (`docs/glossary.md`).** Comments, docstrings and docs use only the terms defined in the glossary, so that technical readers never meet two words for the same thing. Plain language still applies, but it *explains* a glossary term in plain words on first use ("inventory level (the units physically at the site)") instead of swapping in a friendlier synonym. New names (classes, methods, variables) follow the same terms. When a new idea needs a word, add it to the glossary first. Released public names that use another word stay as they are, for compatibility (`inventory.on_hand` is the inventory position before customer backorders; `site_order`, `waiting_site_orders()`, `demand_by_site` refer to replenishment orders; `extraction_quantity` / `extraction_time` refer to mining; `inventory_carry_cost` is the holding cost; the parameter `supplier` of `process_order` / `process_order_raw` is the **Link** to the supplier, so say so wherever it is documented). Key distinctions: a **node** is any point including customer demands, a **site** is a node that holds inventory (every node except a `Demand`); the **supplier** of a site is the site at the other end of a link (`link.source`), while a **raw-material supplier** is the `Supplier` class; a **buyer** is a site that buys from another site (`link.sink`), a **customer** is the end customer; a **batch** is units with the same manufacturing date, a **production batch** is what a manufacturer makes in one go (`batch_size`). Words to avoid, with the glossary term to use instead: shelf / stock / stock on hand / units on the shelf → inventory level (keep "shelf life" and "safety stock", which are standard terms); "on hand" in prose → inventory position; facility / location / actor → node or site; route / lane / edge → link; upstream node / vendor → supplier; downstream node → buyer; consumer / end user → customer (and never "buyer" for a customer); demand point → customer demand; endless supplier → infinite supplier; factory / plant / production unit → manufacturer; items / goods / products (for quantities) → units; item → product; component / material → raw material; made-on date / mfg date → manufacturing date; lot / dated batch → batch; batch (alone, for production) / run → production batch; spoiled / perished → expired; request → order ("request" only for the SimPy object waiting at an inventory); site order (in prose) / reorder (noun) → replenishment order; shipped / delivered (as the statistic) → fulfilled; transit time / delivery time → lead time; backlog / pending order → backorder; stockout / unmet demand / lost demand → shortage; split delivery → partial delivery; reorder rule / inventory policy / ordering policy → replenishment policy; min-max (in prose) → (s, S) policy; extraction (in prose) → mining; carrying cost / carry cost (in prose) → holding cost; purchase price / sale price → buy price / sell price; shipping cost → transportation cost; total cost (for one node) → node cost; outage / failure / down / broken down → disruption; failure probability (in prose) → disruption probability; repair → recovery; tick / time step / day (as the unit) → time unit; time-stepped → event-driven; graph (except the drawing) → supply chain network; in the pipeline → in transit.
-
-## Known limitations (from docs/known-issues.md)
-
-- No loop detection in the network graph — cyclic supply chains are silently allowed.
-- Simultaneous events are resolved in SimPy's internal order (deterministic per run, but not user-controllable).
-- No parallelized or real-time simulation.
-
-## Known bugs (unfixed)
-
-_(none currently — see the capacity-wall convention below for the most recent fix.)_
