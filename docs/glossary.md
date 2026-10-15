@@ -72,7 +72,8 @@ A few names in the code use a different word from the one chosen here (for examp
 | **Received** | An order that has arrived at the site that placed it. | `fulfillment_received` (at the buyer) |
 | **Lead time** | How long an order takes to arrive after it is sent: over a link, or from a site to a customer. | `Link.lead_time`, `Demand.lead_time` |
 | **Backorder** | An order, or part of one, that a site owes right now: it has been accepted but is still waiting for units. It is removed once it is filled, or when a waiting customer gives up. | `stats.backorder`, as `[orders, units]` |
-| **Shortage** | How many units a site was missing when an order arrived. It is a running total, never reduced, whether the order is later filled or not. | `stats.shortage`, as `[orders, units]` |
+| **Shortage** | How many units a site was missing when an order arrived. It is a running total, never reduced, whether the order is later filled or not. Customers turned away by a disruption are not part of it (see disruption lost sales). | `stats.shortage`, as `[orders, units]` |
+| **Disruption lost sales** | Customer orders a site lost because it was disrupted when they arrived. A disrupted site takes no new orders, so the customer goes away. Kept apart from shortage, which counts units the site did not have, because the cause and the remedy differ. | `stats.disruption_lost_sales`, as `[orders, units]` |
 | **Tolerance** | How long a customer is willing to wait for units that are not there. A customer with no tolerance leaves at once. | `tolerance` |
 | **Partial delivery** | Sending a customer part of an order now and the rest later. | `order_min_split_ratio` |
 
@@ -118,7 +119,7 @@ A few names in the code use a different word from the one chosen here (for examp
 
 | Term | Meaning | In the code |
 |---|---|---|
-| **Disruption** | A period when a node or a link is out of action. While disrupted, a site receives no new orders and a link carries no new shipments. | `node_status == "inactive"`, `link.status == "inactive"` |
+| **Disruption** | A period when a node or a link is out of action. While disrupted, a site receives no new orders (from other sites or from customers) and a link carries no new shipments. Orders it had already taken are still served. | `node_status == "inactive"`, `link.status == "inactive"` |
 | **Disruption probability** | The chance, each time unit, that a disruption starts. | `failure_p` |
 | **Recovery** | The end of a disruption. | `node_recovery_time`, `link_recovery_time` |
 | **Disruption impact** | What a disruption does to the units at a site when it starts (for example, destroying all of them). | `disruption_impact` |

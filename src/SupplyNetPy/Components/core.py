@@ -349,6 +349,7 @@ class Statistics(InfoMixin):
         demand_fulfilled (list): Orders this node fulfilled (sent out in full), as [number of orders, units].
         shortage (list): How many units this node was missing when orders arrived, as [number of orders, units]. A running total that is never reduced. ``orders_shortage`` is kept as an old name for it (§6.6).
         backorder (list): Orders this node owes right now, as [number of orders, units].
+        disruption_lost_sales (list): Customer orders this site lost because it was disrupted when they arrived, as [number of orders, units]. Kept apart from ``shortage``, which is for units the site did not have.
         inventory_level (float): The inventory level at the last update.
         inventory_waste (float): Expired units thrown away so far.
         inventory_carry_cost (float): Holding cost so far.
@@ -377,7 +378,7 @@ class Statistics(InfoMixin):
     _stats_keys = [
         "name",
         "demand_placed", "fulfillment_received", "demand_received", "demand_fulfilled",
-        "shortage", "backorder",
+        "shortage", "disruption_lost_sales", "backorder",
         "inventory_level", "inventory_waste",
         "inventory_carry_cost", "inventory_spend_cost", "transportation_cost",
         "destroyed_qty", "destroyed_value",
@@ -414,6 +415,7 @@ class Statistics(InfoMixin):
             demand_fulfilled (list): Orders this node fulfilled (sent out in full), as [number of orders, units].
             shortage (list): How many units this node was missing when orders arrived, as [number of orders, units]. A running total that is never reduced. ``orders_shortage`` is kept as an old name for it (§6.6).
             backorder (list): Orders this node owes right now, as [number of orders, units].
+            disruption_lost_sales (list): Customer orders this site lost because it was disrupted when they arrived, as [number of orders, units]. Kept apart from ``shortage``, which is for units the site did not have.
             inventory_level (float): The inventory level at the last update.
             inventory_waste (float): Expired units thrown away so far.
             inventory_carry_cost (float): Holding cost so far.
@@ -445,6 +447,7 @@ class Statistics(InfoMixin):
         # at both the node and network level. ``orders_shortage`` is kept as
         # a read-only alias / accepted ``update_stats`` kwarg for back-compat.
         self.shortage = [0,0] # units missing when orders arrived (running total)
+        self.disruption_lost_sales = [0,0] # customer orders lost because the site was disrupted when they arrived
         self.backorder = [0,0] # orders this node owes right now
         self.inventory_level = 0 # inventory level at the last update
         self.inventory_waste = 0 # expired units thrown away so far
@@ -4385,6 +4388,10 @@ class Demand(Node):
         """
         Handle one customer order, by passing it to the helper for its case:
 
+        - the site is disrupted: the order is not placed. A disrupted site takes no new orders, so this is a
+          sale it loses because of the disruption, recorded in its ``disruption_lost_sales`` (not as demand
+          received, shortage or backorder). Customers who were already waiting when the disruption started
+          keep waiting, and deliveries already on their way still arrive;
         - the site can fill the whole order: ``_serve_in_full``;
         - otherwise, with ``consume_available`` and some units there: ``_serve_partial_consume``;
         - otherwise, for a customer with a tolerance: ``_enqueue_for_tolerance`` (or ``_discard_unservable``
@@ -4398,6 +4405,16 @@ class Demand(Node):
         Returns:
             None
         """
+        if self.demand_node.node_status != "active":
+            # A disrupted site takes no new orders, from other sites or from
+            # customers (the same rule as Node.place_order). The customer goes
+            # away, and the site loses the sale. This is not a shortage: the site
+            # may have the units, it just cannot take the order. Nothing else is
+            # recorded, and the customer's own demand_placed does not count it,
+            # as for a replenishment order that is not placed.
+            self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: {self.demand_node.ID} is disrupted, order of {order_quantity} units not placed (lost sale).")
+            self.demand_node.stats.update_stats(disruption_lost_sales=[1, order_quantity])
+            return
         available = self._available()
         self.stats.update_stats(demand_placed=[1, order_quantity])
         # The smallest part this customer will take: the whole order when no

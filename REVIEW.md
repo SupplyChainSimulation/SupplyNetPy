@@ -602,6 +602,26 @@ Found while designing link statistics (§6.8). `Manufacturer.process_order_raw`.
 - `examples/py/intro_simple.py` unchanged (`profit: -4435.0`). `sc_with_factory.py` (`profit: 49419.6`, `demand_by_site: [2, 1440]`) and `hybrid_big_sc.py` give output identical to the last commit's code.
 - `pytest` — 277/277 passing. New `TestSupplierRawMaterialBackordersAreLive::test_raw_material_order_recorded_when_placed` (an order that waits at its supplier from day 0.5 to day 2 shows in the manufacturer's `demand_placed` and `transportation_cost` at day 1.5, and is counted once). It fails on the old code.
 
+### 3.26 Customers can order from a disrupted site ✅ Resolved
+Found while listing missing node statistics. `Demand.customer`, `Statistics`.
+
+**Original issue.** Since §3.23 a disrupted site takes no new replenishment orders (`Node.place_order`, `Link.can_take_order`). `Demand.customer` did not look at `demand_node.node_status`, so customers kept ordering from a disrupted site and were served from its inventory as usual. The glossary already described a disrupted site as one that "receives no new orders".
+
+**Decision (user, 2026-10-16).** A disrupted site takes no new orders from customers either. A customer who arrives then goes away: a sale the site loses because of the disruption. It is recorded as a new statistic, `disruption_lost_sales` (`[orders, units]`), at the site, and kept apart from `shortage`. A shortage is units the site did not have; a disruption lost sale is an order it could not take, whatever its inventory level. The cause and the remedy differ (more inventory against a better replenishment policy; backup sites or shorter recoveries against disruption), so mixing them would hide which problem a site has. Some disruptions might in reality still let a site take orders it cannot ship; that could become an option later, with today's behaviour as the default.
+
+**Fix applied:**
+
+- `Demand.customer` checks `demand_node.node_status` first. If the site is disrupted, it records `disruption_lost_sales=[1, order_quantity]` at the site, writes one log line, and stops. Nothing else is recorded: no `demand_received`, `shortage` or `backorder` at the site, and the customer demand's own `demand_placed` does not count the order, as for a replenishment order that is not placed. A site's total customer demand is therefore `demand_received + disruption_lost_sales`.
+- Only new orders are turned away. Customers already waiting when the disruption starts keep waiting and are served when units arrive (or leave when their tolerance runs out), and deliveries already on their way still arrive, as for links and replenishment orders.
+- `disruption_lost_sales` is in `Statistics._stats_keys`, so every node reports it and `reset()` zeroes it. `simulate_sc_net`'s network results do not add it up yet.
+- Docs: glossary (new **Disruption lost sales** entry; the **Disruption** and **Shortage** entries say how the two differ), `about.md`, `api-intro.md`, and the sample output in `examples/py/intro_simple.py` (one new key). The pasted tables in `examples/py/hybrid_big_sc.py` and the saved notebook outputs are left as they are: they would only gain a row of zeros.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`).
+- Pharma case study: the same 30 replications as in §3.24 give identical results (only the raw-material supplier is disrupted, and it has no customers). Milk case study: only distributors are disrupted, and they have no customer demands (user, 2026-10-16), so no change.
+- `pytest` — 282/282 passing. New `TestCustomersCannotOrderFromADisruptedSite` (5 tests: a customer at a disrupted site is a lost sale and nothing else is recorded; customers are served again after recovery; a customer already waiting is still served; customers with no tolerance, with a tolerance, and taking what is there are all turned away; the statistic is reported and reset). Four fail on the old code; the waiting-customer test guards the "only new orders" rule.
+
 ---
 
 ## 4. Design / architecture issues

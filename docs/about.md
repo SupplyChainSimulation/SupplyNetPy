@@ -29,7 +29,7 @@ Under the hood it runs on top of [SimPy](https://simpy.readthedocs.io/), a Pytho
     * **Periodic (T, Q).** Every *T* time units, order *Q* units, whatever the inventory position.
     * **Periodic (T, Q) with safety stock.** The same rule, and if the inventory level is below the safety stock, the order also includes the units needed to bring it back up.
 * **Flexible lead times.** Lead times can be fixed or random, and each link has its own transportation cost.
-* **Disruptions.** Both nodes (warehouses, manufacturers and so on) and links can be disrupted, either at scheduled times or at random with a given probability. On top of that, the `disruption_impact` setting on a node describes what physically happens to the units at the node when a disruption starts.
+* **Disruptions.** Both nodes (warehouses, manufacturers and so on) and links can be disrupted, either at scheduled times or at random with a given probability. While a site is disrupted it takes no new orders, from other sites or from customers. A customer who arrives then goes away, and the site records the lost sale in `disruption_lost_sales`, apart from its shortage. On top of that, the `disruption_impact` setting on a node describes what physically happens to the units at the node when a disruption starts.
     * With `"destroy_all"`, all units are lost (for example in a fire or flood at a warehouse).
     * With `"destroy_fraction"` and a loss fraction, part of the units is lost. The fraction can be a fixed number or drawn at random for each disruption (useful, say, for a power cut that spoils part of the refrigerated goods).
     * A custom function can describe any other effect you want to capture (contamination, theft, partial damage and so on).

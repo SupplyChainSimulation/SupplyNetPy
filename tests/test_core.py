@@ -3757,3 +3757,103 @@ class TestStatisticsResetKeepsThePresent(unittest.TestCase):
         s1.stats.update_stats()
         assert s1.stats.inventory_carry_cost == 0
         assert s1.stats.node_cost == 0
+
+
+class TestCustomersCannotOrderFromADisruptedSite(unittest.TestCase):
+    """While a site is disrupted it takes no new orders, from other sites or
+    from customers (§3.26). A customer who arrives then is a sale the site
+    loses because of the disruption: it is recorded as ``disruption_lost_sales``
+    at the site, and not as demand received, shortage or backorder.
+    """
+
+    def _site(self, env, initial_level=50):
+        # A site with no replenishment policy: units arrive only when the test adds them.
+        return scm.InventoryNode(
+            env=env, ID="W1", name="W1", node_type="retailer",
+            capacity=float("inf"), initial_level=initial_level,
+            inventory_holding_cost=0, replenishment_policy=None, policy_param={},
+            product_buy_price=1, product_sell_price=2,
+        )
+
+    def _recover(self, env, site, day):
+        yield env.timeout(day)
+        site.node_status = "active"
+
+    def _deliver(self, env, site, day, qty):
+        yield env.timeout(day)
+        site.inventory.put(qty)
+
+    def test_customer_at_a_disrupted_site_is_a_lost_sale(self):
+        # The site has 50 units, but it is disrupted when a customer orders 10.
+        env = simpy.Environment()
+        w1 = self._site(env)
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10)
+        w1.node_status = "inactive"
+        env.run(until=1)
+        assert w1.stats.disruption_lost_sales == [1, 10]
+        assert w1.stats.demand_received == [0, 0]
+        assert w1.stats.shortage == [0, 0]
+        assert w1.stats.backorder == [0, 0]
+        assert w1.stats.demand_fulfilled == [0, 0]
+        assert dem.stats.demand_placed == [0, 0]
+        assert dem.stats.fulfillment_received == [0, 0]
+        assert w1.inventory.level == 50
+
+    def test_customers_are_served_again_after_recovery(self):
+        # One customer a day; the site is disrupted until day 2.
+        env = simpy.Environment()
+        w1 = self._site(env)
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=lambda: 1, order_quantity_model=lambda: 10)
+        w1.node_status = "inactive"
+        env.process(self._recover(env, w1, 1.5))
+        env.run(until=4.5)   # customers at days 0, 1 (lost), 2, 3, 4 (served)
+        assert w1.stats.disruption_lost_sales == [2, 20]
+        assert w1.stats.demand_received == [3, 30]
+        assert dem.stats.fulfillment_received == [3, 30]
+
+    def test_customer_already_waiting_is_still_served(self):
+        # A customer starts waiting for 10 units at day 0; the site is
+        # disrupted at day 1 and the units arrive at day 2. The customer's
+        # order was taken before the disruption, so it is still served.
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=0)
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10,
+                         tolerance=100)
+        def disrupt():
+            yield env.timeout(1)
+            w1.node_status = "inactive"
+        env.process(disrupt())
+        env.process(self._deliver(env, w1, 2, 10))
+        env.run(until=3)
+        assert w1.stats.backorder == [0, 0]
+        assert dem.stats.fulfillment_received == [1, 10]
+        assert w1.stats.disruption_lost_sales == [0, 0]
+
+    def test_every_kind_of_customer_is_turned_away(self):
+        # Customers with no tolerance, customers who would wait, and customers
+        # who take what is there are all turned away the same way.
+        for kwargs in ({}, {"tolerance": 5}, {"consume_available": True}):
+            env = simpy.Environment()
+            w1 = self._site(env, initial_level=3)
+            scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                       order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10, **kwargs)
+            w1.node_status = "inactive"
+            env.run(until=1)
+            assert w1.stats.disruption_lost_sales == [1, 10], kwargs
+            assert w1.stats.shortage == [0, 0], kwargs
+            assert w1.stats.backorder == [0, 0], kwargs
+            assert w1.inventory.level == 3, kwargs
+
+    def test_disruption_lost_sales_is_reported_and_reset(self):
+        env = simpy.Environment()
+        w1 = self._site(env)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10)
+        w1.node_status = "inactive"
+        env.run(until=1)
+        assert w1.stats.get_statistics()["disruption_lost_sales"] == [1, 10]
+        w1.stats.reset()
+        assert w1.stats.disruption_lost_sales == [0, 0]

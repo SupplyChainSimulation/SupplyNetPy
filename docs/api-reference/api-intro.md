@@ -25,7 +25,7 @@ For supplier-selection policies, _Link_ offers `link.available_quantity()`, whic
 
 #### Modeling what a disruption does to stored inventory
 
-A disruption in the real world can take many forms, such as a natural disaster, a power cut, contamination, theft or a strike, and each affects the units at a node differently. The disruption settings on `Node` (`failure_p` for random disruptions, `node_disrupt_time` for scheduled ones, and `node_recovery_time` for how long a disruption lasts) only mark the node as disrupted, so it receives no new orders. They do *not* describe what happens to the units already there.
+A disruption in the real world can take many forms, such as a natural disaster, a power cut, contamination, theft or a strike, and each affects the units at a node differently. The disruption settings on `Node` (`failure_p` for random disruptions, `node_disrupt_time` for scheduled ones, and `node_recovery_time` for how long a disruption lasts) only mark the node as disrupted, so it receives no new orders, from other sites or from customers. A customer who arrives during a disruption is recorded as a lost sale in `disruption_lost_sales`. They do *not* describe what happens to the units already there.
 
 If you want the simulation to also account for units that are physically lost in a disruption, set the `disruption_impact` argument when you create the node (and, if you choose `"destroy_fraction"`, also `disruption_loss_fraction`). The available choices are listed below.
 
