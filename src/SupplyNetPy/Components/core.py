@@ -361,10 +361,11 @@ class Statistics(InfoMixin):
         profit (float): Revenue minus node cost.
         _info_keys (list): Keys to include in the info dictionary.
         _stats_keys (list): Keys to include in the statistics dictionary.
+        _live_keys (list): Statistics that describe the present (``backorder``, ``inventory_level``); ``reset`` keeps them.
 
     Functions:
         __init__: Initializes the statistics object.
-        reset: Resets all statistics to initial values.
+        reset: Starts the running totals again from zero (for example after a warm-up), keeping the values that describe the present.
         update_stats: Updates statistics based on provided values.
         update_stats_periodically: Periodically updates statistics during simulation.
     """
@@ -389,6 +390,11 @@ class Statistics(InfoMixin):
     # node_cost makes the impact visible in profit without callers needing
     # to know about a separate "loss" line.
     _cost_components = ["inventory_carry_cost", "inventory_spend_cost", "transportation_cost", "destroyed_value"]
+    # Values that describe the present rather than count what happened, so
+    # ``reset`` keeps them. ``backorder`` is what the node owes right now:
+    # orders still waiting at a reset are still waiting afterwards.
+    # ``inventory_level`` is read again from the inventory.
+    _live_keys = ["backorder", "inventory_level"]
 
     def __init__(self, node:object, periodic_update:bool=False, period:float=1):
         """
@@ -459,14 +465,34 @@ class Statistics(InfoMixin):
     
     def reset(self):
         """
-        Reset the statistics to their initial values.
+        Start the statistics again from zero, for example after a warm-up.
 
-        Drives the reset off ``_stats_keys`` so any KPI registered on a
-        Statistics instance (including subclass-specific ones added by
-        ``Supplier`` / ``Manufacturer``) is zeroed without the caller having
-        to remember to extend ``reset``. The legacy ``vars(self)`` scan is
-        kept as a fallback for instance attributes that aren't in
-        ``_stats_keys`` (e.g. user-injected scratch fields).
+        A warm-up is an opening stretch of a run that is left out of the
+        statistics, because a run starts in an unusual state (nothing in
+        transit, no orders waiting). Run for the warm-up period, call
+        ``reset()`` on each node, and carry on running. The simulation itself
+        carries on unchanged; only the counting starts again:
+
+        - Running totals (orders, units, costs, shortage, expired units and
+          so on) are set to zero, including those a ``Supplier`` or
+          ``Manufacturer`` adds.
+        - Values that describe the present (``_live_keys``) are kept:
+          ``backorder``, what the node owes right now, and ``inventory_level``,
+          which is read again from the inventory.
+        - The holding cost is brought up to date first, so that after the
+          reset it covers only the time since the reset.
+        - The once-per-time-unit record of the inventory level
+          (``inventory.instantaneous_levels``) starts again.
+        - The inventory itself (inventory level, units in transit, waiting
+          orders) is not touched.
+
+        Each event is counted when it happens. So an order placed before the
+        reset and received after it counts as received but not as placed, and
+        units bought before the reset that expire after it count as expired
+        units after it. A partial delivery to a customer takes 1 off the order
+        count of ``demand_fulfilled`` when it is sent and adds 1 back when it
+        arrives; if the reset falls in between, that customer order is counted
+        twice in the order count (the units are counted correctly).
 
         Parameters:
             None
@@ -474,20 +500,29 @@ class Statistics(InfoMixin):
         Returns:
             None
         """
-        # Pass 1 — zero everything declared on _stats_keys (the source of
-        # truth for tracked KPIs).
+        inventory = getattr(self.node, 'inventory', None)
+        # An infinite inventory (an infinite supplier) has no holding cost and
+        # no inventory level worth recording, as in update_stats.
+        finite_inventory = inventory is not None and inventory.level != float('inf')
+        if finite_inventory:
+            # Charge the holding cost up to now, so that no time before the
+            # reset is charged after it.
+            inventory.update_carry_cost()
+        # Pass 1: zero every statistic listed in _stats_keys (the list of
+        # tracked statistics), except the values that describe the present.
         for key in self._stats_keys:
-            if not hasattr(self, key) or key == "name":
+            if not hasattr(self, key) or key == "name" or key in self._live_keys:
                 continue
             current = getattr(self, key)
             if isinstance(current, list):
                 setattr(self, key, [0, 0])
             elif isinstance(current, (int, float)):
                 setattr(self, key, 0)
-        # Pass 2 — a safety net for any counter that is not in the tracked list
-        # but used to be reset by the old "reset everything" sweep.
+        # Pass 2: a safety net for any counter that is not in the tracked list
+        # but used to be reset by the old "reset everything" sweep. It looks
+        # only at this Statistics object, never at the node's units or orders.
         for key, value in vars(self).items():
-            if key.startswith("_") or key in self._stats_keys:
+            if key.startswith("_") or key in self._stats_keys or key in self._live_keys:
                 continue
             if isinstance(value, list):
                 setattr(self, key, [0, 0])
@@ -497,9 +532,12 @@ class Statistics(InfoMixin):
         # have to be reset here by hand. If you add a new Inventory counter that
         # should reset, add it to this block (or move the counter onto
         # Statistics by listing it in _stats_keys).
-        if hasattr(self.node, 'inventory'):
-            self.node.inventory.carry_cost = 0
-            self.node.inventory.waste = 0
+        if inventory is not None:
+            inventory.carry_cost = 0
+            inventory.waste = 0
+            inventory.instantaneous_levels = []
+        if finite_inventory:
+            self.inventory_level = inventory.level
 
     @property
     def orders_shortage(self):
@@ -3803,6 +3841,9 @@ class Manufacturer(Node):
 
         self.pending_orders += 1  # count this raw-material order as placed
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
+        # The order counts as placed now, when it is placed, as in
+        # InventoryNode.process_order, even if the supplier makes it wait.
+        self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
         event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
         supplier.source.stats.update_stats(demand_received=[1,reorder_quantity]) # update the supplier statistics for demand received
         # The supplier owes this order only while it waits for units: count
@@ -3816,7 +3857,6 @@ class Manufacturer(Node):
             # Served at last: the supplier no longer owes this order.
             supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
 
-        self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
         lead_time = supplier.lead_time() # draw the lead time from the link
         validate_non_negative(name="lead_time", value=lead_time) # check if lead_time is non-negative

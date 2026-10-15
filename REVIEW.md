@@ -554,6 +554,54 @@ A second, related gap: the supplier-selection policies skipped suppliers whose *
 - Pharma case study (no review period, 200 runs, seed 7): mean cost 6.59 / 2.41 / 0.89 for (s, S) = (2000, 5000) / (100, 1000) / (1200, 2000), against 10.14 / 5.93 / 2.40 before and 6.75 / 2.61 / 0.89 with a daily review.
 - `pytest` — 259/259 passing. New `TestPolicyWokenWhenSupplierRecovers` (4 tests: a distributor orders as soon as its supplier site recovers; the same for a link; a manufacturer plans once its raw-material supplier recovers; a link is registered with its source) and `TestOrdersSkipDisruptedSupplierSites` (4 tests: the order goes to the supplier whose site is not disrupted; fixed mode skips its supplier while the site is disrupted; no order when every supplier is disrupted; a manufacturer needs a supplier for every raw material). All eight fail on the old code. Four existing tests that started `process_order` directly against a disrupted supplier now go through `place_order`. Two more tests in `TestOrdersSkipDisruptedSupplierSites` cover the time-0 case (a link, then a supplier site, disrupted by its first random draw after `place_order` chose it); both fail without the check in `process_order`.
 
+### 3.24 `Statistics.reset()` changes values that describe the present ✅ Resolved
+Found while designing link statistics (§6.8). `Statistics.reset`.
+
+**What a reset is for.** A run starts in an unusual state: nothing is in transit, no orders are waiting, and every inventory holds its `initial_level`. To measure long-run behaviour, users run a **warm-up** (an opening stretch left out of the statistics): run for the warm-up period, call `stats.reset()`, and carry on running. The pharma case study does this (`docs/case_study_pharma.md`, run to time 31, reset each node, run to `T + 1`). The simulation itself carries on unchanged; only the counting should start again.
+
+**Original issue.** `reset()` sets every number and `[orders, units]` pair it finds to zero. Most of them are running totals, where that is right. Four are not:
+
+1. **`backorder`** is what the site owes *right now*. Orders still waiting at the reset are still waiting afterwards. When each one is served it is taken off `backorder` as usual, so the count goes negative (two waiting customers for 20 units: `[2, 20]` becomes `[0, 0]` at the reset and `[-2, -20]` once they are served). Until then `position()`, which subtracts `backorder[1]`, sees too little owed, so the site orders too little.
+2. **Holding cost.** `reset()` sets `inventory.carry_cost` to zero but leaves `inventory.last_update_t` where it was. The next update charges `level × (now − last_update_t)`, which includes time before the reset. This is harmless in the usual pattern, because `simulate_sc_net` calls `update_stats()` on every node when it stops, which moves `last_update_t` to the reset time. It is wrong after `env.run()` called directly, or a reset made from inside a SimPy process.
+3. **`inventory_level`** is the inventory level at the last update. It reads 0 after a reset until the next `update_stats()` call.
+4. **`inventory.instantaneous_levels`** (the once-per-time-unit record kept when `record_inv_levels=True`) is never cleared, so the network's `avg_available_inv` keeps averaging samples from before the reset.
+
+**Fix applied:**
+
+- A class-level `Statistics._live_keys = ["backorder", "inventory_level"]` lists the values that describe the present. Both passes of `reset()` skip them.
+- Before zeroing, `reset()` brings the holding cost up to date with `inventory.update_carry_cost()`, under the same guard `update_stats` uses (skipped for an infinite inventory, whose level is `inf`). This moves `last_update_t` to the reset time.
+- `inventory_level` is re-read from `inventory.level` (same guard).
+- `inventory.instantaneous_levels` is cleared. Recording carries on from the reset (agreed with the user, 2026-10-15: a warm-up exists to drop that period from every average).
+- `node_cost`, `revenue` and `profit` are zeroed with the totals they are made from, so they agree with them; the next `update_stats()` recomputes them as usual.
+- Physical state is not touched and must stay that way: `inventory.on_hand`, `inventory.level`, `pending_orders`, `raw_inventory_counts`, perishable batches and waiting requests. Pass 2 only scans the `Statistics` object; a comment there says so.
+- The `reset` docstring explains what a warm-up is and lists the edge effects below. **Warm-up** was added to `docs/glossary.md`.
+
+**Known edge effects (documented in the `reset` docstring, not fixed).** Each event is counted when it happens, as everywhere else in `Statistics`. So for orders that span the reset:
+
+- Arrivals of orders placed before the reset count after it: `fulfillment_received`, `inventory_spend_cost`, the supplier's `demand_fulfilled` and so `revenue`. A window can show slightly more received than placed.
+- Units bought before the reset that expire after it count as waste after it. A production batch that starts before and finishes after counts in `total_products_manufactured` / `total_manufacturing_cost`.
+- Partial deliveries to customers take 1 off the order count of `demand_fulfilled` (at the site) and `fulfillment_received` (at the customer demand) at once and add 1 back when the units arrive (`Demand.wait_for_order`, `Demand._process_delivery`), so one customer order is counted once. If a reset falls between those two moments, the −1 is wiped and the +1 still lands, so that order is counted twice in the new window. Units are not affected, only the order count.
+
+**Not changed:** the network results in the `supplychainnet` dictionary are not cleared by a reset; `simulate_sc_net` rebuilds them from the node statistics when it next stops.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`, run with `PYTHONPATH=src`; it never resets).
+- `pytest` — 276/276 passing. New `TestStatisticsResetKeepsThePresent` (5 tests: a customer waiting at the reset keeps `backorder` and `position()` unchanged, and `backorder` returns to `[0, 0]`, not below, once they are served; holding cost after `env.run()` and a reset covers only the time since the reset (30, not 80); `inventory_level` equals `inventory.level` straight after a reset; `instantaneous_levels` is empty after a reset and holds only later samples afterwards; an infinite supplier can be reset). The first four fail on the old code; the fifth guards the infinite-inventory case of the new code.
+- Pharma case study: 30 replications of `pharma_experiments.py`'s model ((s, S) = (2000, 5000), (100, 1000), (1200, 2000), NumPy seeds 0 to 9) give identical results before and after. In this model no order is waiting at time 31 (customers take what is there and leave, and the infinite supplier never makes an order wait), and `simulate_sc_net` had already brought the holding cost up to date before each reset. So the notebook and `docs/case_study_pharma.md` need no change.
+
+### 3.25 A manufacturer's raw-material order counts as placed only once the supplier serves it ✅ Resolved
+Found while designing link statistics (§6.8). `Manufacturer.process_order_raw`.
+
+**Original issue.** `InventoryNode.process_order` records the buyer's `demand_placed` and `transportation_cost` when the order is placed. `Manufacturer.process_order_raw` recorded them only after `yield event`, that is once the supplier had the units and served the order. While a raw-material order waited at its supplier, the manufacturer's statistics did not show it as placed, although the supplier already counted it in `demand_received` and `backorder`. Totals at the end of a run differed only for orders still waiting then; the timing mattered for anything read during a run, for a warm-up reset (§3.24), and for the link statistics of §6.8, which copy their buyer's timing.
+
+**Fix applied:** the `update_stats(demand_placed=..., transportation_cost=...)` call moved to just before `inventory.get(...)`, when the order is placed, as in `InventoryNode.process_order`. The user confirmed that `InventoryNode`'s timing is the right one.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`). `sc_with_factory.py` (`profit: 49419.6`, `demand_by_site: [2, 1440]`) and `hybrid_big_sc.py` give output identical to the last commit's code.
+- `pytest` — 277/277 passing. New `TestSupplierRawMaterialBackordersAreLive::test_raw_material_order_recorded_when_placed` (an order that waits at its supplier from day 0.5 to day 2 shows in the manufacturer's `demand_placed` and `transportation_cost` at day 1.5, and is counted once). It fails on the old code.
+
 ---
 
 ## 4. Design / architecture issues
@@ -1102,6 +1150,110 @@ The other vocabulary inconsistency the review flagged (``demand_placed`` / ``dem
 **Why deferred:** the docs site (``mkdocstrings`` per ``mkdocs.yml``) currently renders **both** the class and the ``__init__`` docstrings into the same page. Trimming one without confirming the docs render still reads correctly risks shipping a degraded docs page. The fix is real but mechanical — it touches every public class — and is best done as a single dedicated PR together with a docs-site rebuild check rather than bundled into this review pass. Recorded as item 1 of the "remaining work" notes below.
 
 **Drift-only fix applied:** the obvious drift the review called out (``Product.__init__`` parameter order) is left alone in this pass too — the signature is the source of truth, and reordering the docstring without the broader dedup invites another round of churn when §6.7 lands proper. Recorded as item 2 of the "remaining work" notes.
+
+### 6.8 Link statistics 📝 Designed (2026-10-15), not yet implemented
+Requested by the user. New `LinkStatistics` in `core.py`; recording calls in `InventoryNode.process_order`, `Manufacturer.process_order_raw` and `Link.disruption`; new functions in `utilities.py`. Builds on §3.24 (`reset_stats` below calls `Statistics.reset()` on every node) and §3.25.
+
+**Purpose.** Node statistics say how much a site ordered and received in total, but not from whom. Since §3.23 every site keeps `buyers` as well as `suppliers`, so each link can record the flow between its two ends: how many replenishment orders the buyer placed over it, what it received, how long it waited, what it cost. This shows how orders split across suppliers, and serves as a target for research that studies flows (for example a learned model of the network).
+
+**Where the statistics live.** A new class `LinkStatistics(InfoMixin)`, one per link, stored as `link.stats` (created in `Link.__init__`). Not in the node's `Statistics`, because:
+
+- The numbers belong to a pair of sites, and the link is that pair. Storing them on nodes would mean a dict keyed by buyer on the supplier and a matching dict keyed by supplier on the buyer: the same facts twice.
+- One record serves both ends: a supplier reads its buyers' links (`node.buyers`), a buyer reads its suppliers' links (`node.suppliers`).
+- It follows the node pattern: `link.stats.get_statistics()` mirrors `node.stats.get_statistics()`. `link.get_statistics()` stays as it is (`{"status": ...}`).
+
+Nothing is removed from or changed in `Statistics`. The link values repeat, per link, what the node statistics already record, so the node totals and the link totals can be checked against each other.
+
+**Stored statistics.** Running totals, not lists: no record of each order is kept. Pairs are `[orders, units]`. Where a link statistic means the same as a node statistic it has the same name.
+
+| Statistic | Meaning | Recorded in `InventoryNode.process_order` | Recorded in `Manufacturer.process_order_raw` |
+|---|---|---|---|
+| `demand_placed` `[orders, units]` | Replenishment orders the buyer placed over the link | With the buyer's `demand_placed`, when the order is placed | With the buyer's `demand_placed`, when the order is placed (since §3.25) |
+| `fulfillment_received` `[orders, units]` | Orders that arrived at the buyer: units actually accepted | On arrival, `[1, accepted]` | On arrival, `[1, reorder_quantity]` |
+| `shortage` `[orders, units]` | How many units the supplier was missing when this buyer's order arrived. Running total | With the supplier's `shortage` | With the supplier's `shortage` |
+| `backorder` `[orders, units]` | This buyer's orders waiting at the supplier right now. Live value | With the supplier's `backorder`, +1 when the order has to wait and −1 once served | Same |
+| `waited` `[orders, units]` | Orders that had to wait at the supplier at all. Running total (needed for fill rate, because `backorder` returns to zero) | Where `order_waits` is true | Same |
+| `blocked` `[orders, units]` | Orders not placed because the link or the supplier's site was disrupted | In the `not supplier.can_take_order()` branch | Never: `process_order_raw` has no check (see what is not covered) |
+| `transportation_cost` | Transportation cost of orders over the link | With the buyer's `transportation_cost` | With the buyer's `transportation_cost` |
+| `inventory_spend_cost` | Value of the units the buyer received over the link | On arrival, `accepted × self.buy_price` | On arrival, `reorder_quantity × supplier.source.sell_price` |
+| `waiting_time` | Total time orders waited at the supplier: from `inventory.get(...)` until the request is served, before the lead time starts | On arrival (the placement time is kept in a local variable of the process) | Same |
+| `lead_time` | Total lead time actually drawn | On arrival | On arrival |
+| `disruptions` | Number of disruptions of the link | `Link.disruption`, when the status becomes `"inactive"` | |
+| `disrupted_time` | Time units the link spent disrupted | `Link.disruption`, on recovery | |
+
+`waiting_time` and `lead_time` are recorded on arrival, together with `fulfillment_received`, so their averages divide by a count from the same moment (see reset below).
+
+**Spread of order sizes: two different statistics.** Both are kept with Welford's method (three numbers: count, running mean, running sum of squared differences), so no list of values is kept. Each is a sample standard deviation (divides by n − 1), and is `None` with fewer than two values.
+
+- `order_size_mean`, `order_size_std`: **per order.** Each order's size is one value, recorded together with `demand_placed`.
+- `units_per_time_unit_std`: **per time unit.** The units ordered in each time unit form one value. Time units in which nothing was ordered count as zeros. This needs no process ticking every time unit: one number holds the current time unit's running total, and when the next order comes (or when the statistics are read), the finished time unit and every empty one since are folded in, the empty ones in one step. The time unit still in progress is not included. Reading works on a copy and does not change the stored values. Time units are counted from `start_time` (the start of the run, or the last reset), with a fixed length of 1 time unit for now.
+
+The two can disagree completely, and the docstrings say so with this example. A distributor that orders 60 units at time 3 and 60 units at time 7, and nothing in between, has an `order_size_std` of 0 (every order is the same size) but a large `units_per_time_unit_std` (the orders come in bursts). The **bullwhip effect** (orders becoming more variable as they move up the chain) is measured per time unit: compare a link's `units_per_time_unit_std` with the spread of customer demand per time unit.
+
+**Values worked out when read.** Properties listed in `_stats_keys`, so `get_statistics()` includes them, and nothing has to be finalized after a run. Elapsed time is `env.now − start_time`. A value whose denominator is zero is `None`, not 0 (a fill rate of 0 would look like a very bad link).
+
+| Value | Formula |
+|---|---|
+| `elapsed_time` | `env.now − start_time` |
+| `orders_per_time_unit`, `units_per_time_unit` | `demand_placed / elapsed_time` |
+| `avg_waiting_time` | `waiting_time / fulfillment_received[0]` |
+| `avg_lead_time` | `lead_time / fulfillment_received[0]` |
+| `avg_order_cycle_time` | `avg_waiting_time + avg_lead_time` (from placing the order until it arrives) |
+| `fill_rate` | `1 − waited[1] / demand_placed[1]`: share of units ordered that were served without waiting |
+| `order_fill_rate` | `1 − waited[0] / demand_placed[0]`: the same, by orders |
+| `availability` | `1 − disrupted_time / elapsed_time`, where `disrupted_time` includes a disruption still going on when read |
+
+Left out on purpose: link utilization (links have no capacity, so it is not defined), and the time-weighted average of units in transit (a real statistic, easy to add later).
+
+**Methods.** `update_stats(**kwargs)` adds to the totals, like `Statistics.update_stats`, and warns about an unknown name in the same way (it does not do the node-only work at the end of `Statistics.update_stats`). `record_order(quantity)` updates the two order-size spreads. `disruption_started()` and `disruption_ended()` are called by `Link.disruption`. `reset()` is below.
+
+**Reading and printing (nothing is printed by default).** `simulate_sc_net` does not change, and its results dictionary gets no new keys: `supplychainnet["links"]` (and `Network.links`) already hold every link, and each link carries its `stats`.
+
+- One link: `link.stats.get_statistics()`.
+- Many links, mirroring `get_node_wise_performance` / `format_node_wise_performance` / `print_node_wise_performance`: `get_link_wise_performance(links)` returns one dict per link, `format_link_wise_performance(links)` returns the table as a string (same layout as the node table; each column headed by `link.name`, with the ID added if two names repeat), and `print_link_wise_performance(links)` prints it. An empty list prints the same kind of message as the node version.
+- One site's view, with no new method: `print_link_wise_performance(node.buyers)` (who ordered from this site, and what they got) and `print_link_wise_performance(node.suppliers)` (what this site ordered, and from whom).
+
+**Reset and warm-up.** `link.stats.reset()` follows the rules of §3.24:
+
+- Running totals go to zero: everything in the stored table except `backorder`, plus both order-size spreads.
+- `backorder` is kept: orders waiting at the reset are still waiting afterwards.
+- `start_time` becomes `env.now`, so every average and the per-time-unit count start again from the reset.
+- A disruption going on at the reset counts from the reset onward, and does not add to `disruptions` (it started before).
+- Events are counted when they happen, as in `Statistics`. An order placed before the reset and received after it counts as received but not placed in the new window. The averages stay correct, because each divides by a count recorded at the same moment as its total.
+
+A new `reset_stats(supplychainnet)` resets every node, customer demand and link in one call, with `Network.reset_stats()` as its wrapper. A warm-up becomes `simulate_sc_net(sc, sim_time=31)`, `reset_stats(sc)`, `simulate_sc_net(sc, sim_time=T + 1)`. Existing code that resets nodes one by one keeps working. No `warm_up=` option on `simulate_sc_net`: it would hide where the reset happens.
+
+**What link statistics do not cover.**
+
+- Customers: they do not order over links (`Demand` holds `demand_node` directly), so customer demand is not in any link. Each `Demand`'s own statistics already record it.
+- Orders blocked before a link is chosen: when `place_order` finds no supplier that can take the order, no link was chosen, so the order is not counted on any link. Only orders blocked by the second check in `InventoryNode.process_order` land in `blocked`. Raw-material links never record `blocked`: `Manufacturer.process_order` plans nothing when a raw material has no supplier that can take the order, and `process_order_raw` has no check.
+- Units dropped on arrival: `InventoryNode.process_order` records only the units accepted, at both ends, so a separate "fulfilled by the supplier" figure would equal `fulfillment_received`. A per-link count of dropped units can be added later.
+- A link set to `"inactive"` by hand (as some tests do) rather than by `Link.disruption`: its disrupted time is not counted.
+
+**New public names.** `LinkStatistics` (in `core.__all__`), and `get_link_wise_performance`, `format_link_wise_performance`, `print_link_wise_performance` and `reset_stats` (in `utilities.__all__`), each also added to the import block and `__all__` of `Components/__init__.py`. `Network.reset_stats()` is a method.
+
+**Docs.**
+
+- `docs/glossary.md` first, before any code uses the words: **warm-up**, **waiting time**, **order cycle time**, **fill rate** (and order fill rate), **availability**, **bullwhip effect**.
+- Google-style docstrings in plain language for every new class, method and function; the module pages of the API reference pick them up.
+- `docs/api-reference/api-intro.md`: a short section on reading link statistics, and `LinkStatistics` in the library hierarchy.
+- A new example `examples/py/link_statistics.py` (a buyer with two suppliers), with label-only comments. `intro_simple.py` and its sample output stay as they are.
+
+**Tests.**
+
+1. Nothing else changes. Before writing any code, take every node's `get_statistics()` from a few fixed-seed networks (intro_simple, a buyer with two suppliers, a manufacturer with raw-material suppliers) from the current code and store them as expected values; after the change they must match exactly. `intro_simple.py` still gives `-4435.0`, and the anyLogistix validation figures do not move.
+2. Links add up to nodes, at sites with no customer demands: each site's `demand_placed`, `fulfillment_received`, `transportation_cost` and `inventory_spend_cost` equal the sums over its supplier links. On the supplier side, the sums of `demand_placed` and `shortage` over its buyer links equal its `demand_received` and `shortage`. Checked for both `InventoryNode.process_order` and `Manufacturer.process_order_raw`.
+3. Each statistic in a small network with fixed lead times, so every number can be worked out by hand: a supplier with too little stock (`waited` and `shortage` go up; `backorder` is `[1, q]` during the wait and `[0, 0]` after; `waiting_time` is the exact wait); `lead_time` and `avg_lead_time`; `blocked` (the link disrupted when the order is placed: `blocked` goes up, `demand_placed` and `backorder` do not); `disruptions`, `disrupted_time` and `availability` with fixed disruption and recovery times, including a read during a disruption; `orders_per_time_unit`, `fill_rate` and `order_fill_rate`; `order_size_std` and `units_per_time_unit_std` on a known order sequence, including empty time units and the time unit still in progress.
+4. Reset: totals to zero, `backorder` kept, `start_time` moved, an ongoing disruption counted only from the reset. `reset_stats(sc)` and `Network.reset_stats()` reset every node, customer demand and link.
+5. Reading and printing: `link.stats.get_statistics()` has every key; `get_link_wise_performance` returns one dict per link; `format_link_wise_performance` returns the table; `print_link_wise_performance` works with `node.buyers` and `node.suppliers`, and with an empty list. `link.get_statistics()` still returns only `status`.
+6. The existing test suite passes.
+
+**Settled during review (2026-10-15).**
+
+- `Manufacturer.process_order_raw` recorded the buyer's `demand_placed` and `transportation_cost` only once the supplier had served the order. Fixed first, in §3.25, so both kinds of site record them when the order is placed and every link statistic recorded at placement uses the same moment.
+- Values that are undefined (a denominator of zero) are `None`, decided when the value is read; nothing is stored for them.
+
+**Follow-up.** The probability-based supplier-selection policy gets its own entry (§6.9). It will use these statistics in its tests (share of orders per link).
 
 ---
 

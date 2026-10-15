@@ -2764,7 +2764,7 @@ class TestSupplierRawMaterialBackordersAreLive(unittest.TestCase):
     while it waits for stock, and stops counting once it is sent.
     """
 
-    def _supplier_and_factory(self, env):
+    def _supplier_and_factory(self, env, cost=0):
         # The supplier starts empty and extracts 10 units a day, the first
         # 10 on day 0. The factory has no reorder rule, so the test places
         # the order itself.
@@ -2777,8 +2777,24 @@ class TestSupplierRawMaterialBackordersAreLive(unittest.TestCase):
         m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=0,
                               inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
                               product_sell_price=5, product=product)
-        link = scm.Link(env=env, ID="L1", source=s1, sink=m1, cost=0, lead_time=lambda: 1)
+        link = scm.Link(env=env, ID="L1", source=s1, sink=m1, cost=cost, lead_time=lambda: 1)
         return s1, m1, link
+
+    def test_raw_material_order_recorded_when_placed(self):
+        # The factory's order is counted as placed (with its transportation
+        # cost) when it is placed on day 0.5, as for every other site, not
+        # only once the supplier has the units on day 2.
+        env = simpy.Environment()
+        s1, m1, link = self._supplier_and_factory(env, cost=4)
+        env.run(until=0.5)
+        env.process(m1.process_order_raw("RM1", link, 30))
+        env.run(until=1.5)
+        assert s1.stats.backorder == [1, 30]   # still waiting at the supplier
+        assert m1.stats.demand_placed == [1, 30]
+        assert m1.stats.transportation_cost == 4
+        env.run(until=5)
+        assert m1.stats.demand_placed == [1, 30]   # counted once
+        assert m1.stats.transportation_cost == 4
 
     def test_backorder_cleared_once_the_raw_material_is_sent(self):
         # On day 0.5 the factory orders 30 while the supplier holds 10. The
@@ -3654,3 +3670,90 @@ class TestSetupWarnings(unittest.TestCase):
         scm.Link(env=env, ID="LF", source=s_flour, sink=m1, cost=0, lead_time=lambda: 1)
         with pytest.warns(UserWarning, match="Manufacturer M1 .* fewer suppliers"):
             env.run(until=1)
+
+
+class TestStatisticsResetKeepsThePresent(unittest.TestCase):
+    """``Statistics.reset()`` starts the counting again (for a warm-up) without
+    changing values that describe the present (§3.24).
+
+    A warm-up runs for a while, resets the statistics and carries on. The
+    simulation itself carries on unchanged, so orders still waiting must stay
+    counted as backorders, the holding cost must start from the reset, and the
+    inventory level must still be read correctly.
+    """
+
+    def _site(self, env, initial_level=0, holding_cost=0, **kwargs):
+        # A site with no replenishment policy: units arrive only when the test adds them.
+        return scm.InventoryNode(
+            env=env, ID="W1", name="W1", node_type="warehouse",
+            capacity=float("inf"), initial_level=initial_level,
+            inventory_holding_cost=holding_cost, replenishment_policy=None, policy_param={},
+            product_buy_price=1, product_sell_price=2, **kwargs,
+        )
+
+    def _deliver(self, env, site, day, qty):
+        yield env.timeout(day)
+        site.inventory.put(qty)
+
+    def test_waiting_customer_stays_a_backorder_through_a_reset(self):
+        # A customer orders 10 at a site with no units and waits. The reset at
+        # day 1 must not forget them: the backorder and the inventory position
+        # stay as they were, and serving the customer at day 2 brings the
+        # backorder back to [0, 0], not below.
+        env = simpy.Environment()
+        w1 = self._site(env)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10,
+                   tolerance=100)
+        env.process(self._deliver(env, w1, 2, 10))
+        env.run(until=1)
+        position_before = w1.position()
+        w1.stats.reset()
+        assert w1.stats.backorder == [1, 10]
+        assert w1.position() == position_before
+        env.run(until=3)
+        assert w1.stats.backorder == [0, 0]
+
+    def test_holding_cost_after_a_reset_covers_only_the_time_since(self):
+        # 10 units held at a cost of 1 per unit per time unit. The run stops at
+        # day 5 with env.run (not simulate_sc_net), so the holding cost was
+        # last brought up to date at day 0. After the reset, days 5 to 8 cost 30.
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=10, holding_cost=1)
+        env.run(until=5)
+        w1.stats.reset()
+        env.run(until=8)
+        w1.stats.update_stats()
+        assert w1.stats.inventory_carry_cost == 30
+
+    def test_inventory_level_is_read_again_on_reset(self):
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=10)
+        env.run(until=1)
+        w1.stats.reset()
+        assert w1.stats.inventory_level == 10
+
+    def test_recorded_inventory_levels_start_again_after_a_reset(self):
+        # The once-per-time-unit record of the inventory level must not keep
+        # samples from before the reset, or averages built from it would
+        # include the warm-up.
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=10, record_inv_levels=True)
+        env.run(until=5)
+        assert len(w1.inventory.instantaneous_levels) > 0
+        w1.stats.reset()
+        assert w1.inventory.instantaneous_levels == []
+        env.run(until=8)
+        assert w1.inventory.instantaneous_levels
+        assert all(t >= 5 for t, _ in w1.inventory.instantaneous_levels)
+
+    def test_infinite_supplier_can_be_reset(self):
+        # An infinite supplier's inventory level is infinite, so its holding
+        # cost is never worked out; a reset must not try either.
+        env = simpy.Environment()
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        env.run(until=5)
+        s1.stats.reset()
+        s1.stats.update_stats()
+        assert s1.stats.inventory_carry_cost == 0
+        assert s1.stats.node_cost == 0

@@ -130,4 +130,5 @@ A few names in the code use a different word from the one chosen here (for examp
 | Term | Meaning | In the code |
 |---|---|---|
 | **Time unit** | SupplyNetPy has no fixed unit of time. All times (lead times, shelf lives, run length) use the same unit; the examples usually read one time unit as one day. | `sim_time`, `env.now` |
+| **Warm-up** | An opening stretch of a run that is left out of the statistics, because a run starts in an unusual state (nothing in transit, no orders waiting). Run for the warm-up period, reset the statistics, and carry on running. The simulation carries on unchanged. Only the counting starts again. | `stats.reset()` |
 | **Event-driven** | How SupplyNetPy moves through time: it jumps from one event (an order, a delivery, an expiry) straight to the next, using SimPy. It does not step through time in fixed steps. | |
