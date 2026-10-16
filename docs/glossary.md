@@ -81,6 +81,7 @@ A few names in the code use a different word from the one chosen here (for examp
 | **Dropped units** | Units of a delivery that did not fit in the inventory of the site that ordered them, when no waiting customer could take them either. The site does not pay for them, and they are not stored. | `stats.dropped_qty` |
 | **Tolerance** | How long a customer is willing to wait for units that are not there. A customer with no tolerance leaves at once. | `tolerance` |
 | **Partial delivery** | Sending a customer part of an order now and the rest later. | `order_min_split_ratio` |
+| **Deadlock** | Two parts of a model each waiting for the other, so neither ever moves again. For example, a buyer waits for an order larger than its supplier's capacity, and the supplier can never hold enough units to send it. SupplyNetPy warns about this when the link between them is created. | |
 
 ---
 

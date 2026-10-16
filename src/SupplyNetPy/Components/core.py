@@ -2128,6 +2128,21 @@ class Node(NamedEntity, InfoMixin):
                 for link in self.buyers:
                     link.sink.wake_replenishment()
 
+    def _warn_if_supplier_cannot_hold(self, supplier, quantity):
+        # A supplier fills a replenishment order only when it holds the whole
+        # order at once (one shipment). An order larger than the supplier's
+        # capacity can therefore never be filled: it waits at the supplier for
+        # ever. The order is still placed as before; this only says so. (Other
+        # ways of filling such an order, in parts or by sending what is there,
+        # are planned; see REVIEW.md §3.27.) The warning text leaves out the
+        # sites, so Python shows it once; the log line names them.
+        capacity = supplier.source.inventory.capacity
+        if quantity > capacity:
+            self.logger.warning(f"{self.env.now:.4f}:{self.ID}: replenishment order of {quantity} units to "
+                                f"{supplier.source.ID} is larger than its capacity ({capacity}), so it can never be filled.")
+            warnings.warn("A replenishment order is larger than its supplier's capacity, so it can never be "
+                          "filled and its buyer will wait for it for ever.", UserWarning, stacklevel=2)
+
     def _record_disruption_start(self):
         # Count the disruption in the node's statistics. Every library node
         # has statistics; a bare Node built directly (as in some tests) may not.
@@ -2481,9 +2496,51 @@ class Link(NamedEntity, InfoMixin):
         # works for any valid sink.
         self.sink.add_supplier_link(self)
         self.source.add_buyer_link(self)
+        self._warn_if_buyer_can_order_more_than_supplier_holds()
         if(self.link_failure_p>0 or self.link_disrupt_time): # start the disruption process if the link can be disrupted
             self.env.process(self.disruption())
     
+    def _warn_if_buyer_can_order_more_than_supplier_holds(self):
+        # A supplier sends a replenishment order only when it has all of it, so
+        # an order larger than the supplier's capacity can never be filled.
+        # Capacities are fixed when the sites are created, so such a pair can
+        # be found here, when the link joins them, before anything runs. The
+        # most a buyer orders is about its own capacity; a manufacturer orders
+        # raw material, so its capacity is multiplied by the quantity of this
+        # raw material per product unit. (A buyer that owes backorders can
+        # order a little more than its capacity; Node._warn_if_supplier_cannot_hold
+        # catches those orders when they are placed.) The warning names both
+        # sites, so the user sees each pair.
+        supplier_inventory = getattr(self.source, "inventory", None)
+        buyer_inventory = getattr(self.sink, "inventory", None)
+        if supplier_inventory is None or buyer_inventory is None:
+            return
+        supplier_capacity = supplier_inventory.capacity
+        buyer_max = buyer_inventory.capacity
+        per_unit = ""
+        raw_material = getattr(self.source, "raw_material", None)
+        product = getattr(self.sink, "product", None)
+        if raw_material is not None and product is not None and getattr(product, "raw_materials", None):
+            for raw_mat, quantity_per_unit in product.raw_materials:
+                if raw_mat.ID == raw_material.ID:
+                    buyer_max = buyer_max * quantity_per_unit
+                    per_unit = f", {quantity_per_unit} units of {raw_material.ID} per product unit"
+                    break
+        if buyer_max <= supplier_capacity:
+            return
+        if buyer_max == float("inf"):
+            can_order = "has no capacity limit, so it can order any amount"
+        else:
+            can_order = f"can order up to {buyer_max} units (its capacity{per_unit})"
+        message = (f"Supplier {self.source.ID} can hold at most {supplier_capacity} units, but its buyer {self.sink.ID} "
+                   f"{can_order}. A supplier sends an order only when it has all of it, so an order larger than "
+                   f"{supplier_capacity} units can never be filled: {self.sink.ID} would wait for it for ever, and "
+                   f"{self.source.ID} would never have enough to send it (a deadlock). Give {self.source.ID} a larger "
+                   f"capacity, or keep {self.sink.ID}'s orders within it. A planned feature will let a buyer receive "
+                   f"such an order in smaller parts, or take only what the supplier has.")
+        global_logger.warning(message)
+        warnings.warn(message, UserWarning, stacklevel=3)
+
     def disruption(self):
         """
         Disrupts the link (its status becomes "inactive") and recovers it after the recovery time, for the whole
@@ -3587,6 +3644,7 @@ class InventoryNode(Node):
         supplier.source.stats.update_stats(demand_received=[1,reorder_quantity])
 
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
+        self._warn_if_supplier_cannot_hold(supplier, reorder_quantity)
         event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
         self.inventory.on_hand += reorder_quantity
 
@@ -4052,6 +4110,7 @@ class Manufacturer(Node):
         # The order counts as placed now, when it is placed, as in
         # InventoryNode.process_order, even if the supplier makes it wait.
         self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
+        self._warn_if_supplier_cannot_hold(supplier, reorder_quantity)
         event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
         supplier.source.stats.update_stats(demand_received=[1,reorder_quantity]) # update the supplier statistics for demand received
         # The supplier owes this order only while it waits for units: count

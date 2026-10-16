@@ -622,6 +622,37 @@ Found while listing missing node statistics. `Demand.customer`, `Statistics`.
 - Pharma case study: the same 30 replications as in §3.24 give identical results (only the raw-material supplier is disrupted, and it has no customers). Milk case study: only distributors are disrupted, and they have no customer demands (user, 2026-10-16), so no change.
 - `pytest` — 282/282 passing. New `TestCustomersCannotOrderFromADisruptedSite` (5 tests: a customer at a disrupted site is a lost sale and nothing else is recorded; customers are served again after recovery; a customer already waiting is still served; customers with no tolerance, with a tolerance, and taking what is there are all turned away; the statistic is reported and reset). Four fail on the old code; the waiting-customer test guards the "only new orders" rule.
 
+### 3.27 A replenishment order larger than its supplier's capacity waits for ever ⏸️ Deferred (user, 2026-10-16)
+Found while verifying §6.9. `InventoryNode.process_order`, `Manufacturer.process_order_raw`, `Inventory.get`.
+
+**The issue.** A supplier fills a replenishment order only when it holds the whole order at once ("ship complete"): the order waits in the supplier's queue of requests until the inventory level reaches it. An order larger than the supplier's capacity can never be filled, so it waits for ever, and nothing says so (no warning, no log line). The buyer's inventory position already counts the units, so its replenishment policy may never order again. Example from the §6.9 test network: a manufacturer planned 146 units of a product that needs 2 units of raw material each, and ordered 292 units from a raw-material supplier that holds at most 200. The manufacturer never produced again.
+
+It happens whenever a buyer can order more than its supplier can hold: a distributor with capacity 100 selling to a retailer with capacity 200, a raw-material supplier with capacity 200 selling to a factory with capacity 500, or an (s, S) policy that adds a large backorder to its order. For a manufacturer, "supplier capacity ≥ buyer capacity" is not enough, because raw material is ordered in raw-material units: units planned × quantity per product unit.
+
+**How real supply chains handle it.** Supplier and buyer agree on a rule for filling orders:
+
+1. **Ship complete:** wait until the whole order is there and send it in one shipment (what SupplyNetPy does today).
+2. **Partial shipments, rest backordered:** send what is there now (often only above a minimum amount) and send the rest as units arrive. The customer equivalent is `order_min_split_ratio`.
+3. **Ship what is there, cancel the rest** ("fill or kill"): the buyer gets what the supplier has and orders again from its new inventory position. The customer equivalent is `consume_available` (for customers the rest is a lost sale; for a site it is re-ordered).
+
+**Decided so far (user, 2026-10-16):** support both rule 2 and rule 3 for replenishment orders, and keep rule 1 as the default, so every existing result stays the same.
+
+**Open questions for when this is picked up:**
+
+- Where the setting lives: on the buyer (like `Demand`), on the supplier, or on the link. A fill rule is usually agreed per supplier and buyer pair, which points to the link; the link statistics (§6.8) could then count shipments per order.
+- Whether each partial shipment pays the link's transportation cost again and draws its own lead time (real shipments do, which makes splitting a cost trade-off).
+- What the default rule does with an order larger than the supplier's capacity, which ship complete can never fill. Suggested: ship it in parts and log that it was split, so a model never waits for ever without saying so.
+- Bookkeeping when one order becomes several shipments: the inventory position, the supplier's `backorder`, the queue of waiting requests that `position()` reads (`waiting_site_orders()`), perishable batches, `pending_orders`, and counting `demand_fulfilled` once per order (as for customer partial deliveries). A change of about the size of §3.21.
+
+**Warnings added meanwhile (user, 2026-10-16).** Two warnings make the assumption below visible; neither changes any result.
+
+- **When a link is created** (`Link._warn_if_buyer_can_order_more_than_supplier_holds`, called from `Link.__init__`, so both construction styles get it). Capacities are fixed when the sites are created, so a pair whose buyer can order more than its supplier can hold can be found before anything runs. The most a buyer orders is taken as its capacity; for a manufacturer, its capacity × the quantity of that raw material per product unit. A buyer with no capacity limit counts as able to order any amount. The warning names both sites (one warning per pair, on purpose, so the user sees every pair), explains the deadlock (the buyer waits for the order for ever, and the supplier can never hold enough to send it), says how to fix the model, and mentions the planned feature. It is also written to the log.
+- **When such an order is placed** (`Node._warn_if_supplier_cannot_hold`, from `InventoryNode.process_order` and `Manufacturer.process_order_raw`), with a short text without the sites (Python shows it once) and a log line naming the site, the supplier and the quantity. It stays, because a buyer that owes backorders can order a little more than its own capacity, which the link check cannot foresee.
+
+Tests: `TestLinkWarnsWhenBuyerCanOrderMoreThanSupplierHolds` (4: a larger buyer, a buyer with no capacity limit, a manufacturer counted per product unit, and pairs that fit, including an infinite supplier, do not warn) and `TestOrderLargerThanSupplierCapacityWarns` (3). The three tests of `TestLimitedSupplierKeepsMining` use buyers with no capacity limit on purpose and ignore the link warning. `pytest` 312/312, also with `-W error::UserWarning`. Among the examples, only `hybrid_big_sc.py` warns (its raw-material supplier `bakery` holds 500, and `dist1` and `dist2` have no capacity limit; the orders it places fit, so its results do not change). The pharma model and the seven §6.9 comparison networks give unchanged results; only the manufacturer network warns.
+
+**Assumption until then:** models are built so that no buyer orders more than its supplier can hold: each supplier's capacity is at least what any of its buyers can order (for a manufacturer, its capacity × the quantity of that raw material per product unit). Revisit after the planned work (§6.8 link statistics, §6.10 probability-based supplier selection).
+
 ---
 
 ## 4. Design / architecture issues
@@ -1353,7 +1384,24 @@ Everything a site lost is `lost_sales + disruption_lost_sales` (§3.26). A suppl
 - Nothing else changes: every existing statistic of every node and customer demand is identical before and after in seven networks (intro_simple; five seeds of a network with random node and link disruptions, two suppliers, waiting customers with partial deliveries, customers who take what is there, and customers with no tolerance; a manufacturer with a limited raw-material supplier). The 30 pharma replications of §3.24 are identical. `intro_simple.py`, `sc_with_factory.py` and `hybrid_big_sc.py` print the same output apart from the new statistics (and the environment's memory address).
 - `examples/py/intro_simple.py` still gives `profit: -4435.0`; its two pasted samples (the `get_statistics()` output shown in `docs/ten_min.md`, and the run log) were updated, and the first was checked against a real run. In it, `inventory_level_time` is 2050 and the holding cost 410.0 = 0.2 × 2050, as expected.
 
-**Found while verifying (not changed here).** In the manufacturer test network, a raw-material order larger than the raw-material supplier's capacity (292 units ordered from a supplier that holds at most 200) waits at the supplier for ever, so the manufacturer never produces again. The same happens with the old code. Customers have a guard for this case (`_discard_unservable`); replenishment orders do not. To be discussed as its own item.
+**Found while verifying (not changed here).** In the manufacturer test network, a raw-material order larger than the raw-material supplier's capacity (292 units ordered from a supplier that holds at most 200) waits at the supplier for ever, so the manufacturer never produces again. The same happens with the old code. Customers have a guard for this case (`_discard_unservable`); replenishment orders do not. Recorded as §3.27 (deferred).
+
+### 6.11 Check that the whole network is valid ⏸️ Planned (user, 2026-10-16)
+To be discussed and designed after §6.8 (link statistics) and §6.10 (probability-based supplier selection).
+
+**The idea.** Each class already checks its own settings when it is created (`Node`, `Link`, the replenishment and supplier-selection policies, `Demand`), but nothing checks the network as a whole once the user has given its nodes and links. A whole-network check would look at things no single class can see:
+
+- **Every node is connected:** each site can order from someone (or is a raw-material supplier) and supplies someone (or serves customers); each customer demand is attached to a site that can be replenished; no site is left on its own.
+- **Valid settings, together:** replenishment and supplier-selection policies and their parameters, and combinations that only make sense together (for example a manufacturer with a raw-material supplier for every raw material, or capacities along each link as in §3.27).
+- **Units flow towards the customers:** no cycle such as distributor D1 ordering from D2 while D2 orders from D1, and from every raw-material supplier the units can reach some customer.
+
+**Assessment (2026-10-16): a good idea.** Mistakes are found before a long run, in one report that lists every problem rather than the first one met, and checks that need the whole network (cycles, whether units can reach customers) cannot be done by any single class.
+
+**Questions for the design:**
+
+- When it runs (in `create_sc_net`, at the start of `simulate_sc_net`, or as `Network.validate()` that users can also call), and which problems are errors that stop the run and which are warnings.
+- Cycles: `docs/known-issues.md` says the library does not check for loops and gives the example of two distributors linked to each other to cover shortages. Moving units sideways between sites at the same level (lateral transshipment) is a real practice, so the check may need to tell such links apart from cycles that keep units from ever reaching a customer.
+- Whether the existing checks spread over the classes, and the §3.27 capacity warning, move into it, and how direct instantiation (no `create_sc_net`) gets the same checks.
 
 ---
 
@@ -1402,6 +1450,8 @@ The three items below were considered in this review pass and deferred with expl
 2. **§5.5 numpy/pandas aggregation.** Would double install size to optimise an aggregation that doesn't bite at current network sizes (<20 nodes). ``Network.results`` and ``get_node_wise_performance`` already hand callers a clean dict / list-of-dicts they can feed to ``pandas.DataFrame.from_records`` themselves. Revisit with a benchmark on a 500+ node network.
 3. **§8 ``validation/`` data files.** Moving them affects the validation paper's reproduction instructions; out of scope for a code-review pass.
 4. **§6.6 demand-vocabulary unification (``demand_placed`` / ``demand_by_customers`` / ``demand_by_site``).** The three names are different *concepts* (per-node placed orders, network-level customer aggregate, network-level site aggregate), so a rename without merging the underlying meanings would be cosmetic. Keep as-is until the meanings are consolidated.
+5. **§3.27 replenishment orders larger than the supplier's capacity.** Ship complete stays the default; partial shipments and "ship what is there, cancel the rest" are to be added after §6.8 and §6.10. Until then, models assume each supplier can hold what its buyers order.
+6. **§6.11 check that the whole network is valid** (connections, settings, units flowing towards customers, no cycles). To be designed after §6.8 and §6.10.
 
 ---
 

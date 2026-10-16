@@ -2506,6 +2506,10 @@ class TestFactoryKeepsProducing(unittest.TestCase):
         assert m1.raw_inventory_counts["rm1"] < 5   # no raw material left sitting unused
 
 
+# The buyers here have no capacity limit, on purpose, so creating their links
+# warns that they could order more than the supplier holds (§3.27). The
+# orders these tests place all fit the supplier.
+@pytest.mark.filterwarnings("ignore:Supplier S1 can hold at most")
 class TestLimitedSupplierKeepsMining(unittest.TestCase):
     """A supplier with a limited shelf mines again as soon as a buyer takes stock.
 
@@ -4194,3 +4198,116 @@ class TestBlockedMeansDisruptedSuppliers(unittest.TestCase):
         s1.node_status = "inactive"
         assert w1.has_suppliers()       # a disrupted supplier is still a supplier
         assert not m1.has_suppliers()   # no supplier sells sugar
+
+
+class TestOrderLargerThanSupplierCapacityWarns(unittest.TestCase):
+    """A supplier fills a replenishment order only when it holds the whole
+    order, so an order larger than the supplier's capacity can never be filled
+    (§3.27). Until other ways of filling an order are added, the user is warned.
+    The order itself is placed as before."""
+
+    def _warehouse(self, env, ID, capacity, initial_level):
+        return scm.InventoryNode(env=env, ID=ID, name=ID, node_type="warehouse", capacity=capacity,
+                                 initial_level=initial_level, inventory_holding_cost=0,
+                                 replenishment_policy=None, policy_param={},
+                                 product_buy_price=1, product_sell_price=2)
+
+    def test_site_order_larger_than_supplier_capacity_warns(self):
+        env = simpy.Environment()
+        w0 = self._warehouse(env, "W0", capacity=100, initial_level=100)
+        w1 = self._warehouse(env, "W1", capacity=float("inf"), initial_level=0)
+        with pytest.warns(UserWarning, match="Supplier W0 can hold at most"):
+            link = scm.Link(env=env, ID="L1", source=w0, sink=w1, cost=0, lead_time=lambda: 1)
+        env.process(w1.process_order(link, 150))
+        with pytest.warns(UserWarning, match="larger than its supplier's capacity"):
+            env.run(until=1)
+        assert w1.stats.demand_placed == [1, 150]   # placed as before
+        assert w0.stats.backorder == [1, 150]       # and waiting
+
+    def test_raw_material_order_larger_than_supplier_capacity_warns(self):
+        env = simpy.Environment()
+        rawmat = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=10, extraction_time=1,
+                                 mining_cost=0, cost=1)
+        product = scm.Product(ID="P1", name="P1", manufacturing_cost=1, manufacturing_time=1,
+                              raw_materials=[(rawmat, 1)], sell_price=5, buy_price=0, batch_size=100)
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier", capacity=20,
+                          initial_level=0, inventory_holding_cost=0, raw_material=rawmat)
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
+                              product_sell_price=5, product=product)
+        with pytest.warns(UserWarning, match="Supplier S1 can hold at most"):
+            link = scm.Link(env=env, ID="L1", source=s1, sink=m1, cost=0, lead_time=lambda: 1)
+        env.process(m1.process_order_raw("RM1", link, 30))
+        with pytest.warns(UserWarning, match="larger than its supplier's capacity"):
+            env.run(until=1)
+
+    def test_order_that_fits_the_supplier_does_not_warn(self):
+        import warnings
+        env = simpy.Environment()
+        w0 = self._warehouse(env, "W0", capacity=100, initial_level=0)
+        w1 = self._warehouse(env, "W1", capacity=100, initial_level=0)
+        link = scm.Link(env=env, ID="L1", source=w0, sink=w1, cost=0, lead_time=lambda: 1)
+        env.process(w1.process_order(link, 100))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            env.run(until=1)
+
+
+class TestLinkWarnsWhenBuyerCanOrderMoreThanSupplierHolds(unittest.TestCase):
+    """When a link is created, the user is warned if its buyer can order more
+    than its supplier can ever hold: such an order would never be filled, and
+    the buyer would wait for it for ever (§3.27)."""
+
+    def _warehouse(self, env, ID, capacity):
+        return scm.InventoryNode(env=env, ID=ID, name=ID, node_type="warehouse", capacity=capacity,
+                                 initial_level=0, inventory_holding_cost=0, replenishment_policy=None,
+                                 policy_param={}, product_buy_price=1, product_sell_price=2)
+
+    def _factory(self, env, supplier_capacity, factory_capacity, quantity_per_unit):
+        rawmat = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=10, extraction_time=1,
+                                 mining_cost=0, cost=1)
+        product = scm.Product(ID="P1", name="P1", manufacturing_cost=1, manufacturing_time=1,
+                              raw_materials=[(rawmat, quantity_per_unit)], sell_price=5, buy_price=0,
+                              batch_size=100)
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier", capacity=supplier_capacity,
+                          initial_level=0, inventory_holding_cost=0, raw_material=rawmat)
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=factory_capacity, initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
+                              product_sell_price=5, product=product)
+        return s1, m1
+
+    def test_buyer_with_a_larger_capacity_is_warned_about(self):
+        env = simpy.Environment()
+        d1 = self._warehouse(env, "D1", capacity=100)
+        r1 = self._warehouse(env, "R1", capacity=200)
+        with pytest.warns(UserWarning, match=r"D1 .* R1 .* for ever"):
+            scm.Link(env=env, ID="L1", source=d1, sink=r1, cost=0, lead_time=lambda: 1)
+
+    def test_buyer_with_no_capacity_limit_is_warned_about(self):
+        env = simpy.Environment()
+        d1 = self._warehouse(env, "D1", capacity=100)
+        r1 = self._warehouse(env, "R1", capacity=float("inf"))
+        with pytest.warns(UserWarning, match="R1"):
+            scm.Link(env=env, ID="L1", source=d1, sink=r1, cost=0, lead_time=lambda: 1)
+
+    def test_manufacturer_counts_raw_material_per_product_unit(self):
+        # 150 product units at 2 units of raw material each: up to 300 units
+        # of raw material, more than the supplier's 200.
+        env = simpy.Environment()
+        s1, m1 = self._factory(env, supplier_capacity=200, factory_capacity=150, quantity_per_unit=2)
+        with pytest.warns(UserWarning, match="M1"):
+            scm.Link(env=env, ID="L1", source=s1, sink=m1, cost=0, lead_time=lambda: 1)
+
+    def test_no_warning_when_the_supplier_can_hold_what_the_buyer_orders(self):
+        import warnings
+        env = simpy.Environment()
+        d1 = self._warehouse(env, "D1", capacity=200)
+        r1 = self._warehouse(env, "R1", capacity=200)
+        s1, m1 = self._factory(env, supplier_capacity=200, factory_capacity=150, quantity_per_unit=1)
+        infinite = scm.Supplier(env=env, ID="S0", name="S0", node_type="infinite_supplier")
+        r2 = self._warehouse(env, "R2", capacity=float("inf"))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            scm.Link(env=env, ID="L1", source=d1, sink=r1, cost=0, lead_time=lambda: 1)
+            scm.Link(env=env, ID="L2", source=s1, sink=m1, cost=0, lead_time=lambda: 1)
+            scm.Link(env=env, ID="L3", source=infinite, sink=r2, cost=0, lead_time=lambda: 1)
