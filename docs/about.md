@@ -30,7 +30,7 @@ It is built on [SimPy](https://simpy.readthedocs.io/), a Python framework for **
     * **(R, Q).** When the inventory position falls to *R* or below, order a fixed *Q* units.
     * **Periodic (T, Q).** Every *T* time units, order *Q* units, whatever the inventory position.
     * **Periodic (T, Q) with safety stock.** The same rule, and if the inventory level is below the safety stock, the order also includes the units needed to bring it back up.
-* **Supplier selection.** A site with several suppliers chooses one for each replenishment order with a *supplier-selection policy*. The built in policies choose the first supplier, the first that can fill the whole order, the cheapest or the fastest, and you can write your own. In fixed mode the site keeps its first choice, and in dynamic mode it chooses again for every order. See [Supplier Selection](guide/supplier-selection.md).
+* **Supplier selection.** A site with several suppliers chooses one for each replenishment order with a *supplier-selection policy*. The built in policies choose the first supplier, the first that can fill the whole order, the cheapest or the fastest, or choose at random with a probability for each supplier, and you can write your own. In fixed mode the site keeps its first choice, and in dynamic mode it chooses again for every order. See [Supplier Selection](guide/supplier-selection.md).
 * **Lead times and costs.** Each link has its own lead time, fixed or random, and its own transportation cost.
 * **Perishable products.** Units can have a shelf life. Each batch keeps its manufacturing date from site to site, orders take the oldest units first, and expired units are thrown away and counted. See [Perishable Products](guide/perishable-products.md).
 * **Disruptions.** Both sites and links can be disrupted, either at scheduled times or at random with a given probability. While a site is disrupted it takes no new orders, from other sites or from customers, and the customers it turns away are counted apart from its shortage. The `disruption_impact` setting describes what happens to the units at a site when a disruption starts.
@@ -63,6 +63,7 @@ SupplyNetPy provides these core components for supply chain modeling. The [API R
     * **SelectAvailable.** Chooses the first supplier whose inventory level can fill the whole order.
     * **SelectCheapest.** Chooses the supplier with the lowest transportation cost.
     * **SelectFastest.** Chooses the supplier with the shortest lead time.
+    * **SelectProbabilistic.** Chooses the supplier of each order at random, with a probability for each supplier.
 * **Statistics and LinkStatistics.** The statistics of each node and of each link.
 * **Network and the utility functions.** `create_sc_net` builds a network, `simulate_sc_net` runs it and works out the results for the whole network, `reset_stats` starts the statistics again after a warm-up, and further functions print, return or draw the results. The `Network` class holds a network and its results.
 

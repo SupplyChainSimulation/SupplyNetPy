@@ -1402,7 +1402,7 @@ Everything a site lost is `lost_sales + disruption_lost_sales` (§3.26). A suppl
 
 **Found while verifying (not changed here).** In the manufacturer test network, a raw-material order larger than the raw-material supplier's capacity (292 units ordered from a supplier that holds at most 200) waits at the supplier for ever, so the manufacturer never produces again. The same happens with the old code. Customers have a guard for this case (`_discard_unservable`); replenishment orders do not. Recorded as §3.27 (deferred).
 
-### 6.10 Probability-based supplier selection ⏸️ Designed (user, 2026-10-16)
+### 6.10 Probability-based supplier selection ✅ Resolved (designed and implemented 2026-10-16)
 Requested by the user. A new supplier-selection policy, `SelectProbabilistic`, in `core.py`, with small changes to `SupplierSelectionPolicy`, `InventoryNode`, `Manufacturer` and `create_sc_net`. Builds on §6.8 (the link statistics show how the orders really split).
 
 **Purpose.** The built in policies always choose a supplier by a fixed rule (the first, the first that can fill the order, the cheapest, the fastest). Many buyers in reality split their orders among suppliers in set shares, for example half to one distributor and the rest to two others. This policy chooses the supplier of each replenishment order at random, with a probability for each supplier. It is a general feature of the library. Its first user is the GNN optimization study (`GNN-optimization/STUDY_LOG.md`, Stage 1), where the probabilities are inputs that a gradient-based optimizer adjusts, so the expected results must change smoothly with them and runs must be repeatable with common random numbers. The study's simulations have no disruptions.
@@ -1479,6 +1479,8 @@ The docs must say plainly that the probabilities are the shares while every supp
 
 **Left to the builder.** Names of helper methods, the tolerance, log and error texts, where in `core.py` the class goes (after `SelectFastest`), and the exact text of the docs.
 
+**Implemented as designed.** Details settled in the code: the site builds its policy through `Node._make_selection_policy(policy, mode, params)`; the base class's link check is `check_links()`, and `create_sc_net` calls it only when the policy has it (for custom policies that do not derive from `SupplierSelectionPolicy`); the tolerance on the sum is 1e-6; with neither `seed` nor `rng`, the seed is `node.rng.getrandbits(64)`; a policy without settings words its warning "It takes no parameters."; `rng` must be a `random.Random`; the probabilities are copied, so later changes to the user's dict have no effect. The Supplier Selection guide has a new section "Choosing suppliers at random", with the 40% example checked by simulation (D1 got 30.2% of the orders sent with `"rescale"`, 37.6% with `"block"`).
+
 ### 6.11 Check that the whole network is valid ⏸️ Planned (user, 2026-10-16)
 To be discussed and designed after §6.8 (link statistics) and §6.10 (probability-based supplier selection).
 
@@ -1545,8 +1547,8 @@ The three items below were considered in this review pass and deferred with expl
 2. **§5.5 numpy/pandas aggregation.** Would double install size to optimise an aggregation that doesn't bite at current network sizes (<20 nodes). ``Network.results`` and ``get_node_wise_performance`` already hand callers a clean dict / list-of-dicts they can feed to ``pandas.DataFrame.from_records`` themselves. Revisit with a benchmark on a 500+ node network.
 3. **§8 ``validation/`` data files.** Moving them affects the validation paper's reproduction instructions; out of scope for a code-review pass.
 4. **§6.6 demand-vocabulary unification (``demand_placed`` / ``demand_by_customers`` / ``demand_by_site``).** The three names are different *concepts* (per-node placed orders, network-level customer aggregate, network-level site aggregate), so a rename without merging the underlying meanings would be cosmetic. Keep as-is until the meanings are consolidated.
-5. **§3.27 replenishment orders larger than the supplier's capacity.** Ship complete stays the default; partial shipments and "ship what is there, cancel the rest" are to be added after §6.10 (§6.8 is done). Until then, models assume each supplier can hold what its buyers order.
-6. **§6.11 check that the whole network is valid** (connections, settings, units flowing towards customers, no cycles). To be designed after §6.10 (§6.8 is done). Calling each `Demand` function only once at creation is deferred to the same work, because it shifts the random numbers of seeded examples (see §6.11).
+5. **§3.27 replenishment orders larger than the supplier's capacity.** Ship complete stays the default; partial shipments and "ship what is there, cancel the rest" are to be added next (§6.8 and §6.10 are done). Until then, models assume each supplier can hold what its buyers order.
+6. **§6.11 check that the whole network is valid** (connections, settings, units flowing towards customers, no cycles). To be designed after §3.27 (§6.8 and §6.10 are done). Calling each `Demand` function only once at creation is deferred to the same work, because it shifts the random numbers of seeded examples (see §6.11).
 
 ---
 

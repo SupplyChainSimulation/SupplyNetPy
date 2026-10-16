@@ -7,6 +7,32 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
+## Unreleased
+
+* **[NEW]** `SelectProbabilistic`, a supplier-selection policy that chooses
+  the supplier of each replenishment order at random, with a probability for
+  each supplier. The probabilities are given in the new site setting
+  `supplier_selection_param`, keyed by supplier ID, and must sum to 1. When a
+  supplier is disrupted, the others share its orders in their ratios
+  (`on_disruption="rescale"`, the default), or the order is blocked
+  (`"block"`). The policy draws one random number per order from its own
+  random number generator (`seed` or `rng`), so its choices change no other
+  random numbers. `create_sc_net` checks that every link to the site has a
+  probability. See the Supplier Selection guide.
+* **[CHANGE]** A site gives its supplier-selection policy a mode only when
+  `supplier_selection_mode` is given, so each policy keeps its own default:
+  "fixed" for the four existing policies, as before, and "dynamic" for
+  `SelectProbabilistic`. Results are the same as in 0.4.0.
+* **[BREAKING]** A custom supplier-selection policy whose own `__init__`
+  takes `mode` without a default value now fails when the site is given no
+  mode. Give `mode` a default, such as `mode="fixed"`. Policies that do not
+  override `__init__` are not affected.
+* **[CHANGE]** A built in supplier-selection policy given settings it does
+  not use in `supplier_selection_param` warns about them, as replenishment
+  policies do for `policy_param`. A manufacturer given a supplier-selection
+  policy, a mode or settings warns that they are not used, since it does not
+  use its policy yet.
+
 ## 0.4.0 (2026-10-16)
 
 Simulation results are the same as in 0.3.0. This release adds statistics for
