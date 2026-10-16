@@ -1,3 +1,8 @@
+<style>
+  /* Known issues only: undo the grey h3 banner from css/extra.css, as on the release history page */
+  h3 { padding: 0; margin: 1em 0 0.4em; border: none; border-radius: 0; background: none; }
+</style>
+
 # Known Issues and Planned Work
 
 This page lists known issues, current limitations, and planned improvements for upcoming versions of **SupplyNetPy**.
@@ -17,9 +22,20 @@ This page lists known issues, current limitations, and planned improvements for 
 
 ## Planned Work
 
+### Next updates
+
+Features and fixes planned for the coming versions of the library.
+
+* **Probability-based supplier selection.** A supplier-selection policy that chooses among the suppliers of a site at random, with a probability for each supplier.
+* **Orders in smaller parts.** A buyer will be able to receive a replenishment order in smaller parts as the supplier gets units, or to take only what the supplier has, so that an order larger than the supplier's capacity can still be filled.
+* **Checking the whole network.** A check, run before a simulation, that every node is connected, that the settings fit together, and that units flow towards the customers.
+* **Perishable raw materials.** Raw materials with manufacturing dates and a shelf life, as many have in reality. For now, SupplyNetPy assumes that raw materials are not perishable, so the inventory of a raw-material supplier and the raw materials a manufacturer holds are always non-perishable.
+
+### Long-term goals
+
+Larger directions for SupplyNetPy, beyond the next few versions.
+
 * **More case studies.** Models of real supply chains.
 * **Logistics operations.** Geographic map locations, CO₂ calculations, and fleet management.
 * **Simulation parallelization.** Faster runs of the model, and support for simulating in real time.
 * **Simulation based optimization (SBO).** Optimization methods from Python's SciPy library, to support SBO.
-* **Orders in smaller parts.** A buyer will be able to receive a replenishment order in smaller parts as the supplier gets units, or to take only what the supplier has, so that an order larger than the supplier's capacity can still be filled.
-* **Checking the whole network.** A check, run before a simulation, that every node is connected, that the settings fit together, and that units flow towards the customers.

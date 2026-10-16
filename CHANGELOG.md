@@ -10,7 +10,7 @@ action from you, and **[DOCS]** documentation only.
 ## Unreleased
 
 Simulation results are the same as in 0.3.0. This release adds statistics for
-each link.
+each link, and a User Guide with seven guides to common tasks.
 
 * **[NEW]** Every link now keeps statistics, in `link.stats`. They count the
   replenishment orders the buyer placed over the link, what arrived, the
@@ -48,6 +48,15 @@ each link.
   Experiments section, replication, seed, confidence interval and common
   random numbers. Also a new example,
   `examples/py/link_statistics.py`.
+* **[DOCS]** The About page describes the newer features (customer demand
+  options, supplier selection modes, perishable products, link statistics
+  and reproducible experiments), links to the guides, and mentions the
+  validation against anyLogistix. The home page lists the case studies, the
+  User Guide, the known issues and the release history.
+* **[DOCS]** The planned work on the known issues page is split into next
+  updates (probability-based supplier selection, orders in smaller parts,
+  checking the whole network, and the new entry for perishable raw
+  materials) and long-term goals.
 
 ## 0.3.0 (2026-10-16)
 

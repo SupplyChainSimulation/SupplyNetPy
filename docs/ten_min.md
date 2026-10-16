@@ -86,7 +86,7 @@ A customer demand is created by giving an ID, a name, the site the customers ord
 
 ### Assemble and Simulate the Network
 
-To create and simulate the supply chain, use the `create_sc_net` function to create the nodes and assemble them into a network. This function also records information about the network, such as the number of nodes, and returns a Python dictionary that holds all the parts of the network. The `simulate_sc_net` function then simulates the network up to a given time and writes a log of the run. It also calculates results for the whole network, such as profit and throughput. Let's use these functions to build and simulate our supply chain.
+To create and simulate the supply chain, use the `create_sc_net` function to create the nodes and assemble them into a network. This function also records information about the network, such as the number of nodes, and returns a Python dictionary that holds all the parts of the network. The `simulate_sc_net` function then simulates the network up to a given time and writes a log of the run. It also calculates results for the whole network, such as the total cost, the revenue and the profit. Let's use these functions to build and simulate our supply chain.
 
 ```python
 {% 

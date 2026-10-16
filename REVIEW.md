@@ -1419,6 +1419,8 @@ To be discussed and designed after §6.8 (link statistics) and §6.10 (probabili
 - Cycles: `docs/known-issues.md` says the library does not check for loops and gives the example of two distributors linked to each other to cover shortages. Moving units sideways between sites at the same level (lateral transshipment) is a real practice, so the check may need to tell such links apart from cycles that keep units from ever reaching a customer.
 - Whether the existing checks spread over the classes, and the §3.27 capacity warning, move into it, and how direct instantiation (no `create_sc_net`) gets the same checks.
 
+**Deferred to this work: call each `Demand` function only once when it is created (user, 2026-10-16).** `Demand.__init__` calls each of its four functions (`order_arrival_model`, `order_quantity_model`, `delivery_cost`, `lead_time`) twice: once in `ensure_numeric_callable`, which already checks that it returns a number, and again in four leftover `validate_number(..., value=f())` lines. The second call is redundant, and a function that returns the next value of a list skips two values instead of one. Removing the four lines was tried for 0.4.0 and undone, because it changes results. A seeded run whose demand functions use random numbers then draws one random number fewer per customer demand, so every later draw shifts. The Estimating Safety Stock example gave a safety stock level of 1279.48 instead of the published 1260.80 (average inventory level 6145.63 instead of 6115.08). The newsvendor example and the pharmacy case study seed random demand too. Do it together with §6.11, which reworks the checks made at creation anyway, then rerun those examples and update their pages. Two tests change with it: `_scripted_seq` callers pad with one value instead of two, and `TestLinkStatisticsAddUpToNodes.test_manufacturer_with_two_raw_materials` must require orders from S2 over its three seeds together, not in each one (with one draw fewer, seed 1 sends S2 no order).
+
 ---
 
 ## 7. Testing gaps ✅ Resolved
@@ -1467,7 +1469,7 @@ The three items below were considered in this review pass and deferred with expl
 3. **§8 ``validation/`` data files.** Moving them affects the validation paper's reproduction instructions; out of scope for a code-review pass.
 4. **§6.6 demand-vocabulary unification (``demand_placed`` / ``demand_by_customers`` / ``demand_by_site``).** The three names are different *concepts* (per-node placed orders, network-level customer aggregate, network-level site aggregate), so a rename without merging the underlying meanings would be cosmetic. Keep as-is until the meanings are consolidated.
 5. **§3.27 replenishment orders larger than the supplier's capacity.** Ship complete stays the default; partial shipments and "ship what is there, cancel the rest" are to be added after §6.10 (§6.8 is done). Until then, models assume each supplier can hold what its buyers order.
-6. **§6.11 check that the whole network is valid** (connections, settings, units flowing towards customers, no cycles). To be designed after §6.10 (§6.8 is done).
+6. **§6.11 check that the whole network is valid** (connections, settings, units flowing towards customers, no cycles). To be designed after §6.10 (§6.8 is done). Calling each `Demand` function only once at creation is deferred to the same work, because it shifts the random numbers of seeded examples (see §6.11).
 
 ---
 
