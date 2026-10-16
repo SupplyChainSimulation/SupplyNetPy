@@ -1745,7 +1745,7 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
     """
     _info_keys = ["node", "mode"]
 
-    def __init__(self, node, mode="dynamic"):
+    def __init__(self, node, mode="fixed"):
         """
         Initialize the supplier selection policy object.
 
@@ -1917,7 +1917,7 @@ class SelectAvailable(SupplierSelectionPolicy):
 
     Parameters:
         node (object): Node to which this supplier selection policy applies.
-        mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "dynamic").
+        mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
 
     Attributes:
         node (object): Node to which this policy applies.
@@ -1933,13 +1933,13 @@ class SelectAvailable(SupplierSelectionPolicy):
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
 
-    def __init__(self, node, mode="dynamic"):
+    def __init__(self, node, mode="fixed"):
         """
         Initialize the supplier selection policy object.
 
         Parameters:
             node (object): Node to which this supplier selection policy applies.
-            mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "dynamic").
+            mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
 
         Attributes:
             name (str): Name of the selection policy.
@@ -1987,7 +1987,7 @@ class SelectCheapest(SupplierSelectionPolicy):
 
     Parameters:
         node (object): Node to which this supplier selection policy applies.
-        mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "dynamic").
+        mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
 
     Attributes:
         node (object): Node to which this policy applies.
@@ -2002,13 +2002,13 @@ class SelectCheapest(SupplierSelectionPolicy):
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
 
-    def __init__(self, node, mode="dynamic"):
+    def __init__(self, node, mode="fixed"):
         """
         Initialize the supplier selection policy object.
 
         Parameters:
             node (object): Node to which this supplier selection policy applies.
-            mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "dynamic").
+            mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
 
         Attributes:
             name (str): Name of the selection policy.
@@ -2052,7 +2052,7 @@ class SelectFastest(SupplierSelectionPolicy):
 
     Parameters:
         node (object): Node to which this supplier selection policy applies.
-        mode (str, optional): Supplier selection mode, either "dynamic" or "fixed" (default: "dynamic").
+        mode (str, optional): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
 
     Attributes:
         node (object): Node to which this policy applies.
@@ -2067,13 +2067,13 @@ class SelectFastest(SupplierSelectionPolicy):
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
 
-    def __init__(self, node, mode="dynamic"):
+    def __init__(self, node, mode="fixed"):
         """
         Initialize the supplier selection policy object.
 
         Parameters:
             node (object): Node to which this supplier selection policy applies.
-            mode (str, optional): Supplier selection mode, either "dynamic" or "fixed" (default: "dynamic").
+            mode (str, optional): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
 
         Attributes:
             name (str): Name of the selection policy.

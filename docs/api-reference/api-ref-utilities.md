@@ -11,6 +11,8 @@ The utility module offers various functions to create, simulate, access informat
         - check_duplicate_id
         - simulate_sc_net
         - visualize_sc_net
+        - get_node_wise_performance
+        - format_node_wise_performance
         - print_node_wise_performance
         - get_link_wise_performance
         - format_link_wise_performance

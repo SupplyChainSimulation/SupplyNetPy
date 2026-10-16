@@ -29,6 +29,11 @@ nav:
   - Case Studies:
     - Pharmacy Supply Chain: case_study_pharma.md
     - Milk Supply Chain (India): case-studies/milk-supply-chain-india.md
+  - User Guide:
+    - Replenishment Policies: guide/replenishment-policies.md
+    - Supplier Selection: guide/supplier-selection.md
+    - Disruptions: guide/disruptions.md
+    - Statistics and Results: guide/statistics.md
   - API Reference:
       - Introduction: api-reference/api-intro.md
       - Glossary: glossary.md

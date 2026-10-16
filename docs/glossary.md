@@ -99,6 +99,7 @@ A few names in the code use a different word from the one chosen here (for examp
 | **Reorder point** | The inventory position at which a policy places an order (`s` or `R`). | |
 | **Safety stock** | Extra units a policy keeps as a buffer against uncertain demand or lead times. A standard industry term, so "stock" is kept here. | `safety_stock` |
 | **Supplier-selection policy** | The rule a site follows to choose which of its suppliers receives an order. | `SupplierSelectionPolicy`, `SelectFirst`, `SelectAvailable`, `SelectCheapest`, `SelectFastest` |
+| **Fixed mode**, **dynamic mode** | How often a supplier-selection policy chooses. In dynamic mode it chooses again for every replenishment order. In fixed mode it keeps the first supplier it chose, and uses another only while that supplier or the link to it is disrupted. | `supplier_selection_mode`, `"fixed"` (the default) or `"dynamic"` |
 
 ---
 

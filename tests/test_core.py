@@ -424,6 +424,14 @@ class TestSelectFastest(unittest.TestCase):
         sf = scm.SelectFastest(self.node, "dynamic")
         assert sf.select(order_quantity=1) == self.node.suppliers[1]
 
+class TestSelectionPolicyDefaultMode(unittest.TestCase):
+    # A site passes "fixed" when no mode is given, so every policy class
+    # defaults to "fixed" too. The two defaults then agree.
+    def test_every_policy_defaults_to_fixed(self):
+        node = DummyNode(env=_fresh_env())
+        for policy in (scm.SelectFirst, scm.SelectAvailable, scm.SelectCheapest, scm.SelectFastest):
+            assert policy(node).mode == "fixed", policy.__name__
+
 class TestInventory(unittest.TestCase):
     def setUp(self):
         # §7: per-test env passed into DummyNode so its suppliers / links

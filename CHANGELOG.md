@@ -28,9 +28,18 @@ each link.
 * **[NEW]** `reset_stats(supplychainnet)` and `Network.reset_stats()` start the
   statistics of every node, customer demand and link again in one call, for a
   warm-up.
+* **[CHANGE]** `SelectAvailable`, `SelectCheapest` and `SelectFastest` (and the
+  base class `SupplierSelectionPolicy`) now default to fixed mode, as
+  `SelectFirst` and every site already did. A site always passes its own
+  `supplier_selection_mode`, so networks give the same results as before. Only
+  a policy created directly, without a mode, behaves differently.
+* **[DOCS]** A new User Guide with four guides, on replenishment policies,
+  supplier selection, disruptions, and statistics and results (including link
+  statistics and warm-ups). The longer sections of the API introduction moved
+  into them, and the introduction is now a short overview of the modules.
 * **[DOCS]** New glossary entries for order cycle time, fill rate, bullwhip
-  effect and standard deviation, a section on reading link statistics in the
-  API introduction, and a new example, `examples/py/link_statistics.py`.
+  effect, standard deviation, and fixed and dynamic mode, and a new example,
+  `examples/py/link_statistics.py`.
 
 ## 0.3.0 (2026-10-16)
 
