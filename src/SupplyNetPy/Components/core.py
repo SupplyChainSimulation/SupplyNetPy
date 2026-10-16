@@ -1728,35 +1728,46 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
 
     Each policy is a subclass that overrides the `select` method with its own rule.
 
+    A site gives its policy the mode and the settings (``supplier_selection_param``) only when the user gives
+    them, so each policy keeps its own default mode. A policy lists the settings it reads in `_param_keys`; any
+    other setting is ignored, so a warning names it.
+
     Parameters:
         node (object): Node for which the supplier selection policy is applied.
         mode (str): Supplier selection mode. Must be "dynamic" or "fixed".
+        params (dict): Settings for the policy (``supplier_selection_param`` of the site), or None.
 
     Attributes:
         _info_keys (list): List of keys to include in the info dictionary.
+        _param_keys (tuple): Settings this policy reads from ``params``, or None if it does not say.
         node (object): Node for which the supplier selection policy is applied.
         mode (str): Supplier selection mode ("dynamic" or "fixed").
+        params (dict): The settings given to the policy, or None.
         fixed_supplier (Link): In "fixed" mode, the link to the remembered supplier (None until the first choice).
 
     Functions:
         __init__: Initializes the supplier selection policy object.
         select: The policy's rule for choosing a supplier; each subclass overrides it.
         validate_suppliers: Checks that the node has at least one supplier.
+        check_links: Checks the policy's settings against the site's links; does nothing here.
     """
     _info_keys = ["node", "mode"]
+    _param_keys = None  # settings the policy reads from params; None means nothing is checked
 
-    def __init__(self, node, mode="fixed"):
+    def __init__(self, node, mode="fixed", params=None):
         """
         Initialize the supplier selection policy object.
 
         Parameters:
             node (object): Node for which the supplier selection policy is applied.
             mode (str): Supplier selection mode ("dynamic" or "fixed").
+            params (dict): Settings for the policy (``supplier_selection_param`` of the site), or None.
 
         Attributes:
             _info_keys (list): List of keys to include in the info dictionary.
             node (object): Node for which the supplier selection policy is applied.
             mode (str): Supplier selection mode ("dynamic" or "fixed").
+            params (dict): The settings given to the policy, or None.
             fixed_supplier (Link): In "fixed" mode, the link to the remembered supplier (None until the first choice).
 
         Returns:
@@ -1774,7 +1785,51 @@ class SupplierSelectionPolicy(InfoMixin, NamedEntity):
             raise TypeError("Node must be an instance of Node class.")
         self.node = node
         self.mode = mode
+        self.params = params
         self.fixed_supplier = None
+        self._warn_unused_params()
+
+    def _warn_unused_params(self):
+        """
+        Warn about settings in ``params`` that this policy does not read.
+
+        A setting the policy does not read is ignored, and nobody would notice:
+        for example, probabilities given to a site whose policy is still
+        ``SelectCheapest``. The warning goes through Python's ``warnings``
+        module, so it is shown even when the library's logging is off; the
+        trace log also records which site it was. Its text does not name the
+        site, so Python shows each distinct warning once instead of once for
+        every site.
+
+        Returns:
+            None
+        """
+        if self._param_keys is None or not isinstance(self.params, dict):
+            return
+        unused = sorted(str(key) for key in self.params if key not in self._param_keys)
+        if not unused:
+            return
+        if self._param_keys:
+            uses = f"It uses only {', '.join(repr(key) for key in self._param_keys)}."
+        else:
+            uses = "It takes no parameters."
+        message = (f"{type(self).__name__} does not use the parameter(s) {', '.join(repr(key) for key in unused)} "
+                   f"in supplier_selection_param, so they are ignored. {uses} "
+                   f"Check whether you meant to use another supplier-selection policy.")
+        global_logger.warning(f"{getattr(self.node, 'ID', '?')}: {message}")
+        warnings.warn(message, UserWarning)
+
+    def check_links(self):
+        """
+        Check the policy's settings against the links to the site's suppliers.
+        ``create_sc_net`` calls it once every link is created. The built in
+        policies need no such check, so here it does nothing; a policy whose
+        settings name the suppliers (``SelectProbabilistic``) overrides it.
+
+        Returns:
+            None
+        """
+        return None
 
     def select(self, order_quantity):
         """
@@ -1853,6 +1908,7 @@ class SelectFirst(SupplierSelectionPolicy):
     Parameters:
         node (object): Node to which this supplier selection policy applies.
         mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
+        params (dict, optional): Settings for the policy; this policy takes none.
 
     Attributes:
         node (object): Node to which this policy applies.
@@ -1866,14 +1922,16 @@ class SelectFirst(SupplierSelectionPolicy):
         select: Chooses the first supplier that can take the order.
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
+    _param_keys = ()  # takes no settings
 
-    def __init__(self, node, mode="fixed"):
+    def __init__(self, node, mode="fixed", params=None):
         """
         Initialize the supplier selection policy object.
 
         Parameters:
             node (object): Node to which this supplier selection policy applies.
             mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
+            params (dict, optional): Settings for the policy; this policy takes none.
 
         Attributes:
             name (str): Name of the selection policy.
@@ -1882,7 +1940,7 @@ class SelectFirst(SupplierSelectionPolicy):
         Returns:
             None
         """
-        super().__init__(node, mode)
+        super().__init__(node, mode, params)
         self.name = "First fixed supplier"
 
     def select(self, order_quantity):
@@ -1918,6 +1976,7 @@ class SelectAvailable(SupplierSelectionPolicy):
     Parameters:
         node (object): Node to which this supplier selection policy applies.
         mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
+        params (dict, optional): Settings for the policy; this policy takes none.
 
     Attributes:
         node (object): Node to which this policy applies.
@@ -1932,14 +1991,16 @@ class SelectAvailable(SupplierSelectionPolicy):
 
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
+    _param_keys = ()  # takes no settings
 
-    def __init__(self, node, mode="fixed"):
+    def __init__(self, node, mode="fixed", params=None):
         """
         Initialize the supplier selection policy object.
 
         Parameters:
             node (object): Node to which this supplier selection policy applies.
             mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
+            params (dict, optional): Settings for the policy; this policy takes none.
 
         Attributes:
             name (str): Name of the selection policy.
@@ -1948,7 +2009,7 @@ class SelectAvailable(SupplierSelectionPolicy):
         Returns:
             None
         """
-        super().__init__(node, mode)
+        super().__init__(node, mode, params)
         self.name = "First available supplier"
 
     def select(self, order_quantity):
@@ -1988,6 +2049,7 @@ class SelectCheapest(SupplierSelectionPolicy):
     Parameters:
         node (object): Node to which this supplier selection policy applies.
         mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
+        params (dict, optional): Settings for the policy; this policy takes none.
 
     Attributes:
         node (object): Node to which this policy applies.
@@ -2001,14 +2063,16 @@ class SelectCheapest(SupplierSelectionPolicy):
         select: Chooses the supplier with the lowest transportation cost.
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
+    _param_keys = ()  # takes no settings
 
-    def __init__(self, node, mode="fixed"):
+    def __init__(self, node, mode="fixed", params=None):
         """
         Initialize the supplier selection policy object.
 
         Parameters:
             node (object): Node to which this supplier selection policy applies.
             mode (str): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
+            params (dict, optional): Settings for the policy; this policy takes none.
 
         Attributes:
             name (str): Name of the selection policy.
@@ -2017,7 +2081,7 @@ class SelectCheapest(SupplierSelectionPolicy):
         Returns:
             None
         """
-        super().__init__(node, mode)
+        super().__init__(node, mode, params)
         self.name = "Cheapest supplier (Transportation cost)"
 
     def select(self, order_quantity):
@@ -2053,6 +2117,7 @@ class SelectFastest(SupplierSelectionPolicy):
     Parameters:
         node (object): Node to which this supplier selection policy applies.
         mode (str, optional): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
+        params (dict, optional): Settings for the policy; this policy takes none.
 
     Attributes:
         node (object): Node to which this policy applies.
@@ -2066,14 +2131,16 @@ class SelectFastest(SupplierSelectionPolicy):
         select: Chooses the supplier with the shortest lead time.
     """
     _info_keys = SupplierSelectionPolicy._info_keys + ["name"]
+    _param_keys = ()  # takes no settings
 
-    def __init__(self, node, mode="fixed"):
+    def __init__(self, node, mode="fixed", params=None):
         """
         Initialize the supplier selection policy object.
 
         Parameters:
             node (object): Node to which this supplier selection policy applies.
             mode (str, optional): Supplier selection mode, either "dynamic" or "fixed" (default: "fixed").
+            params (dict, optional): Settings for the policy; this policy takes none.
 
         Attributes:
             name (str): Name of the selection policy.
@@ -2082,7 +2149,7 @@ class SelectFastest(SupplierSelectionPolicy):
         Returns:
             None
         """
-        super().__init__(node, mode)
+        super().__init__(node, mode, params)
         self.name = "Fastest supplier (Lead time)"
 
     def select(self, order_quantity):
@@ -2592,6 +2659,31 @@ class Node(NamedEntity, InfoMixin):
             )
             raise ValueError("link.source must match the node add_buyer_link is called on.")
         self.buyers.append(link)
+
+    def _make_selection_policy(self, policy, mode, params):
+        """
+        Create this site's supplier-selection policy.
+
+        The mode and the settings are passed on only when the user gave them,
+        so that each policy keeps its own default mode (``"fixed"`` for the
+        built in policies, ``"dynamic"`` for ``SelectProbabilistic``), and a
+        custom policy written as ``__init__(self, node, mode="fixed")`` still
+        works.
+
+        Parameters:
+            policy (type): The supplier-selection policy class.
+            mode (str): ``"fixed"`` or ``"dynamic"``, or None for the policy's own default.
+            params (dict): Settings for the policy, or None.
+
+        Returns:
+            SupplierSelectionPolicy: The policy object.
+        """
+        kwargs = {}
+        if mode is not None:
+            kwargs["mode"] = mode
+        if params is not None:
+            kwargs["params"] = params
+        return policy(self, **kwargs)
 
     def wake_replenishment(self) -> None:
         """
@@ -3844,7 +3936,10 @@ class InventoryNode(Node):
             prices.
         supplier_selection_policy (SupplierSelectionPolicy): The supplier-selection policy class (default
             ``SelectFirst``).
-        supplier_selection_mode (str): "fixed" (default) or "dynamic"; see `SupplierSelectionPolicy`.
+        supplier_selection_mode (str): "fixed" or "dynamic"; see `SupplierSelectionPolicy`. If it is not given,
+            the policy's own default is used ("fixed" for the built in policies except ``SelectProbabilistic``).
+        supplier_selection_param (dict): Settings for the supplier-selection policy (optional), for example
+            the probabilities of ``SelectProbabilistic``.
         **kwargs: Additional keyword arguments for the Node class and logger. Also accepts
             ``periodic_stats`` (bool, default False: if True, its statistics are updated every
             ``stats_period`` time units) and ``stats_period`` (float, default 1).
@@ -3888,7 +3983,8 @@ class InventoryNode(Node):
                  manufacture_date: Callable = None,
                  product:Product = None,
                  supplier_selection_policy: SupplierSelectionPolicy = SelectFirst,
-                 supplier_selection_mode: str = "fixed",
+                 supplier_selection_mode: str = None,
+                 supplier_selection_param: dict = None,
                  **kwargs) -> None:
         """
         Initialize the inventory node object.
@@ -3916,7 +4012,10 @@ class InventoryNode(Node):
                 prices.
             supplier_selection_policy (SupplierSelectionPolicy): The supplier-selection policy class (default
                 ``SelectFirst``).
-            supplier_selection_mode (str): "fixed" (default) or "dynamic"; see `SupplierSelectionPolicy`.
+            supplier_selection_mode (str): "fixed" or "dynamic"; see `SupplierSelectionPolicy`. If it is not given,
+                the policy's own default is used ("fixed" for the built in policies except ``SelectProbabilistic``).
+            supplier_selection_param (dict): Settings for the supplier-selection policy (optional), for example
+                the probabilities of ``SelectProbabilistic``.
             **kwargs: Additional keyword arguments for the Node class and logger. Also accepts
                 ``periodic_stats`` (bool, default False: if True, its statistics are updated every
                 ``stats_period`` time units) and ``stats_period`` (float, default 1).
@@ -3982,7 +4081,8 @@ class InventoryNode(Node):
         # self.suppliers is already set to [] in Node.__init__; the links to
         # this node's suppliers register themselves via Node.add_supplier_link.
         self.pending_orders = 0 # replenishment orders placed but not yet arrived
-        self.selection_policy = supplier_selection_policy(self,supplier_selection_mode)
+        self.selection_policy = self._make_selection_policy(supplier_selection_policy, supplier_selection_mode,
+                                                            supplier_selection_param)
         self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the inventory node
 
     def process_order(self, supplier, reorder_quantity):
@@ -4196,7 +4296,10 @@ class Manufacturer(Node):
         shelf_life (float): Shelf life of the product, in time units (perishable goods only).
         supplier_selection_policy (SupplierSelectionPolicy): The supplier-selection policy class (default
             ``SelectFirst``).
-        supplier_selection_mode (str): "fixed" (default) or "dynamic"; see `SupplierSelectionPolicy`.
+        supplier_selection_mode (str): "fixed" or "dynamic"; see `SupplierSelectionPolicy`. If it is not given,
+            the policy's own default is used ("fixed" for the built in policies except ``SelectProbabilistic``).
+        supplier_selection_param (dict): Settings for the supplier-selection policy (optional), for example
+            the probabilities of ``SelectProbabilistic``.
         **kwargs: Additional keyword arguments for the Node class and logger. Also accepts
             ``periodic_stats`` (bool, default False: if True, its statistics are updated every
             ``stats_period`` time units) and ``stats_period`` (float, default 1).
@@ -4258,7 +4361,8 @@ class Manufacturer(Node):
                  inventory_type: str = "non-perishable",
                  shelf_life: float = 0.0,
                  supplier_selection_policy: SupplierSelectionPolicy = SelectFirst,
-                 supplier_selection_mode: str = "fixed",
+                 supplier_selection_mode: str = None,
+                 supplier_selection_param: dict = None,
                  **kwargs) -> None:
         """
         Initialize the manufacturer object.
@@ -4281,7 +4385,10 @@ class Manufacturer(Node):
             shelf_life (float): Shelf life of the product, in time units (perishable goods only).
             supplier_selection_policy (SupplierSelectionPolicy): The supplier-selection policy class (default
                 ``SelectFirst``).
-            supplier_selection_mode (str): "fixed" (default) or "dynamic"; see `SupplierSelectionPolicy`.
+            supplier_selection_mode (str): "fixed" or "dynamic"; see `SupplierSelectionPolicy`. If it is not given,
+                the policy's own default is used ("fixed" for the built in policies except ``SelectProbabilistic``).
+            supplier_selection_param (dict): Settings for the supplier-selection policy (optional), for example
+                the probabilities of ``SelectProbabilistic``.
             **kwargs: Additional keyword arguments for the Node class and logger. Also accepts
                 ``periodic_stats`` (bool, default False: if True, its statistics are updated every
                 ``stats_period`` time units) and ``stats_period`` (float, default 1).
@@ -4352,7 +4459,20 @@ class Manufacturer(Node):
                 self.product.buy_price += raw_material[0].cost * raw_material[1] # raw-material cost of one unit
 
         self.env.process(self.behavior()) # start the production loop
-        self.selection_policy = supplier_selection_policy(self,supplier_selection_mode)
+        self.selection_policy = self._make_selection_policy(supplier_selection_policy, supplier_selection_mode,
+                                                            supplier_selection_param)
+        # A manufacturer does not use its supplier-selection policy yet: for
+        # each raw material it orders from the first raw-material supplier of
+        # it that can take the order (see _raw_material_links). Warn when the
+        # user asked for anything else, so the setting is not ignored unseen.
+        # The text leaves out the site, so Python shows it once in all.
+        if (supplier_selection_policy is not SelectFirst or supplier_selection_mode is not None
+                or supplier_selection_param is not None):
+            message = ("A manufacturer does not use its supplier-selection policy yet. For each raw material it "
+                       "orders from the first raw-material supplier that can take the order, so the policy given "
+                       "is ignored.")
+            self.logger.warning(f"{self.ID}: {message}")
+            warnings.warn(message, UserWarning, stacklevel=2)
         
         self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the manufacturer
         setattr(self.stats,"total_products_manufactured",0) # adding specific statistics for the manufacturer

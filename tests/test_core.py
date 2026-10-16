@@ -1,6 +1,7 @@
 import random
 import re
 import unittest
+import warnings
 import pytest
 import simpy
 import SupplyNetPy.Components as scm
@@ -425,12 +426,93 @@ class TestSelectFastest(unittest.TestCase):
         assert sf.select(order_quantity=1) == self.node.suppliers[1]
 
 class TestSelectionPolicyDefaultMode(unittest.TestCase):
-    # A site passes "fixed" when no mode is given, so every policy class
-    # defaults to "fixed" too. The two defaults then agree.
+    # A site passes no mode when none is given, so each policy's own default
+    # applies. Every policy before SelectProbabilistic defaults to "fixed".
     def test_every_policy_defaults_to_fixed(self):
         node = DummyNode(env=_fresh_env())
         for policy in (scm.SelectFirst, scm.SelectAvailable, scm.SelectCheapest, scm.SelectFastest):
             assert policy(node).mode == "fixed", policy.__name__
+
+
+def _selection_site(env, **kw):
+    return scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor", capacity=100,
+                             initial_level=0, inventory_holding_cost=0, replenishment_policy=None,
+                             policy_param=None, product_buy_price=1, product_sell_price=2, **kw)
+
+
+def _selection_manufacturer(env, **kw):
+    rm = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=10,
+                         extraction_time=2, mining_cost=1, cost=2)
+    prod = scm.Product(ID="P1", name="P1", manufacturing_cost=1, manufacturing_time=1, sell_price=20,
+                       raw_materials=[(rm, 1)], batch_size=5)
+    return scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=10,
+                            inventory_holding_cost=0, product_sell_price=20, replenishment_policy=None,
+                            policy_param={}, product=prod, **kw)
+
+
+class TestSelectionPolicySettings(unittest.TestCase):
+    """
+    A site passes supplier_selection_mode and supplier_selection_param to its
+    supplier-selection policy only when they are given, so each policy keeps
+    its own default mode.
+    """
+
+    def test_mode_left_out_gives_the_policy_default(self):
+        for policy in (scm.SelectFirst, scm.SelectAvailable, scm.SelectCheapest, scm.SelectFastest):
+            site = _selection_site(_fresh_env(), supplier_selection_policy=policy)
+            assert site.selection_policy.mode == "fixed", policy.__name__
+
+    def test_mode_given_is_passed_on(self):
+        site = _selection_site(_fresh_env(), supplier_selection_policy=scm.SelectCheapest,
+                               supplier_selection_mode="dynamic")
+        assert site.selection_policy.mode == "dynamic"
+
+    def test_custom_policy_without_init(self):
+        class Custom(scm.SupplierSelectionPolicy):
+            def select(self, order_quantity):
+                return self._apply_mode(self._active_suppliers()[0])
+        assert _selection_site(_fresh_env(), supplier_selection_policy=Custom).selection_policy.mode == "fixed"
+        site = _selection_site(_fresh_env(), supplier_selection_policy=Custom, supplier_selection_mode="dynamic")
+        assert site.selection_policy.mode == "dynamic"
+
+    def test_custom_policy_with_init_and_mode_default(self):
+        class Custom(scm.SupplierSelectionPolicy):
+            def __init__(self, node, mode="fixed"):
+                super().__init__(node, mode)
+            def select(self, order_quantity):
+                return self.node.suppliers[0]
+        assert _selection_site(_fresh_env(), supplier_selection_policy=Custom).selection_policy.mode == "fixed"
+        site = _selection_site(_fresh_env(), supplier_selection_policy=Custom, supplier_selection_mode="dynamic")
+        assert site.selection_policy.mode == "dynamic"
+
+    def test_unknown_param_for_a_built_in_policy_warns(self):
+        with pytest.warns(UserWarning, match="supplier_selection_param"):
+            _selection_site(_fresh_env(), supplier_selection_policy=scm.SelectFirst,
+                            supplier_selection_param={"seed": 1})
+
+    def test_warning_says_the_policy_takes_no_parameters(self):
+        with pytest.warns(UserWarning, match="takes no parameters"):
+            _selection_site(_fresh_env(), supplier_selection_policy=scm.SelectCheapest,
+                            supplier_selection_param={"probabilities": {"S1": 1.0}})
+
+    def test_empty_param_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _selection_site(_fresh_env(), supplier_selection_policy=scm.SelectFirst, supplier_selection_param={})
+
+    def test_manufacturer_given_another_policy_warns(self):
+        with pytest.warns(UserWarning, match="manufacturer does not use"):
+            _selection_manufacturer(_fresh_env(), supplier_selection_policy=scm.SelectCheapest)
+
+    def test_manufacturer_given_a_mode_warns(self):
+        with pytest.warns(UserWarning, match="manufacturer does not use"):
+            _selection_manufacturer(_fresh_env(), supplier_selection_mode="dynamic")
+
+    def test_manufacturer_with_the_default_policy_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _selection_manufacturer(_fresh_env())
+            _selection_manufacturer(_fresh_env(), supplier_selection_policy=scm.SelectFirst)
 
 class TestInventory(unittest.TestCase):
     def setUp(self):
