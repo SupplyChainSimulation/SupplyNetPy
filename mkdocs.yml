@@ -34,6 +34,7 @@ nav:
     - Replenishment Policies: guide/replenishment-policies.md
     - Supplier Selection: guide/supplier-selection.md
     - Disruptions: guide/disruptions.md
+    - Perishable Products: guide/perishable-products.md
     - Statistics and Results: guide/statistics.md
   - API Reference:
       - Introduction: api-reference/api-intro.md

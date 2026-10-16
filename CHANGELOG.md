@@ -33,9 +33,10 @@ each link.
   `SelectFirst` and every site already did. A site always passes its own
   `supplier_selection_mode`, so networks give the same results as before. Only
   a policy created directly, without a mode, behaves differently.
-* **[DOCS]** A new User Guide with five guides, on customer demand,
-  replenishment policies, supplier selection, disruptions, and statistics and
-  results (including link statistics and warm-ups). The longer sections of the API introduction moved
+* **[DOCS]** A new User Guide with six guides, on customer demand,
+  replenishment policies, supplier selection, disruptions, perishable
+  products, and statistics and results (including link statistics and
+  warm-ups). The longer sections of the API introduction moved
   into them, and the introduction is now a short overview of the modules.
 * **[DOCS]** New glossary entries for order cycle time, fill rate, bullwhip
   effect, standard deviation, and fixed and dynamic mode, and a new example,

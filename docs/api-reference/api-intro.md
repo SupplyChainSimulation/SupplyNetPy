@@ -18,6 +18,7 @@ For tasks that use several parts together, the User Guide explains how to do the
 * [Replenishment Policies](../guide/replenishment-policies.md). Choosing a built in policy, when it checks, safety stock, and writing your own policy.
 * [Supplier Selection](../guide/supplier-selection.md). Choosing a supplier-selection policy, fixed and dynamic mode, and writing your own policy.
 * [Disruptions](../guide/disruptions.md). Scheduled and random disruptions of sites and links, what happens to orders, and units lost in a disruption.
+* [Perishable Products](../guide/perishable-products.md). Shelf life, batches and their manufacturing dates, when units expire, and expired units in the statistics.
 * [Statistics and Results](../guide/statistics.md). Results for the whole network, statistics of nodes and links, and warm-ups.
 
 #### SupplyNetPy Library Hierarchy
