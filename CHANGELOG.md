@@ -7,6 +7,74 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
+## 0.3.0 (2026-10-16)
+
+This release adds new node statistics, fixes how statistics are reset for a
+warm-up, and adds warnings for two mistakes in how a network is built.
+Results stay the same for networks that are not reset during a run and have
+no disrupted site with customers, such as the quickstart example. The three
+fixes below say which results change.
+
+* **[FIX]** Customers can no longer order from a disrupted site. Before, they
+  were served from its inventory as usual, although a disrupted site takes no
+  new replenishment orders. A customer who arrives while the site is
+  disrupted now goes away, and the order is recorded in the new statistic
+  `disruption_lost_sales`. It is kept apart from `shortage`, because a
+  shortage is units the site did not have, and a disruption lost sale is an
+  order the site could not take. Customers already waiting when the
+  disruption starts are still served. Results change for networks in which a
+  site with customers can be disrupted.
+* **[FIX]** `stats.reset()`, used for a warm-up, now starts the counting again
+  without changing the present. Before, it also set `backorder` and
+  `inventory_level` to zero. A site with orders waiting at the reset then
+  ordered too little, and its backorders went below zero once those orders
+  were served. The holding cost is now brought up to date before the reset,
+  so afterwards it covers only the time since the reset, also when the run
+  was advanced with `env.run()`. The record of inventory levels
+  (`inventory.instantaneous_levels`) also starts again. Results after a
+  warm-up change when orders are waiting at the reset, or when the run was
+  advanced with `env.run()`.
+* **[FIX]** A manufacturer's raw-material order now counts in its
+  `demand_placed` and `transportation_cost` when it is placed, as for every
+  other site. Before, it counted only once the supplier served it. Totals at
+  the end of a run change only for raw-material orders still waiting then.
+* **[NEW]** Statistics about disruptions. `disruptions` and `disrupted_time`
+  (including a disruption still going on when read), `availability` (the
+  share of time the node was not disrupted), and `blocked` (replenishment
+  orders a site could not place because every supplier it has, or the link
+  to it, was disrupted).
+* **[NEW]** Statistics about inventory over time. `avg_inventory_level` and
+  `inventory_level_time` (inventory level times time), worked out exactly and
+  apart from the holding cost, and `zero_inventory_time` and
+  `zero_inventory_share` (how long the inventory level was zero).
+* **[NEW]** Statistics about orders that end badly or wait. `lost_sales` (the
+  customer units a site never delivered), `dropped_qty` (delivered units that
+  did not fit in the inventory), and `waited`, `waiting_time` and
+  `avg_waiting_time`, for customers and for orders from other sites.
+* **[NEW]** Each node's statistics keep a clock. `start_time` is when counting
+  began, and `elapsed_time` is the time since then. A reset moves
+  `start_time`, so averages after a warm-up cover only the measured period.
+  Averages are worked out when they are read and are `None` when there is
+  nothing to divide by.
+* **[NEW]** `simulate_sc_net` and `Network.results` add up `lost_sales` and
+  `disruption_lost_sales` for the whole network.
+* **[NEW]** `Node.has_suppliers()` tells whether a site has any supplier at
+  all. For a manufacturer it checks that every raw material has one.
+* **[CHANGE]** `get_statistics()` and the performance tables show the new
+  statistics, so they have more rows.
+* **[CHANGE]** Two new warnings for mistakes in how a network is built. A site
+  with no supplier at all that tries to order is warned about once, and is
+  not counted as `blocked`. A buyer that can order more than its supplier can
+  hold is warned about when the link between them is created, and again when
+  such an order is placed. A supplier sends an order only when it has all of
+  it, so such an order can never be filled, and the buyer would wait for it
+  for ever. The warning names both sites.
+* **[DOCS]** New glossary entries for warm-up, disruption lost sales, lost
+  sales, blocked order, waiting time, dropped units, average inventory level,
+  availability and deadlock. The known issues page explains the deadlock
+  above and lists two planned features, receiving such orders in smaller
+  parts, and checking the whole network.
+
 ## 0.2.2 (2026-10-13)
 
 Simulation results are the same as in 0.2.1. This release adds warnings for
