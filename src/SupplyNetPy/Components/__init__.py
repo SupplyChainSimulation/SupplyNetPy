@@ -35,6 +35,7 @@ from SupplyNetPy.Components.core import (
     SelectAvailable,
     SelectCheapest,
     SelectFastest,
+    SelectProbabilistic,
     Node,
     Link,
     Inventory,
@@ -91,6 +92,7 @@ __all__ = [
     "SelectAvailable",
     "SelectCheapest",
     "SelectFastest",
+    "SelectProbabilistic",
     # core — graph primitives
     "Node",
     "Link",

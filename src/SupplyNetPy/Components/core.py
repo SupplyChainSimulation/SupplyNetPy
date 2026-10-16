@@ -41,6 +41,7 @@ __all__ = [
     "SelectAvailable",
     "SelectCheapest",
     "SelectFastest",
+    "SelectProbabilistic",
     "Node",
     "Link",
     "Inventory",
@@ -2172,6 +2173,224 @@ class SelectFastest(SupplierSelectionPolicy):
         candidates = self._active_suppliers()
         selected = min(candidates, key=lambda s: s.lead_time())
         return self._apply_mode(selected)
+
+class SelectProbabilistic(SupplierSelectionPolicy):
+    """
+    Chooses the supplier of each replenishment order at random, with a probability for each supplier.
+
+    For example, a retailer that sends half of its orders to distributor D1, 30% to D2 and 20% to D3 is given
+    ``supplier_selection_param={"probabilities": {"D1": 0.5, "D2": 0.3, "D3": 0.2}}``. The probabilities are
+    keyed by supplier ID (``link.source.ID``), so they can be given before the links exist, and they must sum
+    to 1. A supplier with probability 0 is never chosen.
+
+    For every order the policy draws exactly one random number u between 0 and 1 and puts the probabilities
+    side by side, in the order the links to the suppliers were created: with 0.5, 0.3 and 0.2, u below 0.5
+    chooses the first supplier, u from 0.5 to below 0.8 the second, and the rest the third. One number per
+    order means that two runs with the same seed see the same numbers, so changing a probability a little
+    changes only the few orders whose number falls near a boundary.
+
+    The probabilities are the shares of the orders while every supplier can take orders. When a supplier or
+    the link to it is disrupted, ``on_disruption`` decides what happens:
+
+    - ``"rescale"`` (the default): the order goes to one of the other suppliers, which keep their ratios.
+      With 0.5, 0.3 and 0.2 and the first supplier disrupted, the other two get 0.6 and 0.4.
+    - ``"block"``: the draw uses the given probabilities as they are. If it chooses a disrupted supplier, the
+      order is not placed and is counted as ``blocked``; the site orders again when a supplier or a link
+      recovers, or when its inventory drops.
+
+    So with disruptions, the shares of the orders at the end of a run differ from the probabilities. The link
+    statistics (``link.stats``) record the real shares. The stored probabilities never change.
+
+    The mode is always "dynamic" (a new choice for every order); "fixed" would keep the first random choice
+    for ever, so it is rejected.
+
+    Parameters:
+        node (object): The site that uses the policy.
+        mode (str): "dynamic" (the default and the only mode allowed).
+        params (dict): The settings, all optional:
+            ``probabilities`` (dict from supplier ID to probability; may also be given later with
+            ``set_probabilities``), ``on_disruption`` (``"rescale"`` or ``"block"``), and ``seed`` (a number or
+            a string) or ``rng`` (a ``random.Random``) for the policy's own random numbers. With neither, a seed
+            is drawn once from the site's random number generator (``node.rng``), so ``scm.set_seed`` still
+            makes runs repeatable.
+
+    Attributes:
+        name (str): Name of the selection policy.
+        probabilities (dict): The probability of each supplier, by supplier ID (None until given).
+        on_disruption (str): ``"rescale"`` or ``"block"``.
+        rng (random.Random): The policy's own random number generator. Its numbers are used for nothing else.
+        _info_keys (list): List of keys to include in the info dictionary.
+
+    Functions:
+        __init__: Initializes the policy.
+        set_probabilities: Sets or replaces the probabilities.
+        check_links: Checks the probabilities against the links to the site's suppliers.
+        select: Chooses the supplier of one replenishment order.
+    """
+    _info_keys = SupplierSelectionPolicy._info_keys + ["name", "probabilities", "on_disruption"]
+    _param_keys = ("probabilities", "on_disruption", "seed", "rng")
+
+    def __init__(self, node, mode="dynamic", params=None):
+        """
+        Initialize the policy.
+
+        Parameters:
+            node (object): The site that uses the policy.
+            mode (str): "dynamic" (the default and the only mode allowed).
+            params (dict): The settings (see the class description), or None.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the mode is "fixed", a setting has a wrong value, or both ``seed`` and ``rng`` are given.
+        """
+        if mode == "fixed":
+            message = (f"{getattr(node, 'ID', '?')}: SelectProbabilistic makes a new random choice for every order, "
+                       f"so it cannot be used in 'fixed' mode. Leave supplier_selection_mode out, or use 'dynamic'.")
+            global_logger.error(message)
+            raise ValueError(message)
+        super().__init__(node, mode, params)
+        self.name = "Probability-based supplier"
+        params = params if params is not None else {}
+        if not isinstance(params, dict):
+            global_logger.error(f"{node.ID}: supplier_selection_param must be a dict.")
+            raise ValueError("supplier_selection_param must be a dict.")
+
+        self.on_disruption = params.get("on_disruption", "rescale")
+        if self.on_disruption not in ("rescale", "block"):
+            message = f"{node.ID}: on_disruption must be 'rescale' or 'block', not {self.on_disruption!r}."
+            global_logger.error(message)
+            raise ValueError(message)
+
+        # The policy's own random numbers, so its draws never shift any other
+        # random numbers in the simulation (for example those of disruptions).
+        if "seed" in params and "rng" in params:
+            message = f"{node.ID}: give either seed or rng to SelectProbabilistic, not both."
+            global_logger.error(message)
+            raise ValueError(message)
+        if "rng" in params:
+            if not isinstance(params["rng"], random.Random):
+                message = f"{node.ID}: rng must be a random.Random object."
+                global_logger.error(message)
+                raise ValueError(message)
+            self.rng = params["rng"]
+        elif "seed" in params:
+            self.rng = random.Random(params["seed"])
+        else:
+            # One number from the site's generator (the library's, unless the
+            # site has its own), so scm.set_seed still makes the run repeatable.
+            self.rng = random.Random(self.node.rng.getrandbits(64))
+
+        self.probabilities = None
+        self._links_checked = False
+        if params.get("probabilities") is not None:
+            self.set_probabilities(params["probabilities"])
+
+    def set_probabilities(self, probabilities):
+        """
+        Set or replace the probabilities of the suppliers.
+
+        The links are checked against them at the next order (not at once,
+        because more links may still be added).
+
+        Parameters:
+            probabilities (dict): The probability of each supplier, by supplier ID. None may be negative, at
+                least one must be above 0, and together they must sum to 1.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the probabilities are not a dict of numbers that sum to 1, or one is negative.
+        """
+        def fail(reason):
+            message = f"{self.node.ID}: the probabilities of SelectProbabilistic {reason}."
+            global_logger.error(message)
+            raise ValueError(message)
+
+        if not isinstance(probabilities, dict):
+            fail("must be a dict from supplier ID to probability")
+        for supplier_id, p in probabilities.items():
+            if isinstance(p, bool) or not isinstance(p, numbers.Real) or not math.isfinite(p):
+                fail(f"must be numbers ({supplier_id!r} has {p!r})")
+            if p < 0:
+                fail(f"cannot be negative ({supplier_id!r} has {p})")
+        total = sum(probabilities.values())
+        if not any(p > 0 for p in probabilities.values()):
+            fail("must have at least one above 0")
+        if abs(total - 1) > 1e-6:  # a little room for rounding, as in 0.1 + 0.2 + 0.7
+            fail(f"must sum to 1, not {total}")
+        self.probabilities = dict(probabilities)  # a copy, so later changes to the user's dict have no effect
+        self._links_checked = False
+
+    def check_links(self):
+        """
+        Check the probabilities against the links to the site's suppliers: the probabilities have been given,
+        every link has a probability, every probability has a link, and no supplier has two links to this site
+        (its ID would not say which link is meant). A link or ID left over is most likely a typo, so it is an
+        error, not a probability of 0. ``create_sc_net`` calls this once every link is created, and ``select``
+        calls it before its first choice.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If any of these checks fails.
+        """
+        def fail(reason):
+            message = f"{self.node.ID}: SelectProbabilistic {reason}."
+            global_logger.error(message)
+            raise ValueError(message)
+
+        if self.probabilities is None:
+            fail("has no probabilities. Give them in supplier_selection_param or with set_probabilities")
+        linked = [link.source.ID for link in self.node.suppliers]
+        twice = sorted({str(i) for i in linked if linked.count(i) > 1})
+        if twice:
+            fail(f"cannot tell apart two links from the same supplier ({', '.join(twice)})")
+        missing = [str(i) for i in linked if i not in self.probabilities]
+        if missing:
+            fail(f"has no probability for the supplier(s) {', '.join(missing)}, linked to this site")
+        unlinked = sorted(str(i) for i in self.probabilities if i not in linked)
+        if unlinked:
+            fail(f"has a probability for the supplier(s) {', '.join(unlinked)}, which have no link to this site")
+        self._links_checked = True
+
+    def select(self, order_quantity):
+        """
+        Chooses the supplier of one replenishment order at random.
+
+        With ``"rescale"``, the choice is made among the suppliers that can take the order (if none with a
+        probability above 0 can, the chosen supplier is disrupted and the order is blocked). With ``"block"``,
+        the choice is made among all suppliers with a probability above 0. A disrupted supplier returned here
+        is blocked by ``InventoryNode.process_order``, which counts the order as ``blocked``.
+
+        Parameters:
+            order_quantity (float): Units in the replenishment order.
+
+        Returns:
+            Link: The link to the chosen supplier.
+        """
+        if not self._links_checked:
+            self.check_links()
+        u = self.rng.random()  # exactly one number for every order
+        candidates = [(link, self.probabilities[link.source.ID]) for link in self.node.suppliers
+                      if self.probabilities[link.source.ID] > 0]
+        pool = candidates
+        if self.on_disruption == "rescale":
+            working = [(link, p) for link, p in candidates if link.can_take_order()]
+            if working:
+                pool = working
+        # Scaling u by the total probability of the pool shares out the
+        # probability of the suppliers left out, keeping the ratios.
+        target = u * sum(p for _, p in pool)
+        running = 0.0
+        for link, p in pool:
+            running += p
+            if target < running:
+                return link
+        return pool[-1][0]  # rounding left u just past the end
 
 # ---------------------------------------------------------------------------
 # Disruption impact helpers

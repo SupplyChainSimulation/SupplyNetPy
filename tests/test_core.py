@@ -425,6 +425,246 @@ class TestSelectFastest(unittest.TestCase):
         sf = scm.SelectFastest(self.node, "dynamic")
         assert sf.select(order_quantity=1) == self.node.suppliers[1]
 
+class _ScriptedRandom(random.Random):
+    """A random number generator that returns the given values from random(), and counts the calls."""
+
+    def __init__(self, values):
+        super().__init__(0)
+        self.values = list(values)
+        self.calls = 0
+
+    def random(self):
+        self.calls += 1
+        return self.values.pop(0)
+
+
+_PROBS = {"S1": 0.5, "S2": 0.3, "S3": 0.2}
+
+
+def _probabilistic_net(env, probabilities=_PROBS, link_ids=("S1", "S2", "S3"), site_kw=None, sup_kw=None, **param):
+    """Three infinite suppliers S1, S2, S3 linked in that order to distributor D1, which uses SelectProbabilistic."""
+    sup_kw = sup_kw or {}
+    sups = {i: scm.Supplier(env=env, ID=i, name=i, node_type="infinite_supplier", **sup_kw.get(i, {}))
+            for i in ("S1", "S2", "S3")}
+    if probabilities is not None:
+        param["probabilities"] = probabilities
+    site_kw = dict(capacity=10**7, initial_level=0, replenishment_policy=None, policy_param=None) | (site_kw or {})
+    d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor", inventory_holding_cost=0,
+                           product_buy_price=1, product_sell_price=2,
+                           supplier_selection_policy=scm.SelectProbabilistic, supplier_selection_param=param,
+                           **site_kw)
+    links = [scm.Link(env=env, ID=f"L{n}", source=sups[i], sink=d1, cost=1, lead_time=lambda: 1)
+             for n, i in enumerate(link_ids, start=1)]
+    return sups, d1, links
+
+
+def _sequence(seed=None, n=50, **param):
+    """The suppliers chosen for n orders in a fresh network."""
+    if seed is not None:
+        param["seed"] = seed
+    _, d1, _ = _probabilistic_net(_fresh_env(), **param)
+    return [d1.selection_policy.select(1).source.ID for _ in range(n)]
+
+
+class TestSelectProbabilistic(unittest.TestCase):
+    """SelectProbabilistic chooses each replenishment order's supplier at random, with a probability per supplier."""
+
+    def test_stacking(self):
+        rng = _ScriptedRandom([0.49, 0.5, 0.79, 0.8, 0.999])
+        _, d1, (l1, l2, l3) = _probabilistic_net(_fresh_env(), rng=rng)
+        assert [d1.selection_policy.select(10) for _ in range(5)] == [l1, l2, l2, l3, l3]
+
+    def test_one_draw_per_select(self):
+        rng = _ScriptedRandom([0.1] * 10)
+        sups, d1, _ = _probabilistic_net(_fresh_env(), rng=rng)
+        for _ in range(3):
+            d1.selection_policy.select(10)
+        sups["S1"].node_status = "inactive"
+        sups["S2"].node_status = "inactive"  # only S3 can take an order
+        for _ in range(2):
+            d1.selection_policy.select(10)
+        assert rng.calls == 5
+
+    def test_zero_probability_never_chosen(self):
+        _, d1, (l1, l2, l3) = _probabilistic_net(_fresh_env(), probabilities={"S1": 0.0, "S2": 1.0, "S3": 0.0},
+                                                 seed=3)
+        assert all(d1.selection_policy.select(1) is l2 for _ in range(200))
+
+    def test_only_zero_probability_supplier_working_blocks(self):
+        env = _fresh_env()
+        sups, d1, (l1, l2, l3) = _probabilistic_net(env, probabilities={"S1": 1.0, "S2": 0.0, "S3": 0.0}, seed=3)
+        sups["S1"].node_status = "inactive"
+        d1.place_order(10)
+        env.run(until=2)
+        assert d1.stats.blocked == [1, 10]
+        assert l1.stats.blocked == [1, 10]
+        assert sups["S2"].stats.demand_received == [0, 0]
+        assert d1.stats.fulfillment_received == [0, 0]
+
+    def test_rescale_keeps_ratios(self):
+        rng = _ScriptedRandom([0.55, 0.65])
+        sups, d1, (l1, l2, l3) = _probabilistic_net(_fresh_env(), rng=rng)
+        sups["S1"].node_status = "inactive"
+        # S2 and S3 share the orders 0.6 to 0.4: 0.55 x 0.5 = 0.275 < 0.3, 0.65 x 0.5 = 0.325 >= 0.3
+        assert d1.selection_policy.select(10) is l2
+        assert d1.selection_policy.select(10) is l3
+
+    def test_block_lands_on_disrupted_supplier(self):
+        env = _fresh_env()
+        sups, d1, (l1, l2, l3) = _probabilistic_net(env, rng=_ScriptedRandom([0.1]), on_disruption="block")
+        sups["S1"].node_status = "inactive"
+        d1.place_order(10)
+        env.run(until=2)
+        assert d1.stats.blocked == [1, 10]
+        assert l1.stats.blocked == [1, 10]
+        assert d1.stats.fulfillment_received == [0, 0]
+
+    def test_shares_close_to_probabilities(self):
+        _, d1, links = _probabilistic_net(_fresh_env(), seed=1)
+        chosen = [d1.selection_policy.select(1) for _ in range(4000)]
+        for link, p in zip(links, (0.5, 0.3, 0.2)):
+            assert abs(chosen.count(link) / 4000 - p) < 0.03, link.ID
+
+    def test_same_seed_same_sequence(self):
+        assert _sequence(seed=7) == _sequence(seed=7)
+
+    def test_different_seed_differs(self):
+        assert _sequence(seed=7) != _sequence(seed=8)
+
+    def test_set_seed_repeats_run(self):
+        scm.set_seed(3)
+        first = _sequence()
+        scm.set_seed(3)
+        assert _sequence() == first
+
+    def test_site_rng_repeats_run(self):
+        def run():
+            _, d1, _ = _probabilistic_net(_fresh_env(), site_kw={"rng": random.Random(9)})
+            return [d1.selection_policy.select(1).source.ID for _ in range(50)]
+        assert run() == run()
+
+    def test_draws_do_not_disturb_other_random_numbers(self):
+        # D1 is disrupted at random with its own generator. With a seed, the
+        # policy's draws come from its own generator, so D1's disruptions are
+        # the same as with SelectFirst, which draws nothing. (All suppliers are
+        # alike, so the choice of supplier does not change D1's run.)
+        def run(policy, param):
+            env = _fresh_env()
+            sups = {i: scm.Supplier(env=env, ID=i, name=i, node_type="infinite_supplier") for i in ("S1", "S2", "S3")}
+            d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor", capacity=100,
+                                   initial_level=0, inventory_holding_cost=0,
+                                   replenishment_policy=scm.SSReplenishment, policy_param={"s": 20, "S": 50},
+                                   product_buy_price=1, product_sell_price=2, failure_p=0.1,
+                                   node_recovery_time=lambda: 2, rng=random.Random(6),
+                                   supplier_selection_policy=policy, supplier_selection_param=param)
+            for n, i in enumerate(("S1", "S2", "S3"), start=1):
+                scm.Link(env=env, ID=f"L{n}", source=sups[i], sink=d1, cost=1, lead_time=lambda: 1)
+            scm.Demand(env=env, ID="C1", name="C1", order_arrival_model=lambda: 1,
+                       order_quantity_model=lambda: 5, demand_node=d1)
+            env.run(until=100)
+            assert d1.stats.demand_placed[0] > 5
+            # The generator's state shows how many numbers were drawn from it.
+            return d1.rng.getstate(), d1.stats.disruptions, d1.stats.demand_placed
+        assert run(scm.SelectProbabilistic, {"probabilities": _PROBS, "seed": 5}) == run(scm.SelectFirst, None)
+
+    def test_mode_default_is_dynamic(self):
+        _, d1, _ = _probabilistic_net(_fresh_env(), seed=1)
+        assert d1.selection_policy.mode == "dynamic"
+
+    def test_fixed_mode_rejected(self):
+        with pytest.raises(ValueError, match="fixed"):
+            scm.InventoryNode(env=_fresh_env(), ID="D1", name="D1", node_type="distributor", capacity=10,
+                              initial_level=0, inventory_holding_cost=0, replenishment_policy=None,
+                              policy_param=None, product_buy_price=1, product_sell_price=2,
+                              supplier_selection_policy=scm.SelectProbabilistic, supplier_selection_mode="fixed",
+                              supplier_selection_param={"probabilities": _PROBS})
+
+    def test_invalid_probabilities(self):
+        for bad in ({"S1": 0.5, "S2": 0.3, "S3": 0.3}, {"S1": -0.1, "S2": 1.1, "S3": 0.0},
+                    {"S1": 0.0, "S2": 0.0, "S3": 0.0}, [0.5, 0.5], {"S1": True, "S2": 0.0, "S3": 0.0},
+                    {"S1": "0.5", "S2": 0.5, "S3": 0.0}):
+            with pytest.raises(ValueError):
+                _probabilistic_net(_fresh_env(), probabilities=bad)
+
+    def test_normalized_random_weights_accepted(self):
+        r = random.Random(2)
+        w = [r.random() for _ in range(3)]
+        probabilities = dict(zip(("S1", "S2", "S3"), (x / sum(w) for x in w)))
+        _, d1, (l1, l2, l3) = _probabilistic_net(_fresh_env(), probabilities=probabilities,
+                                                 rng=_ScriptedRandom([0.9999999999999999]))
+        assert d1.selection_policy.select(1) is l3
+
+    def test_seed_and_rng_together(self):
+        with pytest.raises(ValueError):
+            _probabilistic_net(_fresh_env(), seed=1, rng=random.Random(1))
+
+    def test_rng_must_be_a_random_generator(self):
+        with pytest.raises(ValueError):
+            _probabilistic_net(_fresh_env(), rng=5)
+
+    def test_unknown_on_disruption(self):
+        with pytest.raises(ValueError):
+            _probabilistic_net(_fresh_env(), on_disruption="wait")
+
+    def test_unknown_setting_warns(self):
+        with pytest.warns(UserWarning, match="quota"):
+            _probabilistic_net(_fresh_env(), seed=1, quota=True)
+
+    def test_link_without_probability(self):
+        _, d1, _ = _probabilistic_net(_fresh_env(), probabilities={"S1": 0.5, "S2": 0.5}, seed=1)
+        with pytest.raises(ValueError, match="S3"):
+            d1.selection_policy.select(1)
+
+    def test_probability_without_link(self):
+        _, d1, _ = _probabilistic_net(_fresh_env(), link_ids=("S1", "S2"), seed=1)
+        with pytest.raises(ValueError, match="S3"):
+            d1.selection_policy.select(1)
+
+    def test_two_links_from_one_supplier(self):
+        _, d1, _ = _probabilistic_net(_fresh_env(), link_ids=("S1", "S2", "S3", "S1"), seed=1)
+        with pytest.raises(ValueError, match="S1"):
+            d1.selection_policy.select(1)
+
+    def test_link_without_probability_found_in_a_run_with_env_run(self):
+        env = _fresh_env()
+        _probabilistic_net(env, probabilities={"S1": 0.5, "S2": 0.5}, seed=1,
+                           site_kw={"replenishment_policy": scm.SSReplenishment, "policy_param": {"s": 20, "S": 50}})
+        with pytest.raises(ValueError, match="S3"):
+            env.run(until=5)
+
+    def test_probabilities_never_given(self):
+        _, d1, _ = _probabilistic_net(_fresh_env(), probabilities=None, seed=1)
+        with pytest.raises(ValueError, match="probabilities"):
+            d1.selection_policy.select(1)
+
+    def test_set_probabilities_before_all_links(self):
+        env = _fresh_env()
+        sups = {i: scm.Supplier(env=env, ID=i, name=i, node_type="infinite_supplier") for i in ("S1", "S2", "S3")}
+        d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor", capacity=100,
+                               initial_level=0, inventory_holding_cost=0, replenishment_policy=None,
+                               policy_param=None, product_buy_price=1, product_sell_price=2,
+                               supplier_selection_policy=scm.SelectProbabilistic)
+        scm.Link(env=env, ID="L1", source=sups["S1"], sink=d1, cost=1, lead_time=lambda: 1)
+        d1.selection_policy.set_probabilities(_PROBS)  # only L1 exists yet: no error
+        scm.Link(env=env, ID="L2", source=sups["S2"], sink=d1, cost=1, lead_time=lambda: 1)
+        scm.Link(env=env, ID="L3", source=sups["S3"], sink=d1, cost=1, lead_time=lambda: 1)
+        assert d1.selection_policy.select(1).source.ID in _PROBS
+        with pytest.raises(ValueError):
+            d1.selection_policy.set_probabilities({"S1": 0.5, "S2": 0.6, "S3": 0.0})
+
+    def test_set_probabilities_replaces_them(self):
+        _, d1, (l1, l2, l3) = _probabilistic_net(_fresh_env(), seed=1)
+        d1.selection_policy.select(1)
+        d1.selection_policy.set_probabilities({"S1": 0.0, "S2": 0.0, "S3": 1.0})
+        assert all(d1.selection_policy.select(1) is l3 for _ in range(50))
+
+    def test_info(self):
+        _, d1, _ = _probabilistic_net(_fresh_env(), seed=1)
+        info = d1.selection_policy.get_info()
+        assert info["probabilities"] == _PROBS
+        assert info["on_disruption"] == "rescale"
+
+
 class TestSelectionPolicyDefaultMode(unittest.TestCase):
     # A site passes no mode when none is given, so each policy's own default
     # applies. Every policy before SelectProbabilistic defaults to "fixed".
