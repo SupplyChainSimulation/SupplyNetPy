@@ -30,6 +30,7 @@ nav:
     - Pharmacy Supply Chain: case_study_pharma.md
     - Milk Supply Chain (India): case-studies/milk-supply-chain-india.md
   - User Guide:
+    - Customer Demand: guide/customer-demand.md
     - Replenishment Policies: guide/replenishment-policies.md
     - Supplier Selection: guide/supplier-selection.md
     - Disruptions: guide/disruptions.md

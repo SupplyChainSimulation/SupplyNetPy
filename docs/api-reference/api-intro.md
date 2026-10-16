@@ -14,6 +14,7 @@ Each submodule lists its public names in `__all__`, and `SupplyNetPy.Components`
 
 For tasks that use several parts together, the User Guide explains how to do them step by step.
 
+* [Customer Demand](../guide/customer-demand.md). How often customers order and how many units, demand from recorded data, what customers do when the site is short, and delivering their orders.
 * [Replenishment Policies](../guide/replenishment-policies.md). Choosing a built in policy, when it checks, safety stock, and writing your own policy.
 * [Supplier Selection](../guide/supplier-selection.md). Choosing a supplier-selection policy, fixed and dynamic mode, and writing your own policy.
 * [Disruptions](../guide/disruptions.md). Scheduled and random disruptions of sites and links, what happens to orders, and units lost in a disruption.
