@@ -38,20 +38,35 @@ print(stats) # print
 """
 #node-info-out-st
 {'name': 'D1 statistics',
+'start_time': 0,
+'elapsed_time': 20,
 'demand_placed': [5, 300],
 'fulfillment_received': [4, 250],
 'demand_received': [20, 200],
 'demand_fulfilled': [20, 200],
 'shortage': [0, 0],
+'lost_sales': [0, 0],
 'disruption_lost_sales': [0, 0],
 'backorder': [0, 0],
+'waited': [0, 0],
+'waiting_time': 0,
+'avg_waiting_time': 0.0,
+'blocked': [0, 0],
 'inventory_level': 100,
 'inventory_waste': 0,
+'dropped_qty': 0,
+'inventory_level_time': 2050,
+'avg_inventory_level': 102.5,
+'zero_inventory_time': 0,
+'zero_inventory_share': 0.0,
 'inventory_carry_cost': 410.0,
 'inventory_spend_cost': 25000,
 'transportation_cost': 25,
 'destroyed_qty': 0,
 'destroyed_value': 0,
+'disruptions': 0,
+'disrupted_time': 0,
+'availability': 1.0,
 'node_cost': 25435.0,
 'revenue': 21000,
 'profit': -4435.0}
@@ -161,6 +176,7 @@ INFO sim_trace - backorders                        : [0, 0]
 INFO sim_trace - demand_by_customers               : [20, 200]
 INFO sim_trace - demand_by_site                    : [5, 300]
 INFO sim_trace - demands                           : {'d1': Demand1}
+INFO sim_trace - disruption_lost_sales             : [0, 0]
 INFO sim_trace - env                               : <simpy.core.Environment object at 0x0000028D55F67C10>
 INFO sim_trace - fulfillment_received_by_customers : [20, 200]
 INFO sim_trace - fulfillment_received_by_site      : [4, 250]
@@ -168,6 +184,7 @@ INFO sim_trace - inventory_carry_cost              : 410.0
 INFO sim_trace - inventory_spend_cost              : 25000
 INFO sim_trace - inventory_waste                   : 0
 INFO sim_trace - links                             : {'L1': S1 to D1}
+INFO sim_trace - lost_sales                        : [0, 0]
 INFO sim_trace - nodes                             : {'S1': Supplier1, 'D1': Distributor1}
 INFO sim_trace - num_distributors                  : 1
 INFO sim_trace - num_manufacturers                 : 0

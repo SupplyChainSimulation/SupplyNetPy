@@ -1172,7 +1172,7 @@ The other vocabulary inconsistency the review flagged (``demand_placed`` / ``dem
 **Drift-only fix applied:** the obvious drift the review called out (``Product.__init__`` parameter order) is left alone in this pass too — the signature is the source of truth, and reordering the docstring without the broader dedup invites another round of churn when §6.7 lands proper. Recorded as item 2 of the "remaining work" notes.
 
 ### 6.8 Link statistics 📝 Designed (2026-10-15), not yet implemented
-Requested by the user. New `LinkStatistics` in `core.py`; recording calls in `InventoryNode.process_order`, `Manufacturer.process_order_raw` and `Link.disruption`; new functions in `utilities.py`. Builds on §3.24 (`reset_stats` below calls `Statistics.reset()` on every node) and §3.25.
+Requested by the user. New `LinkStatistics` in `core.py`; recording calls in `InventoryNode.process_order`, `Manufacturer.process_order_raw` and `Link.disruption`; new functions in `utilities.py`. Builds on §3.24 (`reset_stats` below calls `Statistics.reset()` on every node) and §3.25, and is done after §6.9, reusing its clock, disruption timer and reset handling of worked-out values.
 
 **Purpose.** Node statistics say how much a site ordered and received in total, but not from whom. Since §3.23 every site keeps `buyers` as well as `suppliers`, so each link can record the flow between its two ends: how many replenishment orders the buyer placed over it, what it received, how long it waited, what it cost. This shows how orders split across suppliers, and serves as a target for research that studies flows (for example a learned model of the network).
 
@@ -1272,8 +1272,88 @@ A new `reset_stats(supplychainnet)` resets every node, customer demand and link 
 
 - `Manufacturer.process_order_raw` recorded the buyer's `demand_placed` and `transportation_cost` only once the supplier had served the order. Fixed first, in §3.25, so both kinds of site record them when the order is placed and every link statistic recorded at placement uses the same moment.
 - Values that are undefined (a denominator of zero) are `None`, decided when the value is read; nothing is stored for them.
+- Spreads use the sample standard deviation (divides by n − 1, as pandas and Excel's `STDEV.S` do), decided 2026-10-16.
 
-**Follow-up.** The probability-based supplier-selection policy gets its own entry (§6.9). It will use these statistics in its tests (share of orders per link).
+**Follow-up.** The probability-based supplier-selection policy gets its own entry (§6.10). It will use these statistics in its tests (share of orders per link).
+
+### 6.9 More node statistics: disruptions, inventory over time, orders that end badly, a clock ✅ Resolved
+Requested by the user while §6.8 was being designed. `Statistics`, `Inventory.update_carry_cost`, `Node.disruption`, `Node.place_order`, both `process_order` methods, `Manufacturer.process_order`, `Demand`, `simulate_sc_net`. To be done **before** §6.8 (user, 2026-10-16): it builds the shared tools (a clock that `reset()` restarts, a disruption timer, a running sum of value × time), and §6.8 then reuses them for links. Two separate changes, so each stays easy to review.
+
+**Purpose.** Node statistics count orders, units and costs, but say nothing about disruptions apart from destroyed units, cannot give an exact average inventory level, have no record of customer units that were never delivered or of delivered units that had to be dropped, and have no clock, so nothing can be expressed per time unit.
+
+**Kinds of value.** *Stored* values are running totals updated by the code where the event happens. *Worked-out* values are properties listed in `_stats_keys`, so `get_statistics()` includes them; they are computed when read, from the totals up to that moment, and are `None` when there is nothing to divide by (or, for the inventory values, for an infinite inventory and for a customer demand, which has none). Every node has all of them, because all nodes share `Statistics`.
+
+**Group 1: disruptions.**
+
+| Statistic | Kind | Meaning | Recorded in |
+|---|---|---|---|
+| `disruptions` | stored, count | Number of disruptions of the node | `Node.disruption`, when `node_status` becomes `"inactive"` (both the timed and the random path) |
+| `disrupted_time` | stored, time units | Time spent disrupted. When read during a disruption, the time so far is included | `Node.disruption`, on recovery |
+| `blocked` | stored, `[orders, units]` | Replenishment orders this site could not place because every supplier it has (or the link to it) was disrupted. Not counted for a site with no supplier at all (see below). Not lost: the site orders again once a supplier or a link recovers (§3.23), sizing the new order from its inventory position then | `Node.place_order` (the `not can_place_order()` branch, units = `quantity`); the second check in `InventoryNode.process_order` (units after the capacity clamp); `Manufacturer.process_order` when a raw material has no supplier (units = product units). The three paths are exclusive, so each order is counted once |
+| `availability` | worked out | Share of time the node was working: `1 − disrupted_time / elapsed_time` | |
+
+**Group 2: inventory over time.** `Inventory.update_carry_cost` already runs before every change of the inventory level (`put`, `get`, expiry, `destroy`) and works out `level × time since the last update` before multiplying by the holding cost. It now also keeps that product without the holding cost, and the time spent at level 0, on the `Inventory` (next to `carry_cost`). The level only changes at events, so these sums are exact.
+
+| Statistic | Kind | Meaning |
+|---|---|---|
+| `inventory_level_time` | stored (on the inventory, read up to now) | Running sum of inventory level × time, in unit time units. 10 units for 3 time units and 4 units for 2 more give 38. The holding cost is this sum times the holding cost per unit per time unit |
+| `zero_inventory_time` | stored (same) | Time the inventory level was 0 (within a rounding tolerance of 1e-9) |
+| `avg_inventory_level` | worked out | `inventory_level_time / elapsed_time` (38 / 5 = 7.6 in the example). Exact, unlike an average of once-per-time-unit samples, and works when the holding cost is 0 |
+| `zero_inventory_share` | worked out | `zero_inventory_time / elapsed_time` |
+
+`inventory_level_time` is public, not only its average, because totals can be added across sites and across periods and averages cannot. Reading either value includes the stretch since the last update without changing anything stored. The glossary tells us to avoid "stockout", hence the `zero_inventory_` names.
+
+**Group 3: orders that end badly.**
+
+| Statistic | Kind | Meaning | Recorded in |
+|---|---|---|---|
+| `lost_sales` | stored, `[orders, units]` | Customer units the site never delivered, recorded at the site. A customer with no tolerance who finds too few units gets none, so the whole order is lost (`shortage` records only the missing units); the rest of a "take what is there" order (`consume_available`); an order too big for the site ever to hold; what a waiting customer was still owed when their tolerance ran out. An order counts once, however many of its units were lost | `_serve_no_tolerance` (`[1, order_quantity]`), `_serve_partial_consume` (`[1, order_quantity − available]`), `_discard_unservable` (`[1, order_quantity]`), the "customer leaves" branch of `wait_for_order` (`[1, units still owed]`) |
+| `dropped_qty` | stored, units | Units of a delivery that did not fit in the inventory and that no waiting customer could take. The buyer pays only for the units it accepts, and the supplier is credited only for those, so these units carry no cost in the statistics; this makes them visible | The safety stop in `InventoryNode.process_order` (today a log warning only) |
+| `waited` | stored, `[orders, units]` | Orders that had to wait at this site, from customers and from other sites, as with `backorder` | `_enqueue_for_tolerance` (customers); where `order_waits` is true in `InventoryNode.process_order` and `Manufacturer.process_order_raw`, at the supplier site |
+| `waiting_time` | stored, time units | Total time those orders waited until their units left the inventory | `wait_for_order` when a waiting customer is served in full (the time the order arrived is kept in the process); after `yield event` in both `process_order` methods |
+| `avg_waiting_time` | worked out | `waiting_time / demand_fulfilled[0]`: average wait per order served, with orders served at once counting as 0 (the same rule as for links). Customers who gave up are not in it | |
+
+Everything a site lost is `lost_sales + disruption_lost_sales` (§3.26). A supplier's waiting time for orders from other sites equals the sum of `waiting_time` over its buyer links (§6.8).
+
+**Group 4: a clock.**
+
+| Statistic | Kind | Meaning |
+|---|---|---|
+| `start_time` | stored, a time | When counting began: the time the statistics were created, or the last `reset()` |
+| `elapsed_time` | worked out | `env.now − start_time`; every average above divides by it |
+
+**Not added (decided 2026-10-16):** a node-level fill rate (units served at once ÷ units ordered). It would need a further "units served at once" counter, because `shortage` cannot give it exactly; `lost_sales` and `shortage` already describe service. Holding cost for raw materials at a manufacturer, production busy time, and the time a raw-material supplier's mining is paused are left for later.
+
+**Reset (§3.24 rules).** `reset()` zeroes the new totals (including `inventory_level_time` and `zero_inventory_time` on the inventory, next to `carry_cost` and `waste`), moves `start_time` to `env.now`, and, if the node is disrupted at the reset, counts that disruption's time from the reset onward without adding to `disruptions`. Worked-out values are properties, so both passes of `reset()` must skip them (setting a property without a setter raises an error); they follow from the totals.
+
+**Network results.** `simulate_sc_net` adds up `lost_sales` and `disruption_lost_sales` over all sites, next to `shortage` and `backorders`, as `supplychainnet["lost_sales"]` and `supplychainnet["disruption_lost_sales"]`, and both join `Network._RESULT_KEYS`. The other new statistics stay per node. The run log gains two lines, so the pasted sample log in `examples/py/intro_simple.py` is updated.
+
+**Docs.** `docs/glossary.md` first: **lost sales** (and how it differs from shortage and from disruption lost sales), **blocked order**, **availability**, **waiting time**, **average inventory level**, **dropped units**; the CLAUDE.md "words to avoid" mapping for lost demand points to lost sales. Plain-language docstrings for every new statistic, in the `Statistics` class and `__init__` docstrings. The `get_statistics()` sample output in `examples/py/intro_simple.py` (shown in `docs/ten_min.md`) gains the new keys. Notebooks and the pasted tables in `hybrid_big_sc.py` are left as they are.
+
+**Tests.**
+
+1. Nothing else changes: every existing node statistic of intro_simple, a network with a manufacturer, and the pharma model (30 replications) is identical before and after; `intro_simple.py` still gives `-4435.0`; the anyLogistix validation figures do not move.
+2. Disruptions, with fixed disruption and recovery times: `disruptions`, `disrupted_time` and `availability`, including a read during a disruption and a reset during one.
+3. `blocked` on each of the three paths, counted once per order; a blocked order adds nothing to `demand_placed`.
+4. The 10-then-4 example: `inventory_level_time == 38`, `avg_inventory_level == 7.6` at time 5, with a holding cost of 0; `zero_inventory_time` for a site that runs empty; both `None` for an infinite supplier and a customer demand; a read between events includes the time since the last change.
+5. `lost_sales` on each of the four paths (no tolerance, take what is there, too big to hold, gave up waiting after a partial delivery); a waiting customer who is served in full adds nothing.
+6. `dropped_qty` for a delivery larger than the free capacity with no waiting customer.
+7. `waited`, `waiting_time` and `avg_waiting_time` for a waiting customer and for an order from another site, with known waits.
+8. Reset: all new totals zero, `start_time` moved, averages cover only the time since the reset.
+9. Network results: `lost_sales` and `disruption_lost_sales` add up over sites and appear in `Network.results`.
+10. The existing test suite passes.
+
+**`blocked` counts disruptions only (user, 2026-10-16).** `can_place_order` is also false for a site with no supplier at all, or a manufacturer with no raw-material supplier for some raw material. That is a mistake in how the network is built, not a disruption: no recovery would ever let the order through, and it would be counted again at every check. So `Node.has_suppliers()` (overridden by `Manufacturer`: every raw material has a connected raw-material supplier, disrupted or not) tells the cases apart. `blocked` is recorded only when it is true. Otherwise `place_order` logs that the site has no supplier and, once per site, calls `warnings.warn` (text without the site's ID, so Python shows it once) and writes it to the log; `Manufacturer.process_order` records nothing. New `TestBlockedMeansDisruptedSuppliers` (3 tests; all fail without the change).
+
+**Implemented as designed**, with two details settled in the code: the four inventory values are properties on `Statistics` that read `inventory.level_time` / `inventory.zero_level_time` (kept by `Inventory.update_carry_cost`) and add the stretch since the last update; `disrupted_time` is a property too (completed disruptions plus the one going on), with `Statistics.disruption_started()` / `disruption_ended()` called from `Node.disruption`.
+
+**Verified:**
+
+- `pytest` — 305/305 passing. New `TestMoreNodeStatistics` (20 tests covering every item in the list above) and `TestBlockedMeansDisruptedSuppliers` (3 tests); all fail on the old code.
+- Nothing else changes: every existing statistic of every node and customer demand is identical before and after in seven networks (intro_simple; five seeds of a network with random node and link disruptions, two suppliers, waiting customers with partial deliveries, customers who take what is there, and customers with no tolerance; a manufacturer with a limited raw-material supplier). The 30 pharma replications of §3.24 are identical. `intro_simple.py`, `sc_with_factory.py` and `hybrid_big_sc.py` print the same output apart from the new statistics (and the environment's memory address).
+- `examples/py/intro_simple.py` still gives `profit: -4435.0`; its two pasted samples (the `get_statistics()` output shown in `docs/ten_min.md`, and the run log) were updated, and the first was checked against a real run. In it, `inventory_level_time` is 2050 and the holding cost 410.0 = 0.2 × 2050, as expected.
+
+**Found while verifying (not changed here).** In the manufacturer test network, a raw-material order larger than the raw-material supplier's capacity (292 units ordered from a supplier that holds at most 200) waits at the supplier for ever, so the manufacturer never produces again. The same happens with the old code. Customers have a guard for this case (`_discard_unservable`); replenishment orders do not. To be discussed as its own item.
 
 ---
 

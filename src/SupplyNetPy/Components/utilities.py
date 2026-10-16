@@ -445,6 +445,8 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
             - ``total_demand``: all orders placed (the two "demand" counts above added).
             - ``total_fulfillment_received``: all orders received (the two "fulfillment" counts above added).
             - ``shortage``: total shortage recorded at the sites.
+            - ``lost_sales``: total customer units the sites never delivered (other than through disruptions).
+            - ``disruption_lost_sales``: total customer orders the sites lost because they were disrupted.
             - ``backorders``: total backorders at the sites at the end.
             - ``avg_cost_per_order``: total cost divided by the number of orders in ``total_demand`` (0 if none).
             - ``avg_cost_per_item``: total cost divided by the units in ``total_demand`` (0 if none); "item"
@@ -515,6 +517,8 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
     total_demand_placed = [0, 0] # [orders, units]
     total_fulfillment_received = [0, 0] # [orders, units]
     total_shortage = [0, 0] # [orders, units]
+    total_lost_sales = [0, 0] # [orders, units]
+    total_disruption_lost_sales = [0, 0] # [orders, units]
     total_backorders = [0, 0] # [orders, units]
     
     for key, node in supplychainnet["nodes"].items():
@@ -536,6 +540,10 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
         total_fulfillment_received_by_site[1] += node.stats.fulfillment_received[1]
         total_shortage[0] += node.stats.shortage[0]
         total_shortage[1] += node.stats.shortage[1]
+        total_lost_sales[0] += node.stats.lost_sales[0]
+        total_lost_sales[1] += node.stats.lost_sales[1]
+        total_disruption_lost_sales[0] += node.stats.disruption_lost_sales[0]
+        total_disruption_lost_sales[1] += node.stats.disruption_lost_sales[1]
         total_backorders[0] += node.stats.backorder[0]
         total_backorders[1] += node.stats.backorder[1]
     for key, node in supplychainnet["demands"].items():
@@ -572,6 +580,8 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
     supplychainnet["total_demand"] = total_demand_placed
     supplychainnet["total_fulfillment_received"] = total_fulfillment_received
     supplychainnet["shortage"] = total_shortage
+    supplychainnet["lost_sales"] = total_lost_sales
+    supplychainnet["disruption_lost_sales"] = total_disruption_lost_sales
     supplychainnet["backorders"] = total_backorders
     # Average cost per order and per unit (the second key keeps its old name, avg_cost_per_item)
     if total_demand_placed[0] > 0:
@@ -749,7 +759,8 @@ class Network:
         "revenue", "total_cost", "profit", "demand_by_customers",
         "fulfillment_received_by_customers", "demand_by_site",
         "fulfillment_received_by_site", "total_demand",
-        "total_fulfillment_received", "shortage", "backorders",
+        "total_fulfillment_received", "shortage", "lost_sales",
+        "disruption_lost_sales", "backorders",
         "avg_cost_per_order", "avg_cost_per_item",
     )
 

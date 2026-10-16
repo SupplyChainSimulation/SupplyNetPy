@@ -350,6 +350,21 @@ class Statistics(InfoMixin):
         shortage (list): How many units this node was missing when orders arrived, as [number of orders, units]. A running total that is never reduced. ``orders_shortage`` is kept as an old name for it (§6.6).
         backorder (list): Orders this node owes right now, as [number of orders, units].
         disruption_lost_sales (list): Customer orders this site lost because it was disrupted when they arrived, as [number of orders, units]. Kept apart from ``shortage``, which is for units the site did not have.
+        start_time (float): When counting began: the time these statistics were created, or the last ``reset``.
+        elapsed_time (float): Time since ``start_time``. Worked out when read; every average below divides by it.
+        lost_sales (list): Customer units this site never delivered, as [number of orders, units]: the whole order of a customer with no tolerance who found too few units, the rest of an order when the customer takes only what is there, an order too big for the site ever to hold, and what a waiting customer was still owed when their tolerance ran out. Unlike ``shortage``, it counts only units that were never delivered. Customers turned away by a disruption are in ``disruption_lost_sales`` instead.
+        waited (list): Orders that had to wait at this site, from customers and from other sites, as [number of orders, units].
+        waiting_time (float): Total time those orders waited, until their units left the inventory.
+        avg_waiting_time (float): Average wait per order fulfilled, with orders served at once counting as 0: ``waiting_time / demand_fulfilled[0]``. Worked out when read.
+        blocked (list): Replenishment orders this site could not place because every supplier it has (or the link to it) was disrupted, as [number of orders, units]. They are not lost: the site orders again when a supplier or a link recovers. A site with no supplier at all records nothing here; that is a mistake in how the network is built, and a warning says so.
+        dropped_qty (float): Units of deliveries that did not fit in the inventory and that no waiting customer could take. The site does not pay for them.
+        inventory_level_time (float): Running sum of inventory level × time (units × time units), up to now. Holding 10 units for 3 time units and then 4 units for 2 gives 38. The holding cost is this sum times the holding cost per unit per time unit.
+        avg_inventory_level (float): Average inventory level over time, each level counted for as long as it lasted: ``inventory_level_time / elapsed_time`` (7.6 in the example above). Worked out when read.
+        zero_inventory_time (float): Time the inventory level was 0, up to now.
+        zero_inventory_share (float): Share of time the inventory level was 0: ``zero_inventory_time / elapsed_time``. Worked out when read.
+        disruptions (int): Number of disruptions of this node.
+        disrupted_time (float): Time this node spent disrupted, including a disruption still going on when it is read.
+        availability (float): Share of time this node was not disrupted: ``1 - disrupted_time / elapsed_time``. Worked out when read.
         inventory_level (float): The inventory level at the last update.
         inventory_waste (float): Expired units thrown away so far.
         inventory_carry_cost (float): Holding cost so far.
@@ -369,6 +384,9 @@ class Statistics(InfoMixin):
         reset: Starts the running totals again from zero (for example after a warm-up), keeping the values that describe the present.
         update_stats: Updates statistics based on provided values.
         update_stats_periodically: Periodically updates statistics during simulation.
+        disruption_started, disruption_ended: Called by the node when a disruption starts and ends.
+
+    Values worked out when read are ``None`` when there is nothing to divide by (no time has passed, or no order has been fulfilled yet). The four inventory values are ``None`` for an infinite inventory and for a customer demand, which has no inventory.
     """
     # Declarative KPI surface. Subclasses / node subclasses that need extra
     # stats append to ``self.stats._stats_keys`` / ``self.stats._cost_components``
@@ -377,11 +395,15 @@ class Statistics(InfoMixin):
     _info_keys = ["name"]
     _stats_keys = [
         "name",
+        "start_time", "elapsed_time",
         "demand_placed", "fulfillment_received", "demand_received", "demand_fulfilled",
-        "shortage", "disruption_lost_sales", "backorder",
-        "inventory_level", "inventory_waste",
+        "shortage", "lost_sales", "disruption_lost_sales", "backorder",
+        "waited", "waiting_time", "avg_waiting_time", "blocked",
+        "inventory_level", "inventory_waste", "dropped_qty",
+        "inventory_level_time", "avg_inventory_level", "zero_inventory_time", "zero_inventory_share",
         "inventory_carry_cost", "inventory_spend_cost", "transportation_cost",
         "destroyed_qty", "destroyed_value",
+        "disruptions", "disrupted_time", "availability",
         "node_cost", "revenue", "profit",
     ]
     # Attributes that contribute to ``node_cost``. ``node_cost`` itself is NOT
@@ -416,6 +438,21 @@ class Statistics(InfoMixin):
             shortage (list): How many units this node was missing when orders arrived, as [number of orders, units]. A running total that is never reduced. ``orders_shortage`` is kept as an old name for it (§6.6).
             backorder (list): Orders this node owes right now, as [number of orders, units].
             disruption_lost_sales (list): Customer orders this site lost because it was disrupted when they arrived, as [number of orders, units]. Kept apart from ``shortage``, which is for units the site did not have.
+            start_time (float): When counting began: the time these statistics were created, or the last ``reset``.
+            elapsed_time (float): Time since ``start_time``. Worked out when read; every average below divides by it.
+            lost_sales (list): Customer units this site never delivered, as [number of orders, units]: the whole order of a customer with no tolerance who found too few units, the rest of an order when the customer takes only what is there, an order too big for the site ever to hold, and what a waiting customer was still owed when their tolerance ran out. Unlike ``shortage``, it counts only units that were never delivered. Customers turned away by a disruption are in ``disruption_lost_sales`` instead.
+            waited (list): Orders that had to wait at this site, from customers and from other sites, as [number of orders, units].
+            waiting_time (float): Total time those orders waited, until their units left the inventory.
+            avg_waiting_time (float): Average wait per order fulfilled, with orders served at once counting as 0: ``waiting_time / demand_fulfilled[0]``. Worked out when read.
+            blocked (list): Replenishment orders this site could not place because every supplier it has (or the link to it) was disrupted, as [number of orders, units]. They are not lost: the site orders again when a supplier or a link recovers. A site with no supplier at all records nothing here; that is a mistake in how the network is built, and a warning says so.
+            dropped_qty (float): Units of deliveries that did not fit in the inventory and that no waiting customer could take. The site does not pay for them.
+            inventory_level_time (float): Running sum of inventory level × time (units × time units), up to now. Holding 10 units for 3 time units and then 4 units for 2 gives 38. The holding cost is this sum times the holding cost per unit per time unit.
+            avg_inventory_level (float): Average inventory level over time, each level counted for as long as it lasted: ``inventory_level_time / elapsed_time`` (7.6 in the example above). Worked out when read.
+            zero_inventory_time (float): Time the inventory level was 0, up to now.
+            zero_inventory_share (float): Share of time the inventory level was 0: ``zero_inventory_time / elapsed_time``. Worked out when read.
+            disruptions (int): Number of disruptions of this node.
+            disrupted_time (float): Time this node spent disrupted, including a disruption still going on when it is read.
+            availability (float): Share of time this node was not disrupted: ``1 - disrupted_time / elapsed_time``. Worked out when read.
             inventory_level (float): The inventory level at the last update.
             inventory_waste (float): Expired units thrown away so far.
             inventory_carry_cost (float): Holding cost so far.
@@ -447,8 +484,20 @@ class Statistics(InfoMixin):
         # at both the node and network level. ``orders_shortage`` is kept as
         # a read-only alias / accepted ``update_stats`` kwarg for back-compat.
         self.shortage = [0,0] # units missing when orders arrived (running total)
+        self.start_time = self.node.env.now # when counting began (moved by reset)
+        self.lost_sales = [0,0] # customer units never delivered (other than through a disruption)
         self.disruption_lost_sales = [0,0] # customer orders lost because the site was disrupted when they arrived
         self.backorder = [0,0] # orders this node owes right now
+        self.waited = [0,0] # orders that had to wait at this site
+        self.waiting_time = 0 # total time those orders waited
+        self.blocked = [0,0] # replenishment orders not placed because no supplier could take them
+        self.dropped_qty = 0 # delivered units that did not fit in the inventory
+        self.disruptions = 0 # number of disruptions of this node
+        # Time spent disrupted, kept as the total of disruptions that have
+        # ended plus the start of the one going on now (if any), so that
+        # ``disrupted_time`` can include the ongoing part when it is read.
+        self._disrupted_time = 0
+        self._disrupted_since = None
         self.inventory_level = 0 # inventory level at the last update
         self.inventory_waste = 0 # expired units thrown away so far
         self.inventory_carry_cost = 0 # holding cost so far
@@ -512,9 +561,13 @@ class Statistics(InfoMixin):
             # reset is charged after it.
             inventory.update_carry_cost()
         # Pass 1: zero every statistic listed in _stats_keys (the list of
-        # tracked statistics), except the values that describe the present.
+        # tracked statistics), except the values that describe the present and
+        # the values worked out when read (properties such as
+        # ``avg_inventory_level``), which follow from the totals.
         for key in self._stats_keys:
             if not hasattr(self, key) or key == "name" or key in self._live_keys:
+                continue
+            if isinstance(getattr(type(self), key, None), property):
                 continue
             current = getattr(self, key)
             if isinstance(current, list):
@@ -538,9 +591,99 @@ class Statistics(InfoMixin):
         if inventory is not None:
             inventory.carry_cost = 0
             inventory.waste = 0
+            inventory.level_time = 0
+            inventory.zero_level_time = 0
             inventory.instantaneous_levels = []
         if finite_inventory:
             self.inventory_level = inventory.level
+        # The clock starts again, so every average covers only the time since
+        # the reset. A disruption going on now is counted from now on; it does
+        # not add to ``disruptions``, because it started before the reset.
+        now = self.node.env.now
+        self.start_time = now
+        self._disrupted_time = 0
+        if self._disrupted_since is not None:
+            self._disrupted_since = now
+
+    # ---- Values worked out when read --------------------------------------
+    # These are properties listed in _stats_keys, so get_statistics() includes
+    # them. They are computed from the totals at the moment they are read, so
+    # nothing has to be brought up to date at the end of a run. A value with
+    # nothing to divide by is None, not 0 (a 0 would look like a real result).
+
+    @property
+    def elapsed_time(self):
+        """Time since counting began (``start_time``): the creation of these statistics, or the last ``reset``."""
+        return self.node.env.now - self.start_time
+
+    @property
+    def disrupted_time(self):
+        """Time this node spent disrupted, including a disruption still going on now."""
+        ongoing = 0 if self._disrupted_since is None else self.node.env.now - self._disrupted_since
+        return self._disrupted_time + ongoing
+
+    @property
+    def availability(self):
+        """Share of time this node was not disrupted: ``1 - disrupted_time / elapsed_time``. None if no time has passed."""
+        elapsed = self.elapsed_time
+        return None if elapsed <= 0 else 1 - self.disrupted_time / elapsed
+
+    @property
+    def avg_waiting_time(self):
+        """Average wait per order fulfilled, orders served at once counting as 0. None before any order is fulfilled."""
+        fulfilled = self.demand_fulfilled[0]
+        return None if fulfilled <= 0 else self.waiting_time / fulfilled
+
+    def _finite_inventory(self):
+        # The node's inventory, or None for a node with no inventory (a
+        # customer demand) or an infinite one (an infinite supplier), where
+        # the inventory values below mean nothing.
+        inventory = getattr(self.node, 'inventory', None)
+        if inventory is None or inventory.level == float('inf'):
+            return None
+        return inventory
+
+    @property
+    def inventory_level_time(self):
+        """Running sum of inventory level × time, up to now (see the class docstring). None without a finite inventory."""
+        inventory = self._finite_inventory()
+        if inventory is None:
+            return None
+        # The inventory adds up this sum each time its level changes. Add the
+        # stretch since the last change, at the level it has had since then.
+        return inventory.level_time + inventory.level * (self.node.env.now - inventory.last_update_t)
+
+    @property
+    def zero_inventory_time(self):
+        """Time the inventory level was 0, up to now. None without a finite inventory."""
+        inventory = self._finite_inventory()
+        if inventory is None:
+            return None
+        since_last_change = self.node.env.now - inventory.last_update_t
+        return inventory.zero_level_time + (since_last_change if inventory.level <= 1e-9 else 0)
+
+    @property
+    def avg_inventory_level(self):
+        """Average inventory level over time: ``inventory_level_time / elapsed_time``. None if it cannot be worked out."""
+        level_time, elapsed = self.inventory_level_time, self.elapsed_time
+        return None if level_time is None or elapsed <= 0 else level_time / elapsed
+
+    @property
+    def zero_inventory_share(self):
+        """Share of time the inventory level was 0: ``zero_inventory_time / elapsed_time``. None if it cannot be worked out."""
+        zero_time, elapsed = self.zero_inventory_time, self.elapsed_time
+        return None if zero_time is None or elapsed <= 0 else zero_time / elapsed
+
+    def disruption_started(self):
+        """Record that this node's disruption starts now (called by ``Node.disruption``)."""
+        self.disruptions += 1
+        self._disrupted_since = self.node.env.now
+
+    def disruption_ended(self):
+        """Record that this node's disruption ends now (called by ``Node.disruption``)."""
+        if self._disrupted_since is not None:
+            self._disrupted_time += self.node.env.now - self._disrupted_since
+            self._disrupted_since = None
 
     @property
     def orders_shortage(self):
@@ -1944,6 +2087,7 @@ class Node(NamedEntity, InfoMixin):
                     yield self.env.timeout(disrupt_time)
                     self.node_status = "inactive" # change the node status to inactive
                     self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
+                    self._record_disruption_start()
                     # The disruption-impact effect runs once, at the moment the
                     # node switches from active to inactive. Effects that should
                     # build up *during* the disruption belong in a custom
@@ -1963,6 +2107,7 @@ class Node(NamedEntity, InfoMixin):
                     if(self.rng.random() < self.node_failure_p):
                         self.node_status = "inactive"
                         self.logger.info(f"{self.env.now}:{self.ID}: Node disrupted.")
+                        self._record_disruption_start()
                         if self._disruption_impact_fn is not None:
                             self._disruption_impact_fn(self)
                     yield self.env.timeout(1)
@@ -1972,6 +2117,9 @@ class Node(NamedEntity, InfoMixin):
                 yield self.env.timeout(recovery_time)
                 self.node_status = "active"
                 self.logger.info(f"{self.env.now}:{self.ID}: Node recovered from disruption.")
+                stats = getattr(self, "stats", None)
+                if stats is not None:
+                    stats.disruption_ended()
                 # Orders from buyers were not placed while this node was
                 # disrupted. Wake each buyer's replenishment policy so that it
                 # checks its inventory position again now. Without this, a buyer
@@ -1979,6 +2127,13 @@ class Node(NamedEntity, InfoMixin):
                 # leave its inventory, so nothing else would wake its policy.
                 for link in self.buyers:
                     link.sink.wake_replenishment()
+
+    def _record_disruption_start(self):
+        # Count the disruption in the node's statistics. Every library node
+        # has statistics; a bare Node built directly (as in some tests) may not.
+        stats = getattr(self, "stats", None)
+        if stats is not None:
+            stats.disruption_started()
 
     def add_supplier_link(self, link) -> None:
         """
@@ -2130,7 +2285,25 @@ class Node(NamedEntity, InfoMixin):
             None
         """
         if not self.can_place_order():
-            self.logger.info(f"{self.env.now:.4f}:{self.ID}: No supplier can take an order (every supplier or the link to it is disrupted). Order not placed.")
+            if self.has_suppliers():
+                self.logger.info(f"{self.env.now:.4f}:{self.ID}: No supplier can take an order (every supplier or the link to it is disrupted). Order not placed.")
+                # A blocked order: not lost, because the policy orders again
+                # when a supplier or a link recovers.
+                self.stats.update_stats(blocked=[1, quantity])
+            else:
+                # Not a disruption: the site has no supplier to order from at
+                # all, a mistake in how the network is built. No recovery will
+                # ever let the order through, so it is not counted as blocked.
+                # The user is warned once for each site (the warning text
+                # leaves out the site, so Python shows it once in all).
+                self.logger.info(f"{self.env.now:.4f}:{self.ID}: The site has no supplier to order from. Order not placed.")
+                if not getattr(self, "_warned_no_supplier", False):
+                    self._warned_no_supplier = True
+                    message = ("A site has no supplier to place replenishment orders with (a manufacturer needs a "
+                               "raw-material supplier for every raw material), so its orders are not placed. "
+                               "Connect a supplier to it with a link.")
+                    self.logger.warning(f"{self.ID}: {message}")
+                    warnings.warn(message, UserWarning, stacklevel=2)
             return
         # The order is really placed when process_order runs, a moment later
         # at this same time. It checks the chosen supplier again then.
@@ -2148,6 +2321,19 @@ class Node(NamedEntity, InfoMixin):
             bool: True if at least one supplier can take an order.
         """
         return any(link.can_take_order() for link in self.suppliers)
+
+    def has_suppliers(self) -> bool:
+        """
+        Whether this site has a supplier to order from at all, disrupted or
+        not. When ``can_place_order`` is false, this tells the two cases apart:
+        every supplier is disrupted (the order is blocked, and the site orders
+        again after a recovery), or the site has no supplier (a mistake in how
+        the network is built). ``Manufacturer`` replaces it with its own rule.
+
+        Returns:
+            bool: True if at least one link from a supplier leads to this site.
+        """
+        return len(self.suppliers) > 0
 
     def wait_for_drop(self):
         """
@@ -2536,6 +2722,8 @@ class Inventory(NamedEntity, InfoMixin):
         replenishment_policy (InventoryReplenishment): The node's replenishment policy.
         inventory (simpy.Container): The SimPy container that holds the units (an ``_InventoryContainer``).
         last_update_t (float): Time of the last holding-cost update.
+        level_time (float): Running sum of inventory level × time, up to the last update.
+        zero_level_time (float): Time the inventory level was 0, up to the last update.
         shelf_life (float): Shelf life of perishable goods, in time units (perishable goods only).
         perish_queue (list): The list of batches, as ``(manufacturing_date, quantity)`` tuples, kept as a heap (Python's ``heapq``) so the oldest batch (the first to expire) is always at index 0. ``put`` adds a batch; a batch leaves the list (oldest first) at the moment its units leave the inventory, so the list always adds up to the inventory level.
         perish_changed (simpy.Event): Wake-up signal for ``remove_expired``. ``put`` fires it when a new batch becomes the oldest one (or arrives while the list is empty), so ``remove_expired`` works out the next expiry again instead of checking every time unit. Replaced with a fresh event on each wake-up.
@@ -2594,6 +2782,8 @@ class Inventory(NamedEntity, InfoMixin):
             replenishment_policy (InventoryReplenishment): The node's replenishment policy.
             inventory (simpy.Container): The SimPy container that holds the units (an ``_InventoryContainer``).
             last_update_t (float): Time of the last holding-cost update.
+            level_time (float): Running sum of inventory level × time, up to the last update.
+            zero_level_time (float): Time the inventory level was 0, up to the last update.
             shelf_life (float): Shelf life of perishable goods, in time units (perishable goods only).
             perish_queue (list): The list of batches, as ``(manufacturing_date, quantity)`` tuples, kept as a heap (Python's ``heapq``) so the oldest batch (the first to expire) is always at index 0. ``put`` adds a batch; a batch leaves the list (oldest first) at the moment its units leave the inventory, so the list always adds up to the inventory level.
             waste (float): Expired units thrown away so far.
@@ -2626,6 +2816,8 @@ class Inventory(NamedEntity, InfoMixin):
         self.inv_type = inv_type
         self.holding_cost = holding_cost
         self.carry_cost = 0 # holding cost so far
+        self.level_time = 0 # running sum of inventory level × time (see Statistics.inventory_level_time)
+        self.zero_level_time = 0 # time the inventory level was 0
         self.replenishment_policy = replenishment_policy
         # The SimPy container that holds the units. For perishable goods it
         # picks the batches for each order at the moment the units leave the
@@ -2922,10 +3114,19 @@ class Inventory(NamedEntity, InfoMixin):
         Add the holding cost since the last update: inventory level × time units
         since then × holding cost per unit per time unit. It is called before
         every change of the inventory level, so each stretch of time is charged
-        at the level the inventory really had.
+        at the level the inventory really had. The same stretch is also added,
+        without the holding cost, to ``level_time`` (inventory level × time) and,
+        if the level was 0, to ``zero_level_time``.
         """
         carry_period = self.env.now - self.last_update_t
         self.carry_cost += self.inventory.level * (carry_period) * self.holding_cost  # holding cost for the time since the last update
+        if self.inventory.level != float('inf'):
+            # The same stretch of time, kept without the holding cost: the
+            # inventory level × time (for the average inventory level), and the
+            # time spent at level 0. The tolerance ignores rounding dust.
+            self.level_time += self.inventory.level * carry_period
+            if self.inventory.level <= 1e-9:
+                self.zero_level_time += carry_period
         self.last_update_t = self.env.now  # update the last update time
 
     def destroy(self, amount: float = None, reason: str = "disruption") -> float:
@@ -3371,6 +3572,7 @@ class InventoryNode(Node):
         # link recovers (see Node.wake_replenishment).
         if not supplier.can_take_order():
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} or link:{supplier.ID} is disrupted. Order not placed.")
+            self.stats.update_stats(blocked=[1, reorder_quantity])
             return
 
         self.pending_orders += 1  # count this order as placed; taken off again when it arrives
@@ -3397,12 +3599,14 @@ class InventoryNode(Node):
         # inventory never sends part of an order: it waits until it can
         # send all of it.)
         order_waits = not event.triggered
+        ordered_at = self.env.now
         if order_waits:
-            supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
+            supplier.source.stats.update_stats(backorder=[1,reorder_quantity], waited=[1,reorder_quantity])
         yield event
         if order_waits:
-            # Served at last: the supplier no longer owes this order.
-            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
+            # Served at last: the supplier no longer owes this order, and it
+            # adds how long the order waited.
+            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity], waiting_time=self.env.now - ordered_at)
 
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
         lead_time = supplier.lead_time() # draw the lead time from the link
@@ -3477,6 +3681,7 @@ class InventoryNode(Node):
                         f"could take them. The node's storage capacity "
                         f"({self.inventory.capacity}) may be too small for this order size."
                     )
+                    self.stats.update_stats(dropped_qty=remaining)
                     self.inventory.on_hand -= remaining
                     remaining = 0
                     break
@@ -3853,12 +4058,14 @@ class Manufacturer(Node):
         # it as a backorder now and remove it once it is served (the same as
         # for other replenishment orders, see InventoryNode.process_order).
         order_waits = not event.triggered
+        ordered_at = self.env.now
         if order_waits:
-            supplier.source.stats.update_stats(backorder=[1,reorder_quantity])
+            supplier.source.stats.update_stats(backorder=[1,reorder_quantity], waited=[1,reorder_quantity])
         yield event
         if order_waits:
-            # Served at last: the supplier no longer owes this order.
-            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity])
+            # Served at last: the supplier no longer owes this order, and it
+            # adds how long the order waited.
+            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity], waiting_time=self.env.now - ordered_at)
 
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
         lead_time = supplier.lead_time() # draw the lead time from the link
@@ -3905,6 +4112,19 @@ class Manufacturer(Node):
         """
         return all(link is not None for _, _, link in self._raw_material_links())
 
+    def has_suppliers(self) -> bool:
+        """
+        Whether every raw material of the product has at least one
+        raw-material supplier connected to this manufacturer, disrupted or not
+        (see ``Node.has_suppliers``).
+
+        Returns:
+            bool: True if every raw material has a raw-material supplier.
+        """
+        supplied = {link.source.raw_material.ID for link in self.suppliers
+                    if getattr(link.source, "raw_material", None) is not None}
+        return all(raw_mat.ID in supplied for raw_mat, _ in self.product.raw_materials)
+
     def process_order(self, supplier, reorder_quantity):
         """
         Plan the production of more product units and order the raw materials needed to make them.
@@ -3946,6 +4166,10 @@ class Manufacturer(Node):
         for raw_mat, qty_per_unit, supplier_link in self._raw_material_links():
             if supplier_link is None:
                 self.logger.info(f"{self.env.now:.4f}:{self.ID}:No supplier can take an order for raw material {raw_mat.name}. No production planned.")
+                if self.has_suppliers():
+                    # Every supplier of this raw material is disrupted: a
+                    # blocked order. With no supplier at all, it is not one.
+                    self.stats.update_stats(blocked=[1, reorder_quantity])
                 return
             raw_orders.append((raw_mat.ID, supplier_link, qty_per_unit*reorder_quantity))
 
@@ -4216,6 +4440,7 @@ class Demand(Node):
         """
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}:Order quantity:{order_quantity} not available! Order will be split if split ratio is provided.")
         self.demand_node.stats.update_stats(backorder=[1,order_quantity])
+        arrived = self.env.now  # when the order arrived, for the waiting time
         if(not self.demand_node.inventory_drop.triggered):
             self.demand_node.inventory_drop.succeed()  # a backorder lowers the inventory position, so let the replenishment policy check
         partial = order_quantity
@@ -4236,7 +4461,7 @@ class Demand(Node):
             if order_quantity <= available: # check if remaining order quantity is available
                 get_event, _ = self.demand_node.inventory.get(order_quantity)
                 self.env.process(self._process_delivery(order_quantity, customer_id, get_event))
-                self.demand_node.stats.update_stats(backorder=[-1,-order_quantity])
+                self.demand_node.stats.update_stats(backorder=[-1,-order_quantity], waiting_time=self.env.now - arrived)
                 order_quantity = 0
                 break
             # ``partial`` can round down to 0 for a small order, so also check
@@ -4289,7 +4514,8 @@ class Demand(Node):
             # partial deliveries: one customer is one backorder until they are
             # fully served or leave.) Without this, the site would keep placing
             # replenishment orders for a customer who has already gone.
-            self.demand_node.stats.update_stats(backorder=[-1,-order_quantity])
+            # The units they were still owed are never delivered: a lost sale.
+            self.demand_node.stats.update_stats(backorder=[-1,-order_quantity], lost_sales=[1, order_quantity])
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Customer{customer_id}: remaining order quantity:{order_quantity} not available! Customer leaves.")
 
     def _available(self):
@@ -4334,6 +4560,7 @@ class Demand(Node):
         self.demand_node.stats.update_stats(
             demand_received=[1, available],
             shortage=[1, order_quantity - available],
+            lost_sales=[1, order_quantity - available],  # the rest is never delivered
         )
         yield from self._process_delivery(available, customer_id)
 
@@ -4342,6 +4569,7 @@ class Demand(Node):
         self.demand_node.stats.update_stats(
             demand_received=[1, order_quantity],
             shortage=[1, order_quantity - available],
+            waited=[1, order_quantity],
         )
         # ``wait_for_order`` runs as its own SimPy process, which is not waited
         # for here, so the ``customer`` call ends at once even when the
@@ -4369,7 +4597,7 @@ class Demand(Node):
             f"would help). Order discarded — recorded as lost demand, no backorder "
             f"and no replenishment placed."
         )
-        self.demand_node.stats.update_stats(shortage=[1, order_quantity])
+        self.demand_node.stats.update_stats(shortage=[1, order_quantity], lost_sales=[1, order_quantity])
         return
         yield  # pragma: no cover — keeps this a generator (see _enqueue_for_tolerance).
 
@@ -4380,7 +4608,9 @@ class Demand(Node):
             f"{order_quantity} not available, inventory level:"
             f"{self.demand_node.inventory.level}. No tolerance! Shortage:{order_quantity - available}."
         )
-        self.demand_node.stats.update_stats(shortage=[1, order_quantity - available])
+        # The customer gets none of the order, so all of it is lost, although
+        # the shortage counts only the units that were missing.
+        self.demand_node.stats.update_stats(shortage=[1, order_quantity - available], lost_sales=[1, order_quantity])
         return
         yield  # pragma: no cover — keeps this a generator (see _enqueue_for_tolerance).
 

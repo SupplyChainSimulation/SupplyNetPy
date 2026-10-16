@@ -1,4 +1,5 @@
 import random
+import re
 import unittest
 import pytest
 import simpy
@@ -3857,3 +3858,339 @@ class TestCustomersCannotOrderFromADisruptedSite(unittest.TestCase):
         assert w1.stats.get_statistics()["disruption_lost_sales"] == [1, 10]
         w1.stats.reset()
         assert w1.stats.disruption_lost_sales == [0, 0]
+
+
+class TestMoreNodeStatistics(unittest.TestCase):
+    """Node statistics for disruptions, the inventory level over time, orders
+    that end badly, and a clock for averages (§6.9)."""
+
+    def _site(self, env, ID="W1", initial_level=0, capacity=float("inf"), **kwargs):
+        # A site with no replenishment policy: units arrive only when the test adds them.
+        return scm.InventoryNode(
+            env=env, ID=ID, name=ID, node_type="retailer",
+            capacity=capacity, initial_level=initial_level,
+            inventory_holding_cost=0, replenishment_policy=None, policy_param={},
+            product_buy_price=1, product_sell_price=2, **kwargs,
+        )
+
+    def _at(self, env, day, action):
+        yield env.timeout(day)
+        action()
+
+    def _factory(self, env):
+        rawmat = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=10,
+                                 extraction_time=1, mining_cost=0, cost=1)
+        product = scm.Product(ID="P1", name="P1", manufacturing_cost=1, manufacturing_time=1,
+                              raw_materials=[(rawmat, 1)], sell_price=5, buy_price=0, batch_size=100)
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier", capacity=100,
+                          initial_level=0, inventory_holding_cost=0, raw_material=rawmat)
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
+                              product_sell_price=5, product=product)
+        link = scm.Link(env=env, ID="L1", source=s1, sink=m1, cost=0, lead_time=lambda: 1)
+        return s1, m1, link
+
+    # ---- clock ------------------------------------------------------------
+
+    def test_clock_counts_from_creation_and_restarts_on_reset(self):
+        env = simpy.Environment()
+        w1 = self._site(env)
+        env.run(until=5)
+        assert w1.stats.start_time == 0
+        assert w1.stats.elapsed_time == 5
+        w1.stats.reset()
+        assert w1.stats.start_time == 5
+        env.run(until=8)
+        assert w1.stats.elapsed_time == 3
+
+    # ---- disruptions ------------------------------------------------------
+
+    def test_disruptions_counted_and_timed(self):
+        # Disrupted at day 2 for 3 days (back at 5), then again at day 7.
+        env = simpy.Environment()
+        w1 = self._site(env, node_disrupt_time=lambda: 2, node_recovery_time=lambda: 3)
+        env.run(until=6)
+        assert w1.stats.disruptions == 1
+        assert w1.stats.disrupted_time == 3
+        env.run(until=8)   # disrupted again since day 7
+        assert w1.stats.disruptions == 2
+        assert w1.stats.disrupted_time == 4   # the ongoing day counts when read
+        assert w1.stats.availability == 0.5
+        assert w1.stats.get_statistics()["availability"] == 0.5
+
+    def test_reset_during_a_disruption_counts_only_from_the_reset(self):
+        env = simpy.Environment()
+        w1 = self._site(env, node_disrupt_time=lambda: 2, node_recovery_time=lambda: 3)
+        env.run(until=8)   # disrupted since day 7, back at day 10
+        w1.stats.reset()
+        assert w1.stats.disruptions == 0
+        assert w1.stats.disrupted_time == 0
+        env.run(until=11)
+        assert w1.stats.disruptions == 0   # that disruption started before the reset
+        assert w1.stats.disrupted_time == 2   # days 8 to 10
+        assert w1.stats.availability == pytest.approx(1 - 2 / 3)
+
+    def test_blocked_when_no_supplier_can_take_the_order(self):
+        env = simpy.Environment()
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        w1 = self._site(env)
+        scm.Link(env=env, ID="L1", source=s1, sink=w1, cost=0, lead_time=lambda: 1)
+        s1.node_status = "inactive"
+        w1.place_order(20)
+        env.run(until=1)
+        assert w1.stats.blocked == [1, 20]
+        assert w1.stats.demand_placed == [0, 0]
+
+    def test_blocked_when_the_chosen_link_is_disrupted_when_the_order_starts(self):
+        env = simpy.Environment()
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        w1 = self._site(env)
+        link = scm.Link(env=env, ID="L1", source=s1, sink=w1, cost=0, lead_time=lambda: 1)
+        link.status = "inactive"
+        env.process(w1.process_order(link, 20))
+        env.run(until=1)
+        assert w1.stats.blocked == [1, 20]
+        assert w1.stats.demand_placed == [0, 0]
+
+    def test_manufacturer_blocked_when_a_raw_material_has_no_supplier(self):
+        env = simpy.Environment()
+        s1, m1, link = self._factory(env)
+        link.status = "inactive"
+        env.process(m1.process_order(link, 10))
+        env.run(until=1)
+        assert m1.stats.blocked == [1, 10]
+        assert m1.stats.demand_placed == [0, 0]
+
+    # ---- inventory over time ----------------------------------------------
+
+    def test_average_inventory_level_weights_each_level_by_its_time(self):
+        # 10 units for 3 time units, then 4 units for 2: (30 + 8) / 5 = 7.6.
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=10)
+        env.process(self._at(env, 3, lambda: w1.inventory.get(6)))
+        env.run(until=5)
+        assert w1.stats.inventory_level_time == 38   # includes days 3 to 5, with no event since
+        assert w1.stats.avg_inventory_level == pytest.approx(7.6)
+
+    def test_zero_inventory_time(self):
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=10)
+        env.process(self._at(env, 2, lambda: w1.inventory.get(10)))
+        env.run(until=6)
+        assert w1.stats.zero_inventory_time == 4
+        assert w1.stats.zero_inventory_share == pytest.approx(4 / 6)
+
+    def test_inventory_values_after_a_reset_cover_only_the_time_since(self):
+        # 10 units until day 5, 4 units after; reset at day 4, read at day 8:
+        # (10 x 1 + 4 x 3) / 4 = 5.5.
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=10)
+        env.process(self._at(env, 5, lambda: w1.inventory.get(6)))
+        env.run(until=4)
+        w1.stats.reset()
+        env.run(until=8)
+        assert w1.stats.inventory_level_time == 22
+        assert w1.stats.avg_inventory_level == pytest.approx(5.5)
+        assert w1.stats.zero_inventory_time == 0
+
+    def test_inventory_values_are_none_without_a_finite_inventory(self):
+        env = simpy.Environment()
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        w1 = self._site(env, initial_level=10)
+        dem = scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                         order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 1)
+        env.run(until=3)
+        for stats in (s1.stats, dem.stats):
+            assert stats.inventory_level_time is None
+            assert stats.avg_inventory_level is None
+            assert stats.zero_inventory_time is None
+            assert stats.zero_inventory_share is None
+
+    # ---- orders that end badly ----------------------------------------------
+
+    def test_lost_sales_customer_with_no_tolerance(self):
+        # 3 units there, 10 wanted: the customer gets none and leaves.
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=3)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10)
+        env.run(until=1)
+        assert w1.stats.lost_sales == [1, 10]
+        assert w1.stats.shortage == [1, 7]
+
+    def test_lost_sales_customer_takes_what_is_there(self):
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=3)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1, consume_available=True,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10)
+        env.run(until=1)
+        assert w1.stats.lost_sales == [1, 7]
+
+    def test_lost_sales_order_too_big_for_the_site(self):
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=0, capacity=5)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1, tolerance=10,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10)
+        env.run(until=1)
+        assert w1.stats.lost_sales == [1, 10]
+
+    def test_lost_sales_customer_gives_up_after_a_partial_delivery(self):
+        # The customer wants 10, accepts parts of 2 or more, and waits 3 days.
+        # 4 units arrive at day 1 and are passed on; 6 are never delivered.
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=0)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1, tolerance=3,
+                   order_min_split_ratio=0.2,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10)
+        env.process(self._at(env, 1, lambda: w1.inventory.put(4)))
+        env.run(until=5)
+        assert w1.stats.lost_sales == [1, 6]
+
+    def test_waiting_customer_served_in_full(self):
+        # A customer waits for 10 units from day 0; they arrive at day 2.
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=0)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1, tolerance=100,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10)
+        env.process(self._at(env, 2, lambda: w1.inventory.put(10)))
+        env.run(until=3)
+        assert w1.stats.lost_sales == [0, 0]
+        assert w1.stats.waited == [1, 10]
+        assert w1.stats.waiting_time == 2
+        assert w1.stats.demand_fulfilled == [1, 10]
+        assert w1.stats.avg_waiting_time == 2
+
+    def test_order_from_another_site_waits_at_its_supplier(self):
+        # W1 orders 20 from W0, which has none until day 3; lead time 1.
+        env = simpy.Environment()
+        w0 = self._site(env, ID="W0", initial_level=0)
+        w1 = self._site(env, ID="W1", initial_level=0)
+        link = scm.Link(env=env, ID="L1", source=w0, sink=w1, cost=0, lead_time=lambda: 1)
+        env.process(w1.process_order(link, 20))
+        env.process(self._at(env, 3, lambda: w0.inventory.put(20)))
+        env.run(until=5)
+        assert w0.stats.waited == [1, 20]
+        assert w0.stats.waiting_time == 3
+        assert w0.stats.demand_fulfilled == [1, 20]
+        assert w0.stats.avg_waiting_time == 3
+
+    def test_raw_material_order_waits_at_its_supplier(self):
+        # The supplier mines 10 a day from day 0; 30 ordered at day 0.5 are
+        # there at day 2, so the order waits 1.5 days.
+        env = simpy.Environment()
+        s1, m1, link = self._factory(env)
+        env.run(until=0.5)
+        env.process(m1.process_order_raw("RM1", link, 30))
+        env.run(until=5)
+        assert s1.stats.waited == [1, 30]
+        assert s1.stats.waiting_time == pytest.approx(1.5)
+
+    def test_dropped_units_are_counted(self):
+        # The case of TestReplenishmentDropAndDiscard scenario A: a delivery
+        # arrives to a full inventory with no one waiting, and units are dropped.
+        scm.set_seed(42)
+        env = simpy.Environment()
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor",
+                               capacity=100, initial_level=100, inventory_holding_cost=0.1,
+                               replenishment_policy=scm.SSReplenishment, policy_param={"s": 90, "S": 100},
+                               product_buy_price=10, product_sell_price=12)
+        scm.Link(env=env, ID="L1", source=s1, sink=d1, cost=1, lead_time=lambda: 5)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=d1, tolerance=2,
+                   order_arrival_model=_scripted_seq([0, 0, 0, 1], tail=100),
+                   order_quantity_model=_scripted_seq([1, 1, 60, 80], tail=1))
+        with self.assertLogs("sim_trace", level="WARNING") as cm:
+            env.run(until=10)
+        dropped = sum(float(re.search(r"Dropped ([0-9.]+) units", m).group(1))
+                      for m in cm.output if "Dropped" in m)
+        assert dropped > 0
+        assert d1.stats.dropped_qty == dropped
+
+    def test_new_totals_are_zero_after_a_reset(self):
+        env = simpy.Environment()
+        w1 = self._site(env, initial_level=3, node_disrupt_time=lambda: 2, node_recovery_time=lambda: 1)
+        scm.Demand(env=env, ID="dem", name="dem", demand_node=w1,
+                   order_arrival_model=lambda: 1e6, order_quantity_model=lambda: 10)
+        env.run(until=4)
+        assert w1.stats.lost_sales == [1, 10]
+        w1.stats.reset()
+        for key in ("lost_sales", "blocked", "waited"):
+            assert getattr(w1.stats, key) == [0, 0], key
+        for key in ("disruptions", "disrupted_time", "waiting_time", "dropped_qty",
+                    "inventory_level_time", "zero_inventory_time"):
+            assert getattr(w1.stats, key) == 0, key
+
+    # ---- network results --------------------------------------------------
+
+    def test_network_adds_up_lost_sales(self):
+        nodes = [{"ID": "S1", "name": "S1", "node_type": "infinite_supplier"}]
+        for ID in ("R1", "R2"):
+            nodes.append({"ID": ID, "name": ID, "node_type": "retailer", "capacity": 10, "initial_level": 3,
+                          "inventory_holding_cost": 0, "replenishment_policy": None, "policy_param": {},
+                          "product_buy_price": 1, "product_sell_price": 2})
+        demands = [{"ID": f"c{ID}", "name": f"c{ID}", "demand_node": ID, "order_arrival_model": lambda: 1e6,
+                    "order_quantity_model": lambda: 10} for ID in ("R1", "R2")]
+        links = [{"ID": f"L{ID}", "source": "S1", "sink": ID, "cost": 0, "lead_time": lambda: 1}
+                 for ID in ("R1", "R2")]
+        net = scm.Network.build(nodes=nodes, links=links, demands=demands)
+        net.as_dict()["nodes"]["R2"].node_status = "inactive"
+        net.simulate(sim_time=1, logging=False)
+        assert net.results["lost_sales"] == [1, 10]              # R1: no tolerance, 3 of 10 there
+        assert net.results["disruption_lost_sales"] == [1, 10]   # R2 is disrupted
+
+
+class TestBlockedMeansDisruptedSuppliers(unittest.TestCase):
+    """``blocked`` counts replenishment orders that could not be placed because
+    every supplier the site has (or the link to it) was disrupted. A site with
+    no supplier at all is a mistake in how the network is built: it is warned
+    about, and nothing is counted as blocked (§6.9)."""
+
+    def test_site_with_no_supplier_is_warned_about_and_not_blocked(self):
+        env = simpy.Environment()
+        w1 = scm.InventoryNode(env=env, ID="W1", name="W1", node_type="retailer", capacity=100,
+                               initial_level=0, inventory_holding_cost=0,
+                               replenishment_policy=scm.SSReplenishment, policy_param={"s": 5, "S": 10},
+                               product_buy_price=1, product_sell_price=2)
+        with pytest.warns(UserWarning, match="has no supplier"):
+            env.run(until=3)
+        assert w1.stats.blocked == [0, 0]
+        assert w1.stats.demand_placed == [0, 0]
+
+    def _factory_missing_sugar(self, env):
+        flour = scm.RawMaterial(ID="flour", name="flour", extraction_quantity=1, extraction_time=1,
+                                mining_cost=0, cost=1)
+        sugar = scm.RawMaterial(ID="sugar", name="sugar", extraction_quantity=1, extraction_time=1,
+                                mining_cost=0, cost=1)
+        product = scm.Product(ID="P", name="P", manufacturing_cost=1, manufacturing_time=1, sell_price=5,
+                              buy_price=0, batch_size=10, raw_materials=[(flour, 1), (sugar, 1)])
+        s_flour = scm.Supplier(env=env, ID="SF", name="SF", node_type="infinite_supplier", raw_material=flour)
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
+                              product_sell_price=5, product=product)
+        link = scm.Link(env=env, ID="LF", source=s_flour, sink=m1, cost=0, lead_time=lambda: 1)
+        return m1, link
+
+    def test_manufacturer_without_a_supplier_for_a_raw_material_is_not_blocked(self):
+        # The product needs flour and sugar, but no supplier sells sugar.
+        env = simpy.Environment()
+        m1, link = self._factory_missing_sugar(env)
+        with pytest.warns(UserWarning):
+            env.run(until=1)
+            m1.place_order(10)
+            env.process(m1.process_order(link, 10))
+            env.run(until=2)
+        assert m1.stats.blocked == [0, 0]
+        assert m1.stats.demand_placed == [0, 0]
+
+    def test_has_suppliers(self):
+        env = simpy.Environment()
+        m1, link = self._factory_missing_sugar(env)
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        w1 = scm.InventoryNode(env=env, ID="W1", name="W1", node_type="retailer", capacity=100,
+                               initial_level=0, inventory_holding_cost=0, replenishment_policy=None,
+                               policy_param={}, product_buy_price=1, product_sell_price=2)
+        assert not w1.has_suppliers()
+        scm.Link(env=env, ID="L1", source=s1, sink=w1, cost=0, lead_time=lambda: 1)
+        s1.node_status = "inactive"
+        assert w1.has_suppliers()       # a disrupted supplier is still a supplier
+        assert not m1.has_suppliers()   # no supplier sells sugar

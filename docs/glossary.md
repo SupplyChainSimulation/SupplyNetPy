@@ -38,6 +38,7 @@ A few names in the code use a different word from the one chosen here (for examp
 |---|---|---|
 | **Inventory** | The units a site holds, together with its records about them (costs, dated batches, and so on). | `Inventory`, reached as `node.inventory`. The units themselves sit in a SimPy container, `node.inventory.inventory`. |
 | **Inventory level** | The number of units physically at the site right now. | `node.inventory.level` |
+| **Average inventory level** | The inventory level averaged over time, so that each level counts for as long as it lasted. Holding 10 units for 3 time units and then 4 units for 2 time units gives (10 × 3 + 4 × 2) / 5 = 7.6. | `stats.avg_inventory_level`, worked out from `stats.inventory_level_time` (the sum of inventory level × time) |
 | **Capacity** | The largest inventory level a site can hold. | `capacity` |
 | **In transit** | Units that have been sent to a site but have not arrived yet. | (counted inside `inventory.on_hand`) |
 | **Inventory position** | What a site can count on: inventory level, plus units in transit to it, minus units it still owes (to other sites and to waiting customers). Replenishment policies decide using this number. | `node.position()` |
@@ -74,6 +75,10 @@ A few names in the code use a different word from the one chosen here (for examp
 | **Backorder** | An order, or part of one, that a site owes right now: it has been accepted but is still waiting for units. It is removed once it is filled, or when a waiting customer gives up. | `stats.backorder`, as `[orders, units]` |
 | **Shortage** | How many units a site was missing when an order arrived. It is a running total, never reduced, whether the order is later filled or not. Customers turned away by a disruption are not part of it (see disruption lost sales). | `stats.shortage`, as `[orders, units]` |
 | **Disruption lost sales** | Customer orders a site lost because it was disrupted when they arrived. A disrupted site takes no new orders, so the customer goes away. Kept apart from shortage, which counts units the site did not have, because the cause and the remedy differ. | `stats.disruption_lost_sales`, as `[orders, units]` |
+| **Lost sales** | Customer units a site never delivered, for any reason other than a disruption. A customer with no tolerance who finds too few units, the rest of an order when the customer takes only what is there, an order too big for the site ever to hold, and what a waiting customer was still owed when they gave up. Unlike shortage, it counts only units that were never delivered. Everything a site lost is lost sales plus disruption lost sales. | `stats.lost_sales`, as `[orders, units]` |
+| **Blocked order** | A replenishment order a site could not place, because every supplier it has (or the link to it) was disrupted. It is not lost. The site orders again when a supplier or a link recovers. A site with no supplier at all has no blocked orders, because no recovery would ever let its orders through. That is a mistake in how the network is built, and a warning says so. | `stats.blocked`, as `[orders, units]` |
+| **Waiting time** | How long an order waited at a site before its units left the inventory, for orders that could not be served at once. Orders served at once wait 0. | `stats.waited`, `stats.waiting_time`, `stats.avg_waiting_time` |
+| **Dropped units** | Units of a delivery that did not fit in the inventory of the site that ordered them, when no waiting customer could take them either. The site does not pay for them, and they are not stored. | `stats.dropped_qty` |
 | **Tolerance** | How long a customer is willing to wait for units that are not there. A customer with no tolerance leaves at once. | `tolerance` |
 | **Partial delivery** | Sending a customer part of an order now and the rest later. | `order_min_split_ratio` |
 
@@ -122,6 +127,7 @@ A few names in the code use a different word from the one chosen here (for examp
 | **Disruption** | A period when a node or a link is out of action. While disrupted, a site receives no new orders (from other sites or from customers) and a link carries no new shipments. Orders it had already taken are still served. | `node_status == "inactive"`, `link.status == "inactive"` |
 | **Disruption probability** | The chance, each time unit, that a disruption starts. | `failure_p` |
 | **Recovery** | The end of a disruption. | `node_recovery_time`, `link_recovery_time` |
+| **Availability** | The share of time a node was not disrupted. | `stats.availability`, worked out from `stats.disruptions` and `stats.disrupted_time` |
 | **Disruption impact** | What a disruption does to the units at a site when it starts (for example, destroying all of them). | `disruption_impact` |
 
 ---
