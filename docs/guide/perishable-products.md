@@ -16,7 +16,7 @@ retailer = {'ID': 'R1', 'name': 'Retailer 1', 'node_type': 'retailer',
             'inventory_type': 'perishable', 'shelf_life': 5}
 ```
 
-Distributors, retailers and other inventory sites (_InventoryNode_) and manufacturers (_Manufacturer_) can hold a perishable product. Raw-material suppliers and the raw materials a manufacturer holds never expire. A site without these settings keeps its units forever, even when its supplier's units are perishable.
+Distributors, retailers and other inventory sites (_InventoryNode_) and manufacturers (_Manufacturer_) can hold a perishable product. SupplyNetPy does not model perishable raw materials yet, so the inventory of a raw-material supplier and the raw materials a manufacturer holds are always non-perishable. A site without these settings keeps its units forever, even when its supplier's units are perishable.
 
 ## Batches and manufacturing dates
 

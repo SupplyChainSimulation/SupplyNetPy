@@ -551,7 +551,23 @@ class TestSupplier(unittest.TestCase):
         with pytest.raises(ValueError):
             scm.Supplier(env=self.env, ID="S2", name="Supplier 2", node_type="supplier", capacity=100, initial_level=50,
                           inventory_holding_cost=-0.5, raw_material=self.rawmat)
-            
+
+    def test_perishable_inventory_rejected(self):
+        # Perishable raw materials are not modelled yet. A perishable inventory
+        # used to be accepted here and fail only at the first mining.
+        for node_type, extra in (("supplier", {'capacity': 100, 'initial_level': 50, 'raw_material': self.rawmat}),
+                                 ("infinite_supplier", {})):
+            for key in ("inventory_type", "inv_type"):
+                with pytest.raises(ValueError, match="perishable raw materials"):
+                    scm.Supplier(env=self.env, ID="S2", name="Supplier 2", node_type=node_type,
+                                 **extra, **{key: "perishable", 'shelf_life': 5})
+
+    def test_non_perishable_inventory_type_accepted(self):
+        node = scm.Supplier(env=self.env, ID="S2", name="Supplier 2", node_type="supplier", capacity=100,
+                            initial_level=50, raw_material=self.rawmat, inventory_type="non-perishable")
+        self.env.run(until=5)
+        assert node.inventory.inv_type == "non-perishable"
+
 class TestInventoryNode(unittest.TestCase):
     def setUp(self):
         self.env = simpy.Environment()

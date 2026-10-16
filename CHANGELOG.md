@@ -28,6 +28,11 @@ each link.
 * **[NEW]** `reset_stats(supplychainnet)` and `Network.reset_stats()` start the
   statistics of every node, customer demand and link again in one call, for a
   warm-up.
+* **[FIX]** A raw-material supplier given a perishable inventory
+  (`inventory_type="perishable"`) now raises a clear error when it is created.
+  SupplyNetPy does not model perishable raw materials yet. Before, the
+  setting was accepted, and the run failed at the first mining with a message
+  about a missing manufacturing date.
 * **[CHANGE]** `SelectAvailable`, `SelectCheapest` and `SelectFastest` (and the
   base class `SupplierSelectionPolicy`) now default to fixed mode, as
   `SelectFirst` and every site already did. A site always passes its own

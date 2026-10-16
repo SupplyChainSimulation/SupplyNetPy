@@ -3655,7 +3655,8 @@ class Inventory(NamedEntity, InfoMixin):
 class Supplier(Node):
     """
     The `Supplier` class represents a raw-material supplier: a site at the start of the network that mines
-    one raw material and sells it to manufacturers. It has no supplier of its own.
+    one raw material and sells it to manufacturers. It has no supplier of its own. SupplyNetPy does not model
+    perishable raw materials yet, so its inventory is always non-perishable.
 
     A raw-material supplier with finite inventory (``node_type="supplier"``) mines
     `RawMaterial.extraction_quantity` units every `RawMaterial.extraction_time` time units, as long as its
@@ -3740,6 +3741,22 @@ class Supplier(Node):
         if periodic_stats:
             validate_positive(name="stats_period", value=stats_period)
         super().__init__(env=env,ID=ID,name=name,node_type=node_type,**kwargs)
+        # SupplyNetPy does not model perishable raw materials yet (they would
+        # need a manufacturing date for every unit mined, and a shelf life), so
+        # the inventory of a raw-material supplier is always non-perishable.
+        # Mining adds units without a manufacturing date, so a perishable
+        # inventory would fail at the first mining, long after the mistake was
+        # made. Catch it here instead, under both names: ``inventory_type`` (the
+        # name used by the other sites) and ``inv_type`` (the name Inventory
+        # itself takes).
+        for key in ("inventory_type", "inv_type"):
+            inventory_type = kwargs.pop(key, "non-perishable")
+            if inventory_type != "non-perishable":
+                message = (f"{self.ID}: {key}={inventory_type!r} is not possible for a raw-material supplier. "
+                           f"SupplyNetPy does not model perishable raw materials yet, so its inventory is "
+                           f"always non-perishable.")
+                self.logger.error(message)
+                raise ValueError(message)
         self.raw_material = raw_material # the raw material it mines and sells
         self.sell_price = 0
         if(self.raw_material):
