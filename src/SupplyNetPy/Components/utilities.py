@@ -384,6 +384,14 @@ def create_sc_net(nodes: list, links: list, demands: list, env:simpy.Environment
         elif isinstance(link, Link):
             check_duplicate_id(used_ids, link.ID, "link ID")
             supplychainnet["links"][f"{link.ID}"] = link
+    # Every link is known now, so each site's supplier-selection policy can
+    # check its settings against the links (SelectProbabilistic: every link
+    # has a probability). Mistakes then show before the run, not at the first
+    # order. A manufacturer does not use its policy yet, so it is skipped.
+    for node in supplychainnet["nodes"].values():
+        check_links = getattr(getattr(node, "selection_policy", None), "check_links", None)
+        if check_links is not None and not isinstance(node, Manufacturer):
+            check_links()
     for d in demands:
         if isinstance(d, dict):
             check_duplicate_id(used_ids, d["ID"], "demand ID")

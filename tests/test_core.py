@@ -665,6 +665,64 @@ class TestSelectProbabilistic(unittest.TestCase):
         assert info["on_disruption"] == "rescale"
 
 
+def _probabilistic_netlist(probabilities):
+    """Dict netlist: S0 supplies D1, D2, D3; retailer R1 buys from all three with SelectProbabilistic."""
+    site = {"node_type": "distributor", "capacity": 1000, "initial_level": 1000, "inventory_holding_cost": 0,
+            "replenishment_policy": scm.SSReplenishment, "policy_param": {"s": 300, "S": 1000},
+            "product_buy_price": 1, "product_sell_price": 2}
+    nodes = [{"ID": "S0", "name": "S0", "node_type": "infinite_supplier"}]
+    nodes += [dict(site, ID=d, name=d) for d in ("D1", "D2", "D3")]
+    nodes.append(dict(site, ID="R1", name="R1", node_type="retailer", capacity=60, initial_level=60,
+                      policy_param={"s": 20, "S": 60}, product_buy_price=2, product_sell_price=3,
+                      supplier_selection_policy=scm.SelectProbabilistic,
+                      supplier_selection_param={"probabilities": probabilities, "seed": 7}))
+    links = [{"ID": f"L{d}", "source": "S0", "sink": d, "cost": 1, "lead_time": lambda: 2} for d in ("D1", "D2", "D3")]
+    links += [{"ID": f"L{d}R1", "source": d, "sink": "R1", "cost": 1, "lead_time": lambda: 1}
+              for d in ("D1", "D2", "D3")]
+    demands = [{"ID": "C1", "name": "C1", "node_type": "demand", "order_arrival_model": lambda: 1,
+                "order_quantity_model": lambda: 10, "demand_node": "R1"}]
+    return nodes, links, demands
+
+
+class TestSelectProbabilisticInNetworks(unittest.TestCase):
+    """create_sc_net checks every site's probabilities against its links before the run."""
+
+    def test_dict_style_runs_and_splits(self):
+        sc = scm.create_sc_net(*_probabilistic_netlist({"D1": 0.5, "D2": 0.3, "D3": 0.2}))
+        scm.simulate_sc_net(sc, 2000, logging=False)
+        orders = {d: sc["links"][f"L{d}R1"].stats.demand_placed[0] for d in ("D1", "D2", "D3")}
+        total = sum(orders.values())
+        assert total > 300
+        for d, p in zip(("D1", "D2", "D3"), (0.5, 0.3, 0.2)):
+            assert abs(orders[d] / total - p) < 0.05, (d, orders)
+
+    def test_missing_link_probability_fails_in_create_sc_net(self):
+        with pytest.raises(ValueError, match="D3"):
+            scm.create_sc_net(*_probabilistic_netlist({"D1": 0.5, "D2": 0.5}))
+
+    def test_full_grid_with_zeros(self):
+        sc = scm.create_sc_net(*_probabilistic_netlist({"D1": 1.0, "D2": 0.0, "D3": 0.0}))
+        scm.simulate_sc_net(sc, 200, logging=False)
+        assert sc["links"]["LD1R1"].stats.demand_placed[0] > 0
+        assert sc["links"]["LD2R1"].stats.demand_placed == [0, 0]
+        assert sc["links"]["LD3R1"].stats.demand_placed == [0, 0]
+
+    def test_manufacturer_policy_not_checked(self):
+        rm = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=10, extraction_time=1, mining_cost=1, cost=1)
+        prod = scm.Product(ID="P1", name="P1", manufacturing_cost=1, manufacturing_time=1, sell_price=5,
+                           raw_materials=[(rm, 1)], batch_size=10)
+        nodes = [{"ID": "S1", "name": "S1", "node_type": "infinite_supplier", "raw_material": rm},
+                 {"ID": "M1", "name": "M1", "node_type": "manufacturer", "capacity": 50, "initial_level": 50,
+                  "inventory_holding_cost": 0, "replenishment_policy": None, "policy_param": {},
+                  "product": prod, "product_sell_price": 5,
+                  "supplier_selection_policy": scm.SelectProbabilistic}]
+        links = [{"ID": "L1", "source": "S1", "sink": "M1", "cost": 1, "lead_time": lambda: 1}]
+        with pytest.warns(UserWarning, match="manufacturer does not use"):
+            scm.create_sc_net(nodes, links, [{"ID": "C1", "name": "C1", "node_type": "demand",
+                                              "order_arrival_model": lambda: 1, "order_quantity_model": lambda: 1,
+                                              "demand_node": "M1"}])
+
+
 class TestSelectionPolicyDefaultMode(unittest.TestCase):
     # A site passes no mode when none is given, so each policy's own default
     # applies. Every policy before SelectProbabilistic defaults to "fixed".
