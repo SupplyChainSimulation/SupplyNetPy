@@ -36,6 +36,7 @@ nav:
     - Disruptions: guide/disruptions.md
     - Perishable Products: guide/perishable-products.md
     - Statistics and Results: guide/statistics.md
+    - Running Experiments: guide/running-experiments.md
   - API Reference:
       - Introduction: api-reference/api-intro.md
       - Glossary: glossary.md

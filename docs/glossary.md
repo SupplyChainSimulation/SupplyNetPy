@@ -145,3 +145,14 @@ A few names in the code use a different word from the one chosen here (for examp
 | **Time unit** | SupplyNetPy has no fixed unit of time. All times (lead times, shelf lives, run length) use the same unit; the examples usually read one time unit as one day. | `sim_time`, `env.now` |
 | **Warm-up** | An opening stretch of a run that is left out of the statistics, because a run starts in an unusual state (nothing in transit, no orders waiting). Run for the warm-up period, reset the statistics, and carry on running. The simulation carries on unchanged. Only the counting starts again. | `stats.reset()` for one node, `link.stats.reset()` for one link, and `reset_stats(supplychainnet)` or `Network.reset_stats()` for every node, customer demand and link |
 | **Event-driven** | How SupplyNetPy moves through time: it jumps from one event (an order, a delivery, an expiry) straight to the next, using SimPy. It does not step through time in fixed steps. | |
+
+---
+
+## Experiments
+
+| Term | Meaning | In the code |
+|---|---|---|
+| **Replication** | One run of the same supply chain network with its own random numbers. A study runs many replications and reports their average, because one run shows only one of the many ways the run could have gone. | a loop over seeds |
+| **Seed** | The number a random number generator starts from. The same seed gives the same random numbers, and so the same run. | `random.Random(seed)`, `scm.set_seed(seed)` |
+| **Confidence interval** | A range around an average that shows how precise it is. For the average of many replications, the 95% confidence interval is the average plus or minus 1.96 times the standard deviation of their results, divided by the square root of the number of replications. | |
+| **Common random numbers** | Using the same seeds for every setting compared, so the settings face the same customers and lead times and the differences in their results come from the settings themselves. | |
