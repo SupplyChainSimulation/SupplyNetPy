@@ -1481,6 +1481,16 @@ The docs must say plainly that the probabilities are the shares while every supp
 
 **Implemented as designed.** Details settled in the code: the site builds its policy through `Node._make_selection_policy(policy, mode, params)`; the base class's link check is `check_links()`, and `create_sc_net` calls it only when the policy has it (for custom policies that do not derive from `SupplierSelectionPolicy`); the tolerance on the sum is 1e-6; with neither `seed` nor `rng`, the seed is `node.rng.getrandbits(64)`; a policy without settings words its warning "It takes no parameters."; `rng` must be a `random.Random`; the probabilities are copied, so later changes to the user's dict have no effect. The Supplier Selection guide has a new section "Choosing suppliers at random", with the 40% example checked by simulation (D1 got 30.2% of the orders sent with `"rescale"`, 37.6% with `"block"`).
 
+**Fixed after the final review (2026-10-16).** A `seed` or `rng` of `None` now counts as not given (before, `seed=None` seeded from the operating system, so `scm.set_seed` no longer repeated the run). A numpy integer seed is turned into a Python `int`, and a seed that is not a number or a string raises a clear error. A manufacturer warns that its policy is not used before the policy checks its settings, so the warning is shown even when the settings are wrong.
+
+**Verified:**
+
+- `pytest`: 388/388 passing (48 new tests in `TestSelectionPolicySettings`, `TestSelectProbabilistic`, `TestSelectProbabilisticInNetworks`). `intro_simple.py` gives `profit: -4435.0`.
+- Nothing else changes: against 0.4.0 (`ac1b97a`), the printed output of the five scripts in `examples/py/`, the text output of every cell of the notebooks `EOQ_est`, `case_study_pharma`, `different_replenish_policies_anylogistix` (the anyLogistix validation), `newsvendor`, `safety_inv_est` and `simple_supplier_n_factory`, and 30 pharmacy replications are identical (after removing file paths and memory addresses). `performance_ana` reached the 1200 second limit per cell in its timing benchmark in both versions, with the same output up to there.
+- `mkdocs build` gives no new warnings.
+
+**Deferred (minor, from the final review):** a link added after the first check gives a bare `KeyError` instead of the clear message; an unused `SelectProbabilistic` on a manufacturer without a seed still draws one number from the manufacturer's generator; `get_sc_net_info` prints the policy's name, not its probabilities; the guide's section on writing your own policy does not mention `self.params`, `_param_keys` or `check_links`; a few tests listed above are not written (a probability without a link and probabilities never given, both found by `create_sc_net`; block mode ordering again after the recovery; the four original policies with `"fixed"` and `"dynamic"` given explicitly); the word "pool" in a comment of `SelectProbabilistic.select`.
+
 ### 6.11 Check that the whole network is valid ⏸️ Planned (user, 2026-10-16)
 To be discussed and designed after §6.8 (link statistics) and §6.10 (probability-based supplier selection).
 

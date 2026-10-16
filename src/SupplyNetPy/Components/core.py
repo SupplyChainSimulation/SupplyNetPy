@@ -2265,18 +2265,27 @@ class SelectProbabilistic(SupplierSelectionPolicy):
 
         # The policy's own random numbers, so its draws never shift any other
         # random numbers in the simulation (for example those of disruptions).
-        if "seed" in params and "rng" in params:
+        # A seed or rng of None counts as not given, so a script that passes
+        # seed=config.get("seed") without a seed still repeats with scm.set_seed.
+        seed, rng = params.get("seed"), params.get("rng")
+        if seed is not None and rng is not None:
             message = f"{node.ID}: give either seed or rng to SelectProbabilistic, not both."
             global_logger.error(message)
             raise ValueError(message)
-        if "rng" in params:
-            if not isinstance(params["rng"], random.Random):
+        if rng is not None:
+            if not isinstance(rng, random.Random):
                 message = f"{node.ID}: rng must be a random.Random object."
                 global_logger.error(message)
                 raise ValueError(message)
-            self.rng = params["rng"]
-        elif "seed" in params:
-            self.rng = random.Random(params["seed"])
+            self.rng = rng
+        elif seed is not None:
+            if isinstance(seed, numbers.Integral):
+                seed = int(seed)  # a numpy integer, for example, becomes a Python int
+            if not isinstance(seed, (int, float, str, bytes, bytearray)):
+                message = f"{node.ID}: seed must be a number or a string, not {seed!r}."
+                global_logger.error(message)
+                raise ValueError(message)
+            self.rng = random.Random(seed)
         else:
             # One number from the site's generator (the library's, unless the
             # site has its own), so scm.set_seed still makes the run repeatable.
@@ -4678,13 +4687,13 @@ class Manufacturer(Node):
                 self.product.buy_price += raw_material[0].cost * raw_material[1] # raw-material cost of one unit
 
         self.env.process(self.behavior()) # start the production loop
-        self.selection_policy = self._make_selection_policy(supplier_selection_policy, supplier_selection_mode,
-                                                            supplier_selection_param)
         # A manufacturer does not use its supplier-selection policy yet: for
         # each raw material it orders from the first raw-material supplier of
         # it that can take the order (see _raw_material_links). Warn when the
         # user asked for anything else, so the setting is not ignored unseen.
-        # The text leaves out the site, so Python shows it once in all.
+        # The text leaves out the site, so Python shows it once in all. The
+        # warning comes before the policy is created, so it is shown even when
+        # the policy rejects its settings.
         if (supplier_selection_policy is not SelectFirst or supplier_selection_mode is not None
                 or supplier_selection_param is not None):
             message = ("A manufacturer does not use its supplier-selection policy yet. For each raw material it "
@@ -4692,6 +4701,8 @@ class Manufacturer(Node):
                        "is ignored.")
             self.logger.warning(f"{self.ID}: {message}")
             warnings.warn(message, UserWarning, stacklevel=2)
+        self.selection_policy = self._make_selection_policy(supplier_selection_policy, supplier_selection_mode,
+                                                            supplier_selection_param)
         
         self.stats = Statistics(self, periodic_update=periodic_stats, period=stats_period) # create a statistics object for the manufacturer
         setattr(self.stats,"total_products_manufactured",0) # adding specific statistics for the manufacturer

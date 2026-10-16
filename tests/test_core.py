@@ -658,6 +658,27 @@ class TestSelectProbabilistic(unittest.TestCase):
         d1.selection_policy.set_probabilities({"S1": 0.0, "S2": 0.0, "S3": 1.0})
         assert all(d1.selection_policy.select(1) is l3 for _ in range(50))
 
+    def test_seed_none_means_no_seed(self):
+        # A script may pass seed=cfg.get("seed") with no seed set: scm.set_seed must still repeat the run.
+        def run():
+            _, d1, _ = _probabilistic_net(_fresh_env(), seed=None)  # passed to the policy as seed: None
+            return [d1.selection_policy.select(1).source.ID for _ in range(50)]
+        scm.set_seed(3)
+        first = run()
+        scm.set_seed(3)
+        assert run() == first
+
+    def test_rng_none_means_no_rng(self):
+        assert _sequence(seed=7, rng=None) == _sequence(seed=7)
+
+    def test_numpy_integer_seed(self):
+        np = pytest.importorskip("numpy")
+        assert _sequence(seed=np.int64(7)) == _sequence(seed=7)
+
+    def test_unusable_seed_rejected(self):
+        with pytest.raises(ValueError, match="seed"):
+            _probabilistic_net(_fresh_env(), seed=[1, 2])
+
     def test_info(self):
         _, d1, _ = _probabilistic_net(_fresh_env(), seed=1)
         info = d1.selection_policy.get_info()
@@ -805,6 +826,19 @@ class TestSelectionPolicySettings(unittest.TestCase):
     def test_manufacturer_given_a_mode_warns(self):
         with pytest.warns(UserWarning, match="manufacturer does not use"):
             _selection_manufacturer(_fresh_env(), supplier_selection_mode="dynamic")
+
+    def test_manufacturer_given_probabilistic_policy_with_settings_warns(self):
+        with pytest.warns(UserWarning, match="manufacturer does not use"):
+            _selection_manufacturer(_fresh_env(), supplier_selection_policy=scm.SelectProbabilistic,
+                                    supplier_selection_param={"probabilities": {"S1": 1.0}, "seed": 1})
+
+    def test_manufacturer_warns_before_its_policy_checks_settings(self):
+        # Settings that are wrong are still an error, but the warning that the
+        # policy is not used comes first, so the user sees why it does not matter.
+        with pytest.warns(UserWarning, match="manufacturer does not use"):
+            with pytest.raises(ValueError):
+                _selection_manufacturer(_fresh_env(), supplier_selection_policy=scm.SelectProbabilistic,
+                                        supplier_selection_param={"probabilities": {"S1": 0.4}})
 
     def test_manufacturer_with_the_default_policy_does_not_warn(self):
         with warnings.catch_warnings():
