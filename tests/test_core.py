@@ -4311,3 +4311,401 @@ class TestLinkWarnsWhenBuyerCanOrderMoreThanSupplierHolds(unittest.TestCase):
             scm.Link(env=env, ID="L1", source=d1, sink=r1, cost=0, lead_time=lambda: 1)
             scm.Link(env=env, ID="L2", source=s1, sink=m1, cost=0, lead_time=lambda: 1)
             scm.Link(env=env, ID="L3", source=infinite, sink=r2, cost=0, lead_time=lambda: 1)
+
+
+class TestLinkStatistics(unittest.TestCase):
+    """Each link records the replenishment orders its buyer placed over it,
+    what arrived, how long the orders waited and travelled, what they cost,
+    and the link's own disruptions (§6.8). Small networks with fixed times, so
+    every number can be worked out by hand."""
+
+    def _site(self, env, ID, initial_level=0, capacity=float("inf"), **kwargs):
+        # A site with no replenishment policy: orders are placed by the test.
+        return scm.InventoryNode(
+            env=env, ID=ID, name=ID, node_type="warehouse",
+            capacity=capacity, initial_level=initial_level,
+            inventory_holding_cost=0, replenishment_policy=None, policy_param={},
+            product_buy_price=1, product_sell_price=2, **kwargs,
+        )
+
+    def _at(self, env, day, action):
+        yield env.timeout(day)
+        action()
+
+    def _pair(self, env, supplier_level, cost=3, lead_time=2):
+        # W1 buys from W0 over L1. W0 has no capacity limit, so the link
+        # warning about buyers ordering more than the supplier holds stays quiet.
+        w0 = self._site(env, "W0", initial_level=supplier_level)
+        w1 = self._site(env, "W1")
+        link = scm.Link(env=env, ID="L1", source=w0, sink=w1, cost=cost, lead_time=lambda: lead_time)
+        return w0, w1, link
+
+    # ---- orders ---------------------------------------------------------------
+
+    def test_order_served_at_once(self):
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=50)
+        env.process(w1.process_order(link, 20))
+        env.run(until=3)
+        s = link.stats
+        assert s.demand_placed == [1, 20]
+        assert s.fulfillment_received == [1, 20]
+        assert s.shortage == [0, 0]
+        assert s.backorder == [0, 0]
+        assert s.waited == [0, 0]
+        assert s.transportation_cost == 3
+        assert s.inventory_spend_cost == 20   # 20 units at W1's buy price of 1
+        assert s.waiting_time == 0
+        assert s.lead_time == 2
+        assert s.avg_waiting_time == 0
+        assert s.avg_lead_time == 2
+        assert s.avg_order_cycle_time == 2
+        assert s.fill_rate == 1
+        assert s.order_fill_rate == 1
+
+    def test_order_that_waits_at_the_supplier(self):
+        # W0 has nothing until day 3. The order waits 3 days, then travels 1.
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=0, lead_time=1)
+        env.process(w1.process_order(link, 20))
+        env.process(self._at(env, 3, lambda: w0.inventory.put(20)))
+        env.run(until=2)
+        s = link.stats
+        assert s.backorder == [1, 20]
+        assert s.waited == [1, 20]
+        assert s.shortage == [1, 20]
+        assert s.fulfillment_received == [0, 0]
+        assert s.avg_waiting_time is None   # nothing has arrived yet
+        env.run(until=5)
+        assert s.backorder == [0, 0]
+        assert s.waited == [1, 20]          # a running total, unlike backorder
+        assert s.waiting_time == 3
+        assert s.lead_time == 1
+        assert s.avg_order_cycle_time == 4
+        assert s.fill_rate == 0
+        assert s.order_fill_rate == 0
+
+    def test_fill_rate_counts_units_and_orders(self):
+        # W0 holds 25. An order of 20 is sent at once; the next one, of 10,
+        # finds only 5 and waits until 5 more arrive at day 2. By units 20 of
+        # 30 were sent at once, by orders 1 of 2.
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=25, lead_time=1)
+        env.process(w1.process_order(link, 20))
+        env.process(w1.process_order(link, 10))
+        env.process(self._at(env, 2, lambda: w0.inventory.put(5)))
+        env.run(until=4)
+        s = link.stats
+        assert s.demand_placed == [2, 30]
+        assert s.waited == [1, 10]
+        assert s.shortage == [1, 5]
+        assert s.fill_rate == pytest.approx(2 / 3)
+        assert s.order_fill_rate == pytest.approx(0.5)
+        assert s.waiting_time == 2
+        assert s.avg_waiting_time == 1   # 2 days over 2 orders received
+
+    def test_raw_material_order(self):
+        # The supplier mines 10 a day; 30 ordered at day 0.5 are there at day
+        # 2, so the order waits 1.5 days, then travels 1 day.
+        env = simpy.Environment()
+        rawmat = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=10, extraction_time=1,
+                                 mining_cost=0, cost=2)
+        product = scm.Product(ID="P1", name="P1", manufacturing_cost=1, manufacturing_time=1,
+                              raw_materials=[(rawmat, 1)], sell_price=5, buy_price=0, batch_size=100)
+        s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier", capacity=100,
+                          initial_level=0, inventory_holding_cost=0, raw_material=rawmat)
+        m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=100, initial_level=0,
+                              inventory_holding_cost=0, replenishment_policy=None, policy_param=None,
+                              product_sell_price=5, product=product)
+        link = scm.Link(env=env, ID="L1", source=s1, sink=m1, cost=4, lead_time=lambda: 1)
+        env.run(until=0.5)
+        env.process(m1.process_order_raw("RM1", link, 30))
+        env.run(until=5)
+        s = link.stats
+        assert s.demand_placed == [1, 30]
+        assert s.fulfillment_received == [1, 30]
+        assert s.waited == [1, 30]
+        assert s.shortage == s1.stats.shortage
+        assert s.waiting_time == pytest.approx(1.5)
+        assert s.lead_time == 1
+        assert s.transportation_cost == 4
+        assert s.inventory_spend_cost == 60   # 30 units at the supplier's sell price of 2
+
+    def test_blocked_when_the_link_is_disrupted_as_the_order_starts(self):
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=50)
+        link.status = "inactive"
+        env.process(w1.process_order(link, 20))
+        env.run(until=1)
+        assert link.stats.blocked == [1, 20]
+        assert link.stats.demand_placed == [0, 0]
+        assert link.stats.backorder == [0, 0]
+        assert w1.stats.blocked == [1, 20]
+
+    def test_order_blocked_before_a_link_is_chosen_is_not_on_any_link(self):
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=50)
+        w0.node_status = "inactive"
+        w1.place_order(20)
+        env.run(until=1)
+        assert w1.stats.blocked == [1, 20]
+        assert link.stats.blocked == [0, 0]
+
+    # ---- disruptions ------------------------------------------------------------
+
+    def _disrupted_link(self, env):
+        # Disrupted at day 2 for 3 days (back at 5), then again at day 7.
+        s0 = scm.Supplier(env=env, ID="S0", name="S0", node_type="infinite_supplier")
+        w1 = self._site(env, "W1")
+        return scm.Link(env=env, ID="L1", source=s0, sink=w1, cost=0, lead_time=lambda: 1,
+                        link_disrupt_time=lambda: 2, link_recovery_time=lambda: 3)
+
+    def test_disruptions_counted_and_timed(self):
+        env = simpy.Environment()
+        link = self._disrupted_link(env)
+        env.run(until=6)
+        assert link.stats.disruptions == 1
+        assert link.stats.disrupted_time == 3
+        env.run(until=8)
+        assert link.stats.disruptions == 2
+        assert link.stats.disrupted_time == 4   # the ongoing day counts when read
+        assert link.stats.availability == 0.5
+
+    def test_reset_during_a_disruption_counts_only_from_the_reset(self):
+        env = simpy.Environment()
+        link = self._disrupted_link(env)
+        env.run(until=8)   # disrupted since day 7, back at day 10
+        link.stats.reset()
+        assert link.stats.disruptions == 0
+        assert link.stats.disrupted_time == 0
+        env.run(until=11)
+        assert link.stats.disruptions == 0   # that disruption started before the reset
+        assert link.stats.disrupted_time == 2   # days 8 to 10
+        assert link.stats.availability == pytest.approx(1 - 2 / 3)
+
+    # ---- per time unit and spreads ---------------------------------------------
+
+    def _orders_at(self, env, link, times, quantity):
+        for t in times:
+            yield env.timeout(t - env.now)
+            env.process(link.sink.process_order(link, quantity))
+
+    def _bursty_link(self, env):
+        # 60 units at day 3 and 60 at day 7, nothing in between (the example
+        # in the LinkStatistics docstring).
+        s0 = scm.Supplier(env=env, ID="S0", name="S0", node_type="infinite_supplier")
+        w1 = self._site(env, "W1")
+        link = scm.Link(env=env, ID="L1", source=s0, sink=w1, cost=0, lead_time=lambda: 1)
+        env.process(self._orders_at(env, link, [3, 7], 60))
+        return link
+
+    def test_orders_per_time_unit_and_the_two_spreads(self):
+        import statistics
+        env = simpy.Environment()
+        link = self._bursty_link(env)
+        env.run(until=10)
+        s = link.stats
+        assert s.orders_per_time_unit == pytest.approx(0.2)
+        assert s.units_per_time_unit == pytest.approx(12)
+        assert s.order_size_mean == 60
+        assert s.order_size_std == 0   # every order is the same size
+        per_time_unit = [0, 0, 0, 60, 0, 0, 0, 60, 0, 0]
+        assert s.units_per_time_unit_std == pytest.approx(statistics.stdev(per_time_unit))
+
+    def test_reading_the_spread_changes_nothing(self):
+        env_a, env_b = simpy.Environment(), simpy.Environment()
+        link_a, link_b = self._bursty_link(env_a), self._bursty_link(env_b)
+        for t in (0.5, 3.5, 5, 7.25):   # read link_a now and then, never link_b
+            env_a.run(until=t)
+            link_a.stats.units_per_time_unit_std
+        env_a.run(until=10)
+        env_b.run(until=10)
+        assert link_a.stats.units_per_time_unit_std == link_b.stats.units_per_time_unit_std
+
+    def test_spreads_are_none_with_fewer_than_two_values(self):
+        env = simpy.Environment()
+        link = self._bursty_link(env)
+        env.run(until=0.5)
+        assert link.stats.units_per_time_unit_std is None   # no time unit has finished
+        assert link.stats.order_size_mean is None
+        env.run(until=4)
+        assert link.stats.order_size_mean == 60
+        assert link.stats.order_size_std is None   # one order so far
+
+    def test_values_with_nothing_to_divide_by_are_none(self):
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=50)
+        s = link.stats
+        assert s.elapsed_time == 0
+        for key in ("availability", "orders_per_time_unit", "units_per_time_unit", "avg_waiting_time",
+                    "avg_lead_time", "avg_order_cycle_time", "fill_rate", "order_fill_rate",
+                    "order_size_mean", "order_size_std", "units_per_time_unit_std"):
+            assert getattr(s, key) is None, key
+        env.run(until=5)
+        assert s.orders_per_time_unit == 0
+        assert s.availability == 1
+
+    # ---- reset ------------------------------------------------------------------
+
+    def test_reset_keeps_waiting_orders_and_restarts_the_counting(self):
+        # The order waits at W0 from day 0; W0 gets the units at day 3 and the
+        # order arrives at day 4. Reset at day 2, while it waits.
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=0, lead_time=1)
+        env.process(w1.process_order(link, 20))
+        env.process(self._at(env, 3, lambda: w0.inventory.put(20)))
+        env.run(until=2)
+        link.stats.reset()
+        s = link.stats
+        assert s.start_time == 2
+        assert s.backorder == [1, 20]   # still waiting
+        for key in ("demand_placed", "waited", "shortage", "blocked", "fulfillment_received"):
+            assert getattr(s, key) == [0, 0], key
+        for key in ("transportation_cost", "inventory_spend_cost", "waiting_time", "lead_time", "disruptions"):
+            assert getattr(s, key) == 0, key
+        assert s.order_size_mean is None
+        env.run(until=5)
+        assert s.backorder == [0, 0]   # back to zero, not below
+        assert s.fulfillment_received == [1, 20]   # received after the reset
+        assert s.demand_placed == [0, 0]           # placed before it
+        assert s.waiting_time == 3
+        assert s.elapsed_time == 3
+
+    def test_waiting_time_is_added_on_arrival_with_the_order(self):
+        # Served at day 3 after waiting 3 days, arrives at day 4. A reset at
+        # day 3.5 falls in between: the order counts as received after the
+        # reset, so its waiting time must count after it too, or the average
+        # would divide 0 days by 1 order.
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=0, lead_time=1)
+        env.process(w1.process_order(link, 20))
+        env.process(self._at(env, 3, lambda: w0.inventory.put(20)))
+        env.run(until=3.5)
+        link.stats.reset()
+        env.run(until=5)
+        assert link.stats.fulfillment_received == [1, 20]
+        assert link.stats.avg_waiting_time == 3
+        assert link.stats.avg_lead_time == 1
+
+    # ---- reading ----------------------------------------------------------------
+
+    def test_get_statistics_has_every_key(self):
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=50)
+        stats = link.stats.get_statistics()
+        assert list(stats) == scm.LinkStatistics._stats_keys
+        assert stats["name"] == "L1 statistics"
+
+    def test_link_get_statistics_still_gives_only_the_status(self):
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=50)
+        assert link.get_statistics() == {"status": "active"}
+
+    def test_update_stats_warns_about_an_unknown_name(self):
+        env = simpy.Environment()
+        w0, w1, link = self._pair(env, supplier_level=50)
+        with pytest.warns(UserWarning, match="unknown statistic 'demand_placd'"):
+            link.stats.update_stats(demand_placd=[1, 5])
+        with pytest.warns(UserWarning, match="unknown statistic 'fill_rate'"):
+            link.stats.update_stats(fill_rate=1)   # worked out when read, not a total
+        link.stats.update_stats(demand_placed=[1, 5], lead_time=2)
+        assert link.stats.demand_placed == [1, 5]
+        assert link.stats.lead_time == 2
+
+
+class TestLinkStatisticsAddUpToNodes(unittest.TestCase):
+    """The link statistics repeat, per link, what the node statistics record,
+    so the totals over a site's links equal the site's own figures (§6.8)."""
+
+    def _total(self, links, key):
+        values = [getattr(link.stats, key) for link in links]
+        if isinstance(values[0], list):
+            return [sum(v[0] for v in values), sum(v[1] for v in values)]
+        return sum(values)
+
+    def _assert_close(self, a, b, what):
+        assert a == pytest.approx(b), what
+
+    def _check(self, sc):
+        customer_sites = {d.demand_node.ID for d in sc["demands"].values()}
+        for node in sc["nodes"].values():
+            if node.suppliers:
+                # What the buyer ordered and received, over all its supplier links.
+                for key in ("demand_placed", "fulfillment_received", "transportation_cost", "inventory_spend_cost"):
+                    self._assert_close(getattr(node.stats, key), self._total(node.suppliers, key), (node.ID, key))
+            if node.buyers and node.ID not in customer_sites:
+                # What the supplier received from its buyers, over all its buyer links.
+                for node_key, link_key in (("demand_received", "demand_placed"), ("shortage", "shortage"),
+                                           ("backorder", "backorder"), ("waited", "waited")):
+                    self._assert_close(getattr(node.stats, node_key), self._total(node.buyers, link_key),
+                                       (node.ID, node_key))
+
+    def test_buyer_with_two_suppliers(self):
+        for seed in range(3):
+            scm.set_seed(seed)
+            r = random.Random(seed)
+            site = {"node_type": "distributor", "inventory_holding_cost": 0.1,
+                    "replenishment_policy": scm.SSReplenishment, "product_buy_price": 10, "product_sell_price": 12}
+            sc = scm.create_sc_net(
+                nodes=[{"ID": "S1", "name": "S1", "node_type": "infinite_supplier"},
+                       {"ID": "S2", "name": "S2", "node_type": "infinite_supplier"},
+                       dict(site, ID="D1", name="D1", capacity=200, initial_level=80,
+                            policy_param={"s": 60, "S": 200}, failure_p=0.03, node_recovery_time=lambda: 2),
+                       dict(site, ID="R1", name="R1", node_type="retailer", capacity=60, initial_level=30,
+                            policy_param={"s": 20, "S": 60}),
+                       dict(site, ID="R2", name="R2", node_type="retailer", capacity=60, initial_level=30,
+                            policy_param={"s": 25, "S": 60})],
+                links=[{"ID": "L1", "source": "S1", "sink": "D1", "cost": 5, "lead_time": lambda: 2,
+                        "link_disrupt_time": lambda: 10, "link_recovery_time": lambda: 5},
+                       {"ID": "L2", "source": "S2", "sink": "D1", "cost": 7, "lead_time": lambda: 1},
+                       {"ID": "L3", "source": "D1", "sink": "R1", "cost": 2, "lead_time": lambda: r.choice([1, 2])},
+                       {"ID": "L4", "source": "D1", "sink": "R2", "cost": 2, "lead_time": lambda: 1}],
+                demands=[{"ID": "c1", "name": "c1", "demand_node": "R1", "tolerance": 3,
+                          "order_arrival_model": lambda: r.expovariate(1.5),
+                          "order_quantity_model": lambda: r.randint(1, 12)},
+                         {"ID": "c2", "name": "c2", "demand_node": "R2", "consume_available": True,
+                          "order_arrival_model": lambda: 1, "order_quantity_model": lambda: r.randint(5, 15)}])
+            scm.simulate_sc_net(sc, sim_time=150, logging=False)
+            links = sc["links"]
+            # Both suppliers of D1 got orders: L1 is disrupted every 10 days.
+            assert links["L1"].stats.demand_placed[0] > 0 and links["L2"].stats.demand_placed[0] > 0
+            assert links["L1"].stats.disruptions > 0
+            assert links["L3"].stats.waited[0] + links["L4"].stats.waited[0] > 0   # some orders waited at D1
+            self._check(sc)
+
+    def test_manufacturer_with_two_raw_materials(self):
+        for seed in range(3):
+            scm.set_seed(seed)
+            r = random.Random(seed)
+            env = simpy.Environment()
+            rm1 = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=15, extraction_time=1,
+                                  mining_cost=0.1, cost=1)
+            rm2 = scm.RawMaterial(ID="RM2", name="RM2", extraction_quantity=40, extraction_time=2,
+                                  mining_cost=0.05, cost=0.5)
+            product = scm.Product(ID="P1", name="P1", manufacturing_cost=2, manufacturing_time=1, sell_price=12,
+                                  buy_price=0, batch_size=25, raw_materials=[(rm1, 2), (rm2, 3)])
+            s1 = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier", capacity=400, initial_level=60,
+                              inventory_holding_cost=0.01, raw_material=rm1,
+                              node_disrupt_time=lambda: r.randint(8, 15), node_recovery_time=lambda: 3)
+            s2 = scm.Supplier(env=env, ID="S2", name="S2", node_type="supplier", capacity=400, initial_level=20,
+                              inventory_holding_cost=0.01, raw_material=rm1)
+            s3 = scm.Supplier(env=env, ID="S3", name="S3", node_type="supplier", capacity=600, initial_level=100,
+                              inventory_holding_cost=0.01, raw_material=rm2)
+            m1 = scm.Manufacturer(env=env, ID="M1", name="M1", capacity=150, initial_level=30,
+                                  inventory_holding_cost=0.1, replenishment_policy=scm.SSReplenishment,
+                                  policy_param={"s": 40, "S": 120}, product_sell_price=12, product=product)
+            w1 = scm.InventoryNode(env=env, ID="W1", name="W1", node_type="warehouse", capacity=80, initial_level=40,
+                                   inventory_holding_cost=0.2, replenishment_policy=scm.SSReplenishment,
+                                   policy_param={"s": 30, "S": 80}, product_buy_price=12, product_sell_price=16)
+            links = [scm.Link(env=env, ID="L1", source=s1, sink=m1, cost=3, lead_time=lambda: 1),
+                     scm.Link(env=env, ID="L2", source=s2, sink=m1, cost=4, lead_time=lambda: r.choice([1, 2])),
+                     scm.Link(env=env, ID="L3", source=s3, sink=m1, cost=2, lead_time=lambda: 2),
+                     scm.Link(env=env, ID="L4", source=m1, sink=w1, cost=4, lead_time=lambda: 2)]
+            demand = scm.Demand(env=env, ID="d1", name="d1", demand_node=w1, tolerance=2,
+                                order_arrival_model=lambda: 1, order_quantity_model=lambda: r.randint(5, 20))
+            sc = scm.create_sc_net(env=env, nodes=[s1, s2, s3, m1, w1], links=links, demands=[demand])
+            scm.simulate_sc_net(sc, sim_time=150, logging=False)
+            # Raw material RM1 came from both of its suppliers (S1 is disrupted now and then).
+            assert sc["links"]["L1"].stats.demand_placed[0] > 0 and sc["links"]["L2"].stats.demand_placed[0] > 0
+            assert sum(l.stats.waited[0] for l in links[:3]) > 0   # some raw-material orders waited
+            self._check(sc)

@@ -44,6 +44,10 @@ __all__ = [
     "get_node_wise_performance",
     "format_node_wise_performance",
     "print_node_wise_performance",
+    "get_link_wise_performance",
+    "format_link_wise_performance",
+    "print_link_wise_performance",
+    "reset_stats",
     "Network",
 ]
 
@@ -600,32 +604,59 @@ def simulate_sc_net(supplychainnet, sim_time, logging=True, log_window=None):
         logger.info(f"{key.ljust(max_key_length)}: {supplychainnet[key]}")
     return supplychainnet
 
-def _collect_node_stats(nodes_object_list):
+def _collect_stats(objects):
     """
-    Gather every node's statistics for the performance table.
+    Gather the statistics of every node, or of every link, for a performance table.
 
     Parameters:
-        nodes_object_list (list): List of supply chain node objects.
+        objects (list): Nodes or links; each has ``name``, ``ID`` and ``stats``.
 
     Returns:
-        tuple: A dict from column name to that node's statistics, and the
-            sorted list of every metric name that any of the nodes has.
+        tuple: A dict from column name to that object's statistics, and the
+            sorted list of every metric name that any of them has.
     """
-    # Each column is headed by the node's name. Two nodes can have the same
-    # name, and the second would then replace the first, so a repeated name
-    # gets the node's ID added to it.
-    stats_per_node = {}
-    for node in nodes_object_list:
-        column = node.name
-        if column in stats_per_node:
-            column = f"{node.name} ({node.ID})"
-        stats_per_node[column] = node.stats.get_statistics()
+    # Each column is headed by the object's name. Two can have the same name
+    # (two links between the same sites, for example), and the second would
+    # then replace the first, so a repeated name gets the ID added to it.
+    stats_per_object = {}
+    for obj in objects:
+        column = obj.name
+        if column in stats_per_object:
+            column = f"{obj.name} ({obj.ID})"
+        stats_per_object[column] = obj.stats.get_statistics()
     # Different kinds of nodes have different metrics (a raw-material supplier
     # also records the units it mined, for example). Take every metric that
-    # any node has, not only the first node's, so that none is left out of the
-    # table. A node without a metric shows "N/A" for it.
-    stat_keys = sorted(set().union(*(node_stats.keys() for node_stats in stats_per_node.values())))
-    return stats_per_node, stat_keys
+    # any of them has, not only the first one's, so that none is left out of
+    # the table. One without a metric shows "N/A" for it.
+    stat_keys = sorted(set().union(*(stats.keys() for stats in stats_per_object.values())))
+    return stats_per_object, stat_keys
+
+
+def _performance_rows(objects):
+    # The rows of a performance table as a list of dicts (see
+    # get_node_wise_performance).
+    stats_per_object, stat_keys = _collect_stats(objects)
+    rows = []
+    for key in stat_keys:
+        row = {"Performance Metric": key}
+        for name, stats in stats_per_object.items():
+            row[name] = stats.get(key, "N/A")
+        rows.append(row)
+    return rows
+
+
+def _format_performance(objects, col_width):
+    # A performance table as a fixed-width text block (see
+    # format_node_wise_performance).
+    stats_per_object, stat_keys = _collect_stats(objects)
+    table = [["Performance Metric"] + [str(name) for name in stats_per_object]]
+    for key in stat_keys:
+        table.append([key] + [str(stats.get(key, "N/A")) for stats in stats_per_object.values()])
+    # A long entry, such as the metric name "total_raw_materials_mined", would
+    # otherwise run straight into the entry next to it. Each column is
+    # therefore made wide enough for its longest entry plus two spaces.
+    widths = [max(col_width, max(len(row[i]) for row in table) + 2) for i in range(len(table[0]))]
+    return "\n".join("".join(entry.ljust(width) for entry, width in zip(row, widths)) for row in table)
 
 
 def get_node_wise_performance(nodes_object_list):
@@ -649,14 +680,7 @@ def get_node_wise_performance(nodes_object_list):
     """
     if not nodes_object_list:
         return []
-    stats_per_node, stat_keys = _collect_node_stats(nodes_object_list)
-    rows = []
-    for key in stat_keys:
-        row = {"Performance Metric": key}
-        for name, node_stats in stats_per_node.items():
-            row[name] = node_stats.get(key, "N/A")
-        rows.append(row)
-    return rows
+    return _performance_rows(nodes_object_list)
 
 
 def format_node_wise_performance(nodes_object_list, col_width: int = 25) -> str:
@@ -676,15 +700,7 @@ def format_node_wise_performance(nodes_object_list, col_width: int = 25) -> str:
     """
     if not nodes_object_list:
         return ""
-    stats_per_node, stat_keys = _collect_node_stats(nodes_object_list)
-    table = [["Performance Metric"] + [str(name) for name in stats_per_node]]
-    for key in stat_keys:
-        table.append([key] + [str(node_stats.get(key, "N/A")) for node_stats in stats_per_node.values()])
-    # A long entry, such as the metric name "total_raw_materials_mined", would
-    # otherwise run straight into the entry next to it. Each column is
-    # therefore made wide enough for its longest entry plus two spaces.
-    widths = [max(col_width, max(len(row[i]) for row in table) + 2) for i in range(len(table[0]))]
-    return "\n".join("".join(entry.ljust(width) for entry, width in zip(row, widths)) for row in table)
+    return _format_performance(nodes_object_list, col_width)
 
 
 def print_node_wise_performance(nodes_object_list):
@@ -707,6 +723,108 @@ def print_node_wise_performance(nodes_object_list):
         print("No nodes provided.")
         return
     print(format_node_wise_performance(nodes_object_list))
+
+
+def get_link_wise_performance(links):
+    """
+    Collect the statistics of each link (``link.stats.get_statistics()``) into
+    a structured form, in the same layout as `get_node_wise_performance`.
+
+    Each link records the replenishment orders its buyer placed over it, what
+    arrived, how long the orders waited and travelled, what they cost, and the
+    link's disruptions (see `LinkStatistics`). To see one site's links, pass
+    ``node.suppliers`` (what the site ordered, and from whom) or
+    ``node.buyers`` (who ordered from the site, and what they got). For every
+    link in a network, pass ``supplychainnet["links"].values()``.
+
+    Parameters:
+        links (list): The links to include.
+
+    Returns:
+        list[dict]: One dict per metric, with the key ``"Performance Metric"``
+            holding the metric name and one entry per link (headed by the
+            link's name) holding the value. Returns an empty list when
+            ``links`` is empty.
+    """
+    links = list(links)
+    if not links:
+        return []
+    return _performance_rows(links)
+
+
+def format_link_wise_performance(links, col_width: int = 25) -> str:
+    """
+    Format the statistics of each link as a fixed-width text table, in the
+    same layout as `format_node_wise_performance`. Each column is headed by
+    the link's name (such as "D1 to R1"), with its ID added when two links
+    have the same name. It builds a string only and does not print.
+
+    Parameters:
+        links (list): The links to include, for example ``node.suppliers``.
+        col_width (int): Smallest width of each column. Defaults to 25. A
+            column is made wider when one of its entries is too long for it.
+
+    Returns:
+        str: Multi-line table; an empty string when no links are given.
+    """
+    links = list(links)
+    if not links:
+        return ""
+    return _format_performance(links, col_width)
+
+
+def print_link_wise_performance(links):
+    """
+    Print the statistics of each link as a table (see
+    `format_link_wise_performance`). Nothing is printed by the library unless
+    this is called. Use `get_link_wise_performance` to get the values as data
+    instead.
+
+    Parameters:
+        links (list): The links to include, for example ``node.suppliers`` or
+            ``node.buyers``.
+
+    Returns:
+        None
+    """
+    links = list(links)
+    if not links:
+        print("No links provided.")
+        return
+    print(format_link_wise_performance(links))
+
+
+def reset_stats(supplychainnet):
+    """
+    Start the statistics of the whole network again from zero: every node,
+    every customer demand and every link. This is what a warm-up uses. A
+    warm-up is an opening stretch of a run that is left out of the
+    statistics, because a run starts in an unusual state (nothing in transit,
+    no orders waiting). Run for the warm-up period, reset, and carry on
+    running:
+
+    ```python
+    scm.simulate_sc_net(sc, sim_time=31)   # warm-up
+    scm.reset_stats(sc)
+    scm.simulate_sc_net(sc, sim_time=T + 1)
+    ```
+
+    The simulation carries on unchanged and only the counting starts again.
+    Each node, customer demand and link keeps what describes the present (see
+    ``Statistics.reset`` and ``LinkStatistics.reset``). The network results in
+    ``supplychainnet`` are not cleared here; ``simulate_sc_net`` works them
+    out again from the statistics when it next stops.
+
+    Parameters:
+        supplychainnet (dict): The supply chain network, as returned by
+            `create_sc_net`.
+
+    Returns:
+        None
+    """
+    for group in ("nodes", "demands", "links"):
+        for item in supplychainnet.get(group, {}).values():
+            item.stats.reset()
 
 
 # ---------------------------------------------------------------------------
@@ -856,6 +974,19 @@ class Network:
         """
         simulate_sc_net(self._sc, sim_time, logging=logging, log_window=log_window)
         self._has_run = True
+        return self
+
+    def reset_stats(self) -> "Network":
+        """
+        Start the statistics of every node, customer demand and link again
+        from zero, for example after a warm-up (see `reset_stats`). Returns
+        ``self`` so calls can chain
+        (``net.simulate(31).reset_stats().simulate(T + 1)``).
+
+        Returns:
+            Network: ``self``.
+        """
+        reset_stats(self._sc)
         return self
 
     # ---- Results after a run ----------------------------------------------

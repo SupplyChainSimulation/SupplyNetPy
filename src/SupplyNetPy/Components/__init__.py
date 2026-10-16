@@ -23,6 +23,7 @@ from SupplyNetPy.Components.core import (
     NamedEntity,
     InfoMixin,
     Statistics,
+    LinkStatistics,
     RawMaterial,
     Product,
     InventoryReplenishment,
@@ -54,6 +55,10 @@ from SupplyNetPy.Components.utilities import (
     get_node_wise_performance,
     format_node_wise_performance,
     print_node_wise_performance,
+    get_link_wise_performance,
+    format_link_wise_performance,
+    print_link_wise_performance,
+    reset_stats,
     Network,
 )
 
@@ -72,6 +77,7 @@ __all__ = [
     "InfoMixin",
     # core — stats / products
     "Statistics",
+    "LinkStatistics",
     "RawMaterial",
     "Product",
     # core — replenishment policies
@@ -108,5 +114,9 @@ __all__ = [
     "get_node_wise_performance",
     "format_node_wise_performance",
     "print_node_wise_performance",
+    "get_link_wise_performance",
+    "format_link_wise_performance",
+    "print_link_wise_performance",
+    "reset_stats",
     "Network",
 ]

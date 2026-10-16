@@ -2,7 +2,7 @@
 
 __SupplyNetPy__ includes a submodule called __Components__, which helps you create supply chain networks by providing their parts, such as nodes, links and customer demands, and assembling them into a network. The __Components__ module contains three submodules, __core__, __logger__ and __utilities__. The words used on these pages are explained in the [Glossary](../glossary.md).
 
-The __core__ module creates the parts of a supply chain. It includes the classes _RawMaterial_, _Product_, _Inventory_, _Node_, _Link_, _Supplier_, _Manufacturer_, _InventoryNode_ and _Demand_, the replenishment policies (_SSReplenishment_, _RQReplenishment_, _PeriodicReplenishment_), and the supplier-selection policies (_SelectFirst_, _SelectAvailable_, _SelectCheapest_, _SelectFastest_). Every node created with these classes runs in a SimPy environment. The _Inventory_ class keeps the inventory of a node. By default, each inventory holds a single product. The _Inventory_ class keeps its units in a SimPy _Container_, and can also record how the inventory level changes. If you want a different kind of inventory with custom behavior, you can extend _Inventory_ or SimPy _Container_. The core module also exports `set_seed(seed)`, which seeds the random number generator the whole library uses for random disruptions, so runs can be repeated exactly.
+The __core__ module creates the parts of a supply chain. It includes the classes _RawMaterial_, _Product_, _Inventory_, _Node_, _Link_, _Supplier_, _Manufacturer_, _InventoryNode_ and _Demand_, the statistics of a node (_Statistics_) and of a link (_LinkStatistics_), the replenishment policies (_SSReplenishment_, _RQReplenishment_, _PeriodicReplenishment_), and the supplier-selection policies (_SelectFirst_, _SelectAvailable_, _SelectCheapest_, _SelectFastest_). Every node created with these classes runs in a SimPy environment. The _Inventory_ class keeps the inventory of a node. By default, each inventory holds a single product. The _Inventory_ class keeps its units in a SimPy _Container_, and can also record how the inventory level changes. If you want a different kind of inventory with custom behavior, you can extend _Inventory_ or SimPy _Container_. The core module also exports `set_seed(seed)`, which seeds the random number generator the whole library uses for random disruptions, so runs can be repeated exactly.
 
 The `node_type` argument of `Node`, `Supplier`, `InventoryNode` and `Demand` is checked against the `NodeType` enum (also exported from the core module). The accepted values are `infinite_supplier`, `supplier`, `manufacturer`, `factory`, `warehouse`, `distributor`, `retailer`, `store`, `shop` and `demand`. Some of them are different names for the same kind of node (`factory` is the same as `manufacturer`, and `warehouse`, `distributor`, `retailer`, `store` and `shop` all create an `InventoryNode`). You can pass either a string, in any letter case, or the enum member, which your editor can suggest as you type.
 
@@ -67,11 +67,38 @@ warehouse = scm.InventoryNode(
 
 The __logger__ module keeps the simulation logs. It includes the _GlobalLogger_ class, a common logger for all the parts of the simulation. You can set it up to save logs to a file or to print them to the console. A `global_logger` instance for the whole package is also exported, so you can call `scm.global_logger.disable_logging()` or `scm.global_logger.enable_logging()` to switch all simulation logs off or on at once.
 
-The __utilities__ module provides useful Python functions that save manual work. It contains functions for creating supply chains (`create_sc_net`), running simulations (`simulate_sc_net`), and inspecting or drawing the resulting network (`get_sc_net_info`, `print_node_wise_performance`, `visualize_sc_net`).
+The __utilities__ module provides useful Python functions that save manual work. It contains functions for creating supply chains (`create_sc_net`), running simulations (`simulate_sc_net`), starting the statistics again after a warm-up (`reset_stats`), and inspecting or drawing the resulting network (`get_sc_net_info`, `print_node_wise_performance`, `print_link_wise_performance`, `visualize_sc_net`).
 
 Note that `create_sc_net` accepts two interchangeable ways of building a network, plain `dict` descriptions or ready made `Node`, `Link` and `Demand` objects. But each of its `nodes`, `links` and `demands` lists must use only one of them. A list mixing dicts and ready made objects is rejected at once, because the dicts and the objects would otherwise run in two different SimPy environments. When any list contains ready made objects you must also pass `env` yourself, and each object's own `env` must be that same environment.
 
 The public names of each submodule are listed explicitly in its `__all__`, and `SupplyNetPy.Components` exports exactly these names, with no wildcard imports. The modules the library itself imports (SimPy, NetworkX, Matplotlib and so on) and its internal constants are deliberately not reachable as `scm.<name>`.
+
+#### Reading link statistics
+
+Imagine a retailer that buys from two distributors. Its node statistics say how much it ordered and received in total, but not how much came from each distributor, how long each one made it wait, or how often each link was disrupted. Every link keeps its own statistics for this, in `link.stats`. They count the replenishment orders the buyer placed over the link, what arrived, the shortage and backorders at the supplier, the waiting time (how long orders waited at the supplier before they were sent), the lead time, the costs, and the disruptions of the link. From these totals they work out averages such as the fill rate (the share of the units ordered that the supplier sent at once, without the order having to wait), the order cycle time (waiting time plus lead time) and the availability of the link.
+
+Nothing is printed unless you ask for it. Read one link with `link.stats.get_statistics()`, or several at once with `print_link_wise_performance(links)`, which prints the same kind of table as `print_node_wise_performance`. For the view of one site, pass its links. `node.suppliers` holds the links the site orders over, and `node.buyers` holds the links its buyers order over.
+
+```python
+retailer = sc["nodes"]["R1"]
+scm.print_link_wise_performance(retailer.suppliers)           # what R1 ordered, and from whom
+scm.print_link_wise_performance(sc["nodes"]["D1"].buyers)     # who ordered from D1
+rows = scm.get_link_wise_performance(sc["links"].values())   # every link, as data
+```
+
+`get_link_wise_performance` returns the values as data, ready for a pandas DataFrame, and `format_link_wise_performance` returns the table as text. The full example is in `examples/py/link_statistics.py`.
+
+Link statistics count replenishment orders only. Customers do not order over links, so customer demand is found in the statistics of each customer demand. The figures on the links of a site add up to the figures of the site itself, so the two can be checked against each other.
+
+Two statistics describe how uneven the orders are, and they answer different questions. `order_size_std` is the standard deviation of the order sizes, and `units_per_time_unit_std` is the standard deviation of the units ordered in each time unit, where a time unit with no order counts as 0. A distributor that orders 60 units at time 3 and 60 units at time 7 has an `order_size_std` of 0, because every order is the same size, but a large `units_per_time_unit_std`, because its orders come in bursts. Compare `units_per_time_unit_std` along the supply chain to measure the bullwhip effect, the way orders become more uneven as they pass from the customers towards the raw-material suppliers.
+
+For a warm-up, `reset_stats(sc)` starts the statistics of every node, customer demand and link again in one call, and `Network.reset_stats()` does the same for a `Network`.
+
+```python
+scm.simulate_sc_net(sc, sim_time=30)    # warm-up
+scm.reset_stats(sc)
+scm.simulate_sc_net(sc, sim_time=230)   # the measured period
+```
 
 #### SupplyNetPy Library Hierarchy
 

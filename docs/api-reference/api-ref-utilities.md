@@ -12,5 +12,9 @@ The utility module offers various functions to create, simulate, access informat
         - simulate_sc_net
         - visualize_sc_net
         - print_node_wise_performance
+        - get_link_wise_performance
+        - format_link_wise_performance
+        - print_link_wise_performance
+        - reset_stats
         - get_sc_net_info
         - process_info_dict

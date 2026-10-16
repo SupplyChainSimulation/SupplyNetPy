@@ -7,6 +7,31 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
+## Unreleased
+
+Simulation results are the same as in 0.3.0. This release adds statistics for
+each link.
+
+* **[NEW]** Every link now keeps statistics, in `link.stats`. They count the
+  replenishment orders the buyer placed over the link, what arrived, the
+  shortage and backorders at the supplier, how long orders waited at the
+  supplier, the lead time, the costs, and the disruptions of the link. From
+  these they work out the average waiting time, lead time and order cycle
+  time, the fill rate (the share of units the supplier sent without the
+  order having to wait), the availability of the link, and two spreads of
+  order sizes, one per order and one per time unit, for studying the
+  bullwhip effect. Read them with `link.stats.get_statistics()`.
+* **[NEW]** `get_link_wise_performance`, `format_link_wise_performance` and
+  `print_link_wise_performance` give the statistics of several links as data,
+  as text or printed, like the node versions. Pass `node.suppliers` to see what
+  a site ordered and from whom, or `node.buyers` to see who ordered from it.
+* **[NEW]** `reset_stats(supplychainnet)` and `Network.reset_stats()` start the
+  statistics of every node, customer demand and link again in one call, for a
+  warm-up.
+* **[DOCS]** New glossary entries for order cycle time, fill rate, bullwhip
+  effect and standard deviation, a section on reading link statistics in the
+  API introduction, and a new example, `examples/py/link_statistics.py`.
+
 ## 0.3.0 (2026-10-16)
 
 This release adds new node statistics, fixes how statistics are reset for a

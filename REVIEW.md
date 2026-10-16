@@ -1202,7 +1202,7 @@ The other vocabulary inconsistency the review flagged (``demand_placed`` / ``dem
 
 **Drift-only fix applied:** the obvious drift the review called out (``Product.__init__`` parameter order) is left alone in this pass too — the signature is the source of truth, and reordering the docstring without the broader dedup invites another round of churn when §6.7 lands proper. Recorded as item 2 of the "remaining work" notes.
 
-### 6.8 Link statistics 📝 Designed (2026-10-15), not yet implemented
+### 6.8 Link statistics ✅ Resolved (designed 2026-10-15, implemented 2026-10-16)
 Requested by the user. New `LinkStatistics` in `core.py`; recording calls in `InventoryNode.process_order`, `Manufacturer.process_order_raw` and `Link.disruption`; new functions in `utilities.py`. Builds on §3.24 (`reset_stats` below calls `Statistics.reset()` on every node) and §3.25, and is done after §6.9, reusing its clock, disruption timer and reset handling of worked-out values.
 
 **Purpose.** Node statistics say how much a site ordered and received in total, but not from whom. Since §3.23 every site keeps `buyers` as well as `suppliers`, so each link can record the flow between its two ends: how many replenishment orders the buyer placed over it, what it received, how long it waited, what it cost. This shows how orders split across suppliers, and serves as a target for research that studies flows (for example a learned model of the network).
@@ -1307,6 +1307,22 @@ A new `reset_stats(supplychainnet)` resets every node, customer demand and link 
 
 **Follow-up.** The probability-based supplier-selection policy gets its own entry (§6.10). It will use these statistics in its tests (share of orders per link).
 
+**Implemented as designed (2026-10-16)**, in the six steps of the plan (baseline, glossary, `LinkStatistics` and its recording calls, utilities, tests, docs). Details settled in the code:
+
+- `LinkStatistics` sits next to `Statistics` in `core.py` and is created in `Link.__init__` before the link registers with its sites. Its `_stats_keys` and `_live_keys` (`["backorder"]`) are class level; no subclass extends them, so they are not cloned.
+- Recording sits next to each matching node call, so the two cannot drift apart: `blocked` in the second check of `InventoryNode.process_order`; `shortage`, `demand_placed`, `transportation_cost` and `record_order` at placement; `backorder` and `waited` where `order_waits` is true; on arrival, `fulfillment_received`, `inventory_spend_cost`, `waiting_time` and `lead_time`. The wait is kept in a local `waited_for` (0 for an order served at once). The node's own `waiting_time` is still added when the supplier serves the order, as before.
+- `LinkStatistics.update_stats` accepts only the stored totals. An unknown name, or a value worked out when read (`fill_rate`, say), gets the unknown-name warning, rather than the error `Statistics.update_stats` would raise on a property.
+- Spreads: Welford's method, three numbers each. Empty time units are added in one step by combining the values so far with a group of zeros; a reading works on a copy. Time units are `floor(env.now − start_time + 1e-9)`, so rounding cannot put a moment in the time unit before.
+- The node and link tables share `_collect_stats`, `_performance_rows` and `_format_performance` in `utilities.py`. The three link functions accept any collection of links (`node.suppliers`, `node.buyers`, `sc["links"].values()`).
+- `reset_stats(supplychainnet)` resets `nodes`, `demands` and `links`; `Network.reset_stats()` returns the network, so calls chain.
+- Docs: glossary entries **order cycle time**, **fill rate** (with order fill rate), **bullwhip effect** and **standard deviation**, and link names added to **Link**, **Lead time**, **Waiting time**, **Availability** and **Warm-up**; a "Reading link statistics" section in `docs/api-reference/api-intro.md`; the four new functions on the utilities API page; the example `examples/py/link_statistics.py` (a retailer with two distributors, one link disrupted at random, the other distributor restocking slowly, a warm-up with `reset_stats`).
+
+**Verified:**
+
+- Nothing else changes. Before any code was written, every node's and customer demand's `get_statistics()`, each site's `on_hand`, inventory level and `pending_orders`, each link's `get_statistics()` and the network results were stored for 19 networks with fixed seeds (intro_simple; five seeds of a distributor with two suppliers and random site and link disruptions; three warm-ups saved at the reset and at the end; a manufacturer whose raw-material supplier is too small (§3.27); three seeds of a manufacturer with two raw materials and three raw-material suppliers; three seeds of retailers with three suppliers each, chosen by cost (fixed) and by lead time (dynamic)). After the change all are identical, as are the outputs of `intro_simple.py` (`profit: -4435.0`), `sc_with_factory.py`, `hybrid_big_sc.py` (including its node table, now built by the shared code) and `newsvendor.py`, and the 30 pharma replications.
+- `pytest` — 337/337 passing, also with `-W error::UserWarning`. New `TestLinkStatistics` (19 tests) and `TestLinkStatisticsAddUpToNodes` (2 tests, 3 seeds each) in `tests/test_core.py`, and 6 tests in `tests/test_utilities.py`, covering items 2 to 5 of the list above. Seven deliberate mistakes (waiting time added when served, link backorder never reduced, reset clearing the backorder, disruption end not recorded, raw-material orders not recorded, empty time units left out, fill rate by orders instead of units) each make a test fail.
+- Both spreads match `statistics.stdev` on a list of the same values in 300 random cases (largest difference 4e-15).
+
 ### 6.9 More node statistics: disruptions, inventory over time, orders that end badly, a clock ✅ Resolved
 Requested by the user while §6.8 was being designed. `Statistics`, `Inventory.update_carry_cost`, `Node.disruption`, `Node.place_order`, both `process_order` methods, `Manufacturer.process_order`, `Demand`, `simulate_sc_net`. To be done **before** §6.8 (user, 2026-10-16): it builds the shared tools (a clock that `reset()` restarts, a disruption timer, a running sum of value × time), and §6.8 then reuses them for links. Two separate changes, so each stays easy to review.
 
@@ -1344,7 +1360,7 @@ Requested by the user while §6.8 was being designed. `Statistics`, `Inventory.u
 | `waiting_time` | stored, time units | Total time those orders waited until their units left the inventory | `wait_for_order` when a waiting customer is served in full (the time the order arrived is kept in the process); after `yield event` in both `process_order` methods |
 | `avg_waiting_time` | worked out | `waiting_time / demand_fulfilled[0]`: average wait per order served, with orders served at once counting as 0 (the same rule as for links). Customers who gave up are not in it | |
 
-Everything a site lost is `lost_sales + disruption_lost_sales` (§3.26). A supplier's waiting time for orders from other sites equals the sum of `waiting_time` over its buyer links (§6.8).
+Everything a site lost is `lost_sales + disruption_lost_sales` (§3.26). A supplier's waiting time for orders from other sites equals the sum of `waiting_time` over its buyer links (§6.8) once every order has arrived: the supplier adds an order's wait when it serves it, the link when the order arrives.
 
 **Group 4: a clock.**
 
@@ -1450,8 +1466,8 @@ The three items below were considered in this review pass and deferred with expl
 2. **§5.5 numpy/pandas aggregation.** Would double install size to optimise an aggregation that doesn't bite at current network sizes (<20 nodes). ``Network.results`` and ``get_node_wise_performance`` already hand callers a clean dict / list-of-dicts they can feed to ``pandas.DataFrame.from_records`` themselves. Revisit with a benchmark on a 500+ node network.
 3. **§8 ``validation/`` data files.** Moving them affects the validation paper's reproduction instructions; out of scope for a code-review pass.
 4. **§6.6 demand-vocabulary unification (``demand_placed`` / ``demand_by_customers`` / ``demand_by_site``).** The three names are different *concepts* (per-node placed orders, network-level customer aggregate, network-level site aggregate), so a rename without merging the underlying meanings would be cosmetic. Keep as-is until the meanings are consolidated.
-5. **§3.27 replenishment orders larger than the supplier's capacity.** Ship complete stays the default; partial shipments and "ship what is there, cancel the rest" are to be added after §6.8 and §6.10. Until then, models assume each supplier can hold what its buyers order.
-6. **§6.11 check that the whole network is valid** (connections, settings, units flowing towards customers, no cycles). To be designed after §6.8 and §6.10.
+5. **§3.27 replenishment orders larger than the supplier's capacity.** Ship complete stays the default; partial shipments and "ship what is there, cancel the rest" are to be added after §6.10 (§6.8 is done). Until then, models assume each supplier can hold what its buyers order.
+6. **§6.11 check that the whole network is valid** (connections, settings, units flowing towards customers, no cycles). To be designed after §6.10 (§6.8 is done).
 
 ---
 

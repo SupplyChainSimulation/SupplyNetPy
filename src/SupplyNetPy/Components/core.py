@@ -5,6 +5,7 @@ import simpy
 from simpy.core import BoundClass
 from simpy.resources.container import ContainerGet
 import copy
+import math
 import random
 import numbers
 import warnings
@@ -28,6 +29,7 @@ __all__ = [
     "NamedEntity",
     "InfoMixin",
     "Statistics",
+    "LinkStatistics",
     "RawMaterial",
     "Product",
     "InventoryReplenishment",
@@ -760,6 +762,381 @@ class Statistics(InfoMixin):
         while True:
             yield self.node.env.timeout(period)
             self.update_stats()
+
+class LinkStatistics(InfoMixin):
+    """
+    The `LinkStatistics` class records what flows over one link: the replenishment orders its buyer placed
+    over it, what arrived, how long the orders waited and travelled, what they cost, and the link's own
+    disruptions. Every link has one, as ``link.stats``, created with the link.
+
+    Node statistics say how much a site ordered and received in total, but not from whom. A buyer with two
+    suppliers has a link to each, and each link counts only the orders sent over it. A site finds the links
+    it orders over in ``node.suppliers``, and the links its buyers order over in ``node.buyers``. The same
+    events are counted in the node statistics too, so the totals over a buyer's links add up to the buyer's
+    own figures. Customers do not order over links, so customer orders are not in any link (each
+    ``Demand`` has its own statistics).
+
+    Running totals are kept, not a record of each order. Values worked out when read are properties, and
+    are ``None`` when there is nothing to divide by (a fill rate of 0 would look like a very bad link).
+
+    **Two spreads of order sizes.** Both are sample standard deviations (how far values usually are from
+    their average, dividing by one less than the number of values), and both are ``None`` with fewer than
+    two values. ``order_size_std`` takes one value per order: the size of each order. ``units_per_time_unit_std``
+    takes one value per time unit: the units ordered in that time unit, with time units in which nothing
+    was ordered counting as 0. The two can disagree completely. A distributor that orders 60 units at time
+    3 and 60 units at time 7, and nothing in between, has an ``order_size_std`` of 0 (every order is the
+    same size) but a large ``units_per_time_unit_std`` (the orders come in bursts). The bullwhip effect
+    (orders becoming more uneven as they pass from the customers towards the raw-material suppliers) is
+    measured per time unit: compare a link's ``units_per_time_unit_std`` with the spread of customer
+    demand per time unit.
+
+    Parameters:
+        link (Link): The link whose statistics these are.
+
+    Attributes:
+        link (Link): The link whose statistics these are.
+        name (str): Name of the statistics object: the link's ID followed by " statistics".
+        start_time (float): When counting began: the time the link was created, or the last ``reset``.
+        elapsed_time (float): Time since ``start_time``. Worked out when read.
+        demand_placed (list): Replenishment orders the buyer placed over the link, as [number of orders, units].
+        fulfillment_received (list): Orders that arrived at the buyer, as [number of orders, units]. Only
+            the units the buyer accepted are counted, as in the buyer's own statistics.
+        shortage (list): How many units the supplier was missing when this buyer's orders reached it, as
+            [number of orders, units]. A running total that is never reduced.
+        backorder (list): This buyer's orders waiting at the supplier right now, as [number of orders, units].
+        waited (list): Orders that had to wait at the supplier, as [number of orders, units]. Unlike
+            ``backorder``, it is a running total, so it still counts an order once the order is served.
+        blocked (list): Orders the buyer was about to send over this link but could not place, because the
+            link or the supplier's site was disrupted by then, as [number of orders, units]. Orders blocked
+            before any link was chosen (every supplier disrupted) are counted only in the buyer's node
+            statistics. Links from raw-material suppliers never record any.
+        transportation_cost (float): Transportation cost of the orders placed over the link.
+        inventory_spend_cost (float): What the buyer paid for the units it received over the link.
+        waiting_time (float): Total time orders waited at the supplier, from being placed until their units
+            left the supplier's inventory (orders served at once wait 0). Added when the order arrives.
+        lead_time (float): Total lead time of the orders that arrived.
+        avg_waiting_time (float): Average wait per order received: ``waiting_time / fulfillment_received[0]``.
+            Worked out when read.
+        avg_lead_time (float): Average lead time per order received: ``lead_time / fulfillment_received[0]``.
+            Worked out when read.
+        avg_order_cycle_time (float): Average time from placing an order until it arrives:
+            ``avg_waiting_time + avg_lead_time``. Worked out when read.
+        fill_rate (float): Share of the units ordered that the supplier sent at once:
+            ``1 - waited[1] / demand_placed[1]``. An order that had to wait counts as not sent at once, even
+            if part of it was there. Worked out when read.
+        order_fill_rate (float): The same share counted in orders: ``1 - waited[0] / demand_placed[0]``.
+            Worked out when read.
+        orders_per_time_unit (float): Orders placed per time unit: ``demand_placed[0] / elapsed_time``.
+            Worked out when read.
+        units_per_time_unit (float): Units ordered per time unit: ``demand_placed[1] / elapsed_time``.
+            Worked out when read.
+        order_size_mean (float): Average size of the orders placed. Worked out when read.
+        order_size_std (float): Standard deviation of the size of the orders placed (see above). Worked out
+            when read.
+        units_per_time_unit_std (float): Standard deviation of the units ordered in each time unit (see
+            above). Time units are counted from ``start_time`` and are 1 long. The time unit still going on
+            is left out. Worked out when read.
+        disruptions (int): Number of disruptions of the link.
+        disrupted_time (float): Time the link spent disrupted, including a disruption still going on when it
+            is read. A link set to "inactive" by hand, rather than by its disruption process, is not counted.
+        availability (float): Share of time the link was not disrupted: ``1 - disrupted_time / elapsed_time``.
+            Worked out when read.
+        _info_keys (list): Keys to include in the info dictionary.
+        _stats_keys (list): Keys to include in the statistics dictionary.
+        _live_keys (list): Statistics that describe the present (``backorder``); ``reset`` keeps them.
+
+    Functions:
+        __init__: Initializes the statistics object.
+        update_stats: Adds the given amounts to the running totals.
+        record_order: Adds the size of one order placed to the two spreads of order sizes.
+        disruption_started, disruption_ended: Called by the link when a disruption starts and ends.
+        reset: Starts the running totals again from zero (for example after a warm-up), keeping the
+            orders still waiting.
+    """
+    _info_keys = ["name"]
+    _stats_keys = [
+        "name",
+        "start_time", "elapsed_time",
+        "demand_placed", "fulfillment_received", "shortage", "backorder", "waited", "blocked",
+        "transportation_cost", "inventory_spend_cost",
+        "waiting_time", "lead_time", "avg_waiting_time", "avg_lead_time", "avg_order_cycle_time",
+        "fill_rate", "order_fill_rate",
+        "orders_per_time_unit", "units_per_time_unit",
+        "order_size_mean", "order_size_std", "units_per_time_unit_std",
+        "disruptions", "disrupted_time", "availability",
+    ]
+    # Values that describe the present rather than count what happened, so
+    # ``reset`` keeps them: orders waiting at a reset are still waiting after it.
+    _live_keys = ["backorder"]
+
+    def __init__(self, link):
+        """
+        Initialize the statistics object.
+
+        Parameters:
+            link (Link): The link whose statistics these are.
+
+        Returns:
+            None
+        """
+        self.link = link
+        self.name = f"{link.ID} statistics"
+        self._clear_totals()
+        self.backorder = [0, 0] # this buyer's orders waiting at the supplier right now
+        self.start_time = link.env.now # when counting began (moved by reset)
+        # Time spent disrupted, kept as the total of disruptions that have
+        # ended plus the start of the one going on now (if any), so that
+        # ``disrupted_time`` can include the ongoing part when it is read.
+        self._disrupted_since = None
+
+    def _clear_totals(self):
+        # Set every running total to zero. Used when the statistics are
+        # created and when they are reset.
+        self.demand_placed = [0, 0] # orders placed over the link
+        self.fulfillment_received = [0, 0] # orders that arrived at the buyer
+        self.shortage = [0, 0] # units the supplier was missing when the orders reached it
+        self.waited = [0, 0] # orders that had to wait at the supplier
+        self.blocked = [0, 0] # orders not placed because the link or the supplier was disrupted
+        self.transportation_cost = 0
+        self.inventory_spend_cost = 0
+        self.waiting_time = 0 # total time orders waited at the supplier
+        self.lead_time = 0 # total lead time of the orders that arrived
+        self.disruptions = 0
+        self._disrupted_time = 0
+        # The two spreads of order sizes are kept with Welford's method: three
+        # numbers (how many values, their average, and the sum of squared
+        # differences from the average) are enough, so no list of values is
+        # kept. ``_order_sizes`` has one value per order. ``_per_time_unit``
+        # has one value per finished time unit. The time unit still going on
+        # is ``_current_time_unit`` (counted from start_time), with
+        # ``_current_units`` ordered in it so far.
+        self._order_sizes = [0, 0.0, 0.0]
+        self._per_time_unit = [0, 0.0, 0.0]
+        self._current_time_unit = 0
+        self._current_units = 0
+
+    # ---- Spreads (Welford's method) ---------------------------------------
+
+    @staticmethod
+    def _add_value(spread, value):
+        # Add one value to [count, average, sum of squared differences].
+        count, mean, m2 = spread
+        count += 1
+        delta = value - mean
+        mean += delta / count
+        m2 += delta * (value - mean)
+        return [count, mean, m2]
+
+    @staticmethod
+    def _add_zeros(spread, how_many):
+        # Add ``how_many`` values of 0 in one step: the time units in which
+        # nothing was ordered. This combines the values so far with a group
+        # of zeros, so no process has to wake up every time unit to add them.
+        if how_many <= 0:
+            return spread
+        count, mean, m2 = spread
+        total = count + how_many
+        delta = -mean # the zeros' average minus the average so far
+        return [total, mean + delta * how_many / total, m2 + delta * delta * count * how_many / total]
+
+    @staticmethod
+    def _sample_std(spread):
+        # Sample standard deviation (dividing by one less than the number of
+        # values); None with fewer than two values.
+        count, _, m2 = spread
+        if count < 2:
+            return None
+        return math.sqrt(max(m2, 0.0) / (count - 1))
+
+    def _time_unit_now(self):
+        # Which time unit the clock is in, counting from start_time (0 is the
+        # first). The tiny tolerance keeps rounding errors in times such as
+        # 2.9999999999 from putting a moment in the time unit before.
+        return math.floor(self.link.env.now - self.start_time + 1e-9)
+
+    def _per_time_unit_up_to_now(self):
+        # The spread per time unit with every time unit that has finished by
+        # now: the stored one where orders were placed, and the empty ones
+        # since. It works on a copy, so reading changes nothing stored.
+        spread = list(self._per_time_unit)
+        now = self._time_unit_now()
+        if now > self._current_time_unit:
+            spread = self._add_value(spread, self._current_units)
+            spread = self._add_zeros(spread, now - self._current_time_unit - 1)
+        return spread
+
+    def record_order(self, quantity):
+        """
+        Add the size of one order placed over the link to the two spreads of
+        order sizes (see the class description). Called together with
+        ``update_stats(demand_placed=...)``.
+
+        Parameters:
+            quantity (float): Units ordered.
+
+        Returns:
+            None
+        """
+        self._order_sizes = self._add_value(self._order_sizes, quantity)
+        now = self._time_unit_now()
+        if now > self._current_time_unit:
+            # A new time unit has started since the last order: store the
+            # finished ones and start counting this one.
+            self._per_time_unit = self._per_time_unit_up_to_now()
+            self._current_time_unit = now
+            self._current_units = 0
+        self._current_units += quantity
+
+    def update_stats(self, **kwargs):
+        """
+        Add the given amounts to the running totals, for example
+        ``update_stats(demand_placed=[1, 50], transportation_cost=5)``.
+        ``[number of orders, units]`` pairs are added pair by pair.
+
+        Parameters:
+            **kwargs: The statistics to add to, by name, with the amounts to add.
+
+        Returns:
+            None
+        """
+        for key, value in kwargs.items():
+            stored = (key in self._stats_keys and key != "name"
+                      and not isinstance(getattr(type(self), key, None), property))
+            if not stored:
+                # Most likely a typo. The value is ignored, so the user is
+                # warned (the text leaves out the link, so each unknown name
+                # is shown once).
+                global_logger.warning(f"{self.link.ID}: update_stats got an unknown statistic '{key}'; it is ignored.")
+                warnings.warn(f"update_stats got an unknown statistic '{key}', so it is ignored. "
+                              f"Check the name for a typo.", UserWarning, stacklevel=2)
+                continue
+            current = getattr(self, key)
+            if isinstance(current, list):
+                current[0] += value[0]
+                current[1] += value[1]
+            else:
+                setattr(self, key, current + value)
+
+    def disruption_started(self):
+        """Record that the link's disruption starts now (called by ``Link.disruption``)."""
+        self.disruptions += 1
+        self._disrupted_since = self.link.env.now
+
+    def disruption_ended(self):
+        """Record that the link's disruption ends now (called by ``Link.disruption``)."""
+        if self._disrupted_since is not None:
+            self._disrupted_time += self.link.env.now - self._disrupted_since
+            self._disrupted_since = None
+
+    def reset(self):
+        """
+        Start the statistics again from zero, for example after a warm-up (see
+        ``Statistics.reset``). The simulation carries on unchanged; only the
+        counting starts again:
+
+        - Running totals and both spreads of order sizes are set to zero.
+        - ``backorder`` is kept: orders waiting at the reset are still waiting
+          after it.
+        - ``start_time`` becomes now, so every average and every value per time
+          unit covers only the time since the reset.
+        - A disruption going on now is counted from now on. It does not add to
+          ``disruptions``, because it started before the reset.
+
+        Each event is counted when it happens. So an order placed before the
+        reset and received after it counts as received but not as placed. The
+        averages stay correct, because each one divides by a count recorded at
+        the same moment as its total.
+
+        Parameters:
+            None
+
+        Returns:
+            None
+        """
+        self._clear_totals()
+        now = self.link.env.now
+        self.start_time = now
+        if self._disrupted_since is not None:
+            self._disrupted_since = now
+
+    # ---- Values worked out when read --------------------------------------
+    # These are properties listed in _stats_keys, so get_statistics() includes
+    # them. A value with nothing to divide by is None, not 0.
+
+    @property
+    def elapsed_time(self):
+        """Time since counting began (``start_time``): the creation of the link, or the last ``reset``."""
+        return self.link.env.now - self.start_time
+
+    @property
+    def disrupted_time(self):
+        """Time the link spent disrupted, including a disruption still going on now."""
+        ongoing = 0 if self._disrupted_since is None else self.link.env.now - self._disrupted_since
+        return self._disrupted_time + ongoing
+
+    @property
+    def availability(self):
+        """Share of time the link was not disrupted: ``1 - disrupted_time / elapsed_time``. None if no time has passed."""
+        elapsed = self.elapsed_time
+        return None if elapsed <= 0 else 1 - self.disrupted_time / elapsed
+
+    @property
+    def avg_waiting_time(self):
+        """Average wait at the supplier per order received. None before any order arrives."""
+        received = self.fulfillment_received[0]
+        return None if received <= 0 else self.waiting_time / received
+
+    @property
+    def avg_lead_time(self):
+        """Average lead time per order received. None before any order arrives."""
+        received = self.fulfillment_received[0]
+        return None if received <= 0 else self.lead_time / received
+
+    @property
+    def avg_order_cycle_time(self):
+        """Average time from placing an order until it arrives: waiting time plus lead time. None before any order arrives."""
+        waiting, lead = self.avg_waiting_time, self.avg_lead_time
+        return None if waiting is None or lead is None else waiting + lead
+
+    @property
+    def fill_rate(self):
+        """Share of the units ordered that the supplier sent at once, without the order waiting. None before any order."""
+        placed = self.demand_placed[1]
+        return None if placed <= 0 else 1 - self.waited[1] / placed
+
+    @property
+    def order_fill_rate(self):
+        """Share of the orders that the supplier sent at once, without waiting. None before any order."""
+        placed = self.demand_placed[0]
+        return None if placed <= 0 else 1 - self.waited[0] / placed
+
+    @property
+    def orders_per_time_unit(self):
+        """Orders placed per time unit. None if no time has passed."""
+        elapsed = self.elapsed_time
+        return None if elapsed <= 0 else self.demand_placed[0] / elapsed
+
+    @property
+    def units_per_time_unit(self):
+        """Units ordered per time unit. None if no time has passed."""
+        elapsed = self.elapsed_time
+        return None if elapsed <= 0 else self.demand_placed[1] / elapsed
+
+    @property
+    def order_size_mean(self):
+        """Average size of the orders placed. None before any order."""
+        count, mean, _ = self._order_sizes
+        return None if count == 0 else mean
+
+    @property
+    def order_size_std(self):
+        """Standard deviation of the size of the orders placed. None with fewer than two orders."""
+        return self._sample_std(self._order_sizes)
+
+    @property
+    def units_per_time_unit_std(self):
+        """Standard deviation of the units ordered in each finished time unit. None with fewer than two finished time units."""
+        return self._sample_std(self._per_time_unit_up_to_now())
 
 class RawMaterial(NamedEntity, InfoMixin):
     """
@@ -2399,6 +2776,7 @@ class Link(NamedEntity, InfoMixin):
         status (str): Status of the link: "active", or "inactive" while disrupted.
         link_disrupt_time (callable): Function giving the time units until the next disruption.
         link_recovery_time (callable): Function giving the time units a disruption lasts.
+        stats (LinkStatistics): What flows over the link (see `LinkStatistics`).
 
     Functions:
         __init__: Initializes the link object and checks the parameters.
@@ -2444,6 +2822,8 @@ class Link(NamedEntity, InfoMixin):
             status (str): Status of the link: "active", or "inactive" while disrupted.
             link_recovery_time (callable): Function giving the time units a disruption lasts.
             link_disrupt_time (callable): Function giving the time units until the next disruption.
+            stats (LinkStatistics): What flows over the link: the orders placed over it, what arrived, waiting
+                times, lead times, costs and disruptions. ``link.get_statistics()`` gives only the status.
 
         Returns:
             None
@@ -2489,6 +2869,7 @@ class Link(NamedEntity, InfoMixin):
         self.link_recovery_time = link_recovery_time  # function: time units a disruption lasts
         self.link_disrupt_time = link_disrupt_time  # function: time units until the next disruption, if given
         self.rng = rng if rng is not None else _rng  # random number generator for random disruptions; the library's default if none is given
+        self.stats = LinkStatistics(self)  # what flows over this link (see LinkStatistics)
 
         # Register this link with its sink (the buyer) through
         # ``add_supplier_link``, rather than changing ``sink.suppliers``
@@ -2569,6 +2950,7 @@ class Link(NamedEntity, InfoMixin):
                     yield self.env.timeout(disrupt_time)
                     self.status = "inactive" # change the link status to inactive
                     global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
+                    self.stats.disruption_started()
                 else:
                     # Random disruption: check once per time unit. The
                     # ``yield env.timeout(1)`` below must run whether or not the
@@ -2579,6 +2961,7 @@ class Link(NamedEntity, InfoMixin):
                     if(self.rng.random() < self.link_failure_p):
                         self.status = "inactive"
                         global_logger.info(f"{self.env.now}:{self.ID}: Link disrupted.")
+                        self.stats.disruption_started()
                     yield self.env.timeout(1)
             else:
                 recovery_time = self.link_recovery_time() # get the recovery time
@@ -2586,6 +2969,7 @@ class Link(NamedEntity, InfoMixin):
                 yield self.env.timeout(recovery_time)
                 self.status = "active"
                 global_logger.info(f"{self.env.now}:{self.ID}: Link recovered from disruption.")
+                self.stats.disruption_ended()
                 # Orders were not sent over this link while it was disrupted.
                 # Wake the buyer's replenishment policy so it checks again now
                 # (see Node.wake_replenishment).
@@ -3630,6 +4014,7 @@ class InventoryNode(Node):
         if not supplier.can_take_order():
             self.logger.info(f"{self.env.now:.4f}:{self.ID}:Supplier:{supplier.source.name} or link:{supplier.ID} is disrupted. Order not placed.")
             self.stats.update_stats(blocked=[1, reorder_quantity])
+            supplier.stats.update_stats(blocked=[1, reorder_quantity])
             return
 
         self.pending_orders += 1  # count this order as placed; taken off again when it arrives
@@ -3639,9 +4024,14 @@ class InventoryNode(Node):
         if supplier.source.inventory.level < reorder_quantity:
             shortage = reorder_quantity - supplier.source.inventory.level
             supplier.source.stats.update_stats(shortage=[1,shortage])
+            supplier.stats.update_stats(shortage=[1,shortage])
 
+        # Each of these is recorded at the buyer, at the supplier, and on the
+        # link between them (see LinkStatistics).
         self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
         supplier.source.stats.update_stats(demand_received=[1,reorder_quantity])
+        supplier.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
+        supplier.stats.record_order(reorder_quantity)
 
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing inventory from supplier:{supplier.source.name}, order placed for {reorder_quantity} units.")
         self._warn_if_supplier_cannot_hold(supplier, reorder_quantity)
@@ -3660,11 +4050,14 @@ class InventoryNode(Node):
         ordered_at = self.env.now
         if order_waits:
             supplier.source.stats.update_stats(backorder=[1,reorder_quantity], waited=[1,reorder_quantity])
+            supplier.stats.update_stats(backorder=[1,reorder_quantity], waited=[1,reorder_quantity])
         yield event
+        waited_for = self.env.now - ordered_at  # 0 if the order was served at once
         if order_waits:
             # Served at last: the supplier no longer owes this order, and it
             # adds how long the order waited.
-            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity], waiting_time=self.env.now - ordered_at)
+            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity], waiting_time=waited_for)
+            supplier.stats.update_stats(backorder=[-1,-reorder_quantity])
 
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.") # log the shipment
         lead_time = supplier.lead_time() # draw the lead time from the link
@@ -3753,6 +4146,11 @@ class InventoryNode(Node):
         # truly received.
         self.stats.update_stats(fulfillment_received=[1,accepted],inventory_spend_cost=accepted*self.buy_price)
         supplier.source.stats.update_stats(demand_fulfilled=[1,accepted])
+        # The link adds the order's waiting time and lead time now, on arrival,
+        # with fulfillment_received, so that their averages divide by a count
+        # recorded at the same moment (this matters after a reset).
+        supplier.stats.update_stats(fulfillment_received=[1,accepted], inventory_spend_cost=accepted*self.buy_price,
+                                    waiting_time=waited_for, lead_time=lead_time)
         self.pending_orders -= 1
 
 class Manufacturer(Node):
@@ -4104,12 +4502,16 @@ class Manufacturer(Node):
         if supplier.source.inventory.level < reorder_quantity:  # the supplier cannot fill this order right away: record the shortage
             shortage = reorder_quantity - supplier.source.inventory.level
             supplier.source.stats.update_stats(shortage=[1,shortage])
+            supplier.stats.update_stats(shortage=[1,shortage])
 
         self.pending_orders += 1  # count this raw-material order as placed
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Replenishing raw material:{supplier.source.raw_material.name} from supplier:{supplier.source.ID}, order placed for {reorder_quantity} units. Current inventory level: {self.raw_inventory_counts}.")
         # The order counts as placed now, when it is placed, as in
         # InventoryNode.process_order, even if the supplier makes it wait.
+        # It is recorded at the manufacturer and on the link (see LinkStatistics).
         self.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
+        supplier.stats.update_stats(demand_placed=[1,reorder_quantity],transportation_cost=supplier.cost)
+        supplier.stats.record_order(reorder_quantity)
         self._warn_if_supplier_cannot_hold(supplier, reorder_quantity)
         event, man_date_ls = supplier.source.inventory.get(reorder_quantity, site_order=True)
         supplier.source.stats.update_stats(demand_received=[1,reorder_quantity]) # update the supplier statistics for demand received
@@ -4120,11 +4522,14 @@ class Manufacturer(Node):
         ordered_at = self.env.now
         if order_waits:
             supplier.source.stats.update_stats(backorder=[1,reorder_quantity], waited=[1,reorder_quantity])
+            supplier.stats.update_stats(backorder=[1,reorder_quantity], waited=[1,reorder_quantity])
         yield event
+        waited_for = self.env.now - ordered_at  # 0 if the order was served at once
         if order_waits:
             # Served at last: the supplier no longer owes this order, and it
             # adds how long the order waited.
-            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity], waiting_time=self.env.now - ordered_at)
+            supplier.source.stats.update_stats(backorder=[-1,-reorder_quantity], waiting_time=waited_for)
+            supplier.stats.update_stats(backorder=[-1,-reorder_quantity])
 
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:shipment in transit from supplier:{supplier.source.name}.")
         lead_time = supplier.lead_time() # draw the lead time from the link
@@ -4133,6 +4538,10 @@ class Manufacturer(Node):
 
         self.stats.update_stats(fulfillment_received=[1,reorder_quantity],inventory_spend_cost=reorder_quantity*supplier.source.sell_price)
         supplier.source.stats.update_stats(demand_fulfilled=[1,reorder_quantity]) # update the supplier statistics for demand fulfilled
+        # On arrival, as in InventoryNode.process_order.
+        supplier.stats.update_stats(fulfillment_received=[1,reorder_quantity],
+                                    inventory_spend_cost=reorder_quantity*supplier.source.sell_price,
+                                    waiting_time=waited_for, lead_time=lead_time)
         self.raw_inventory_counts[raw_mat_id] += reorder_quantity
         self.logger.info(f"{self.env.now:.4f}:{self.ID}:Order received from supplier:{supplier.source.name}, inventory levels: {self.raw_inventory_counts}")
         self.pending_orders -= 1

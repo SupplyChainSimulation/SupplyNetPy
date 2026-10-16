@@ -475,3 +475,92 @@ def test_create_sc_net_object_env_must_match():
                      order_quantity_model=lambda: 5, demand_node=d, logging=False)
     with pytest.raises(ValueError, match="env does not match"):
         utilities.create_sc_net(nodes=[s, d], links=[l], demands=[dem], env=env)
+
+# ---- Link statistics: reading, printing and resetting (§6.8) ----------------
+
+def _two_supplier_network():
+    # R1 buys from D1 and D2 (cheapest first: D1). D1 is disrupted at day 4
+    # for 3 days, so R1 orders from D2 meanwhile.
+    site = {"node_type": "distributor", "capacity": 100, "initial_level": 50, "inventory_holding_cost": 0.1,
+            "replenishment_policy": scm.SSReplenishment, "policy_param": {"s": 30, "S": 100},
+            "product_buy_price": 10, "product_sell_price": 12}
+    sc = scm.create_sc_net(
+        nodes=[{"ID": "S0", "name": "S0", "node_type": "infinite_supplier"},
+               dict(site, ID="D1", name="D1", node_disrupt_time=lambda: 4, node_recovery_time=lambda: 3),
+               dict(site, ID="D2", name="D2"),
+               dict(site, ID="R1", name="R1", node_type="retailer", policy_param={"s": 40, "S": 100},
+                    supplier_selection_policy=scm.SelectCheapest)],
+        links=[{"ID": "LS1", "source": "S0", "sink": "D1", "cost": 5, "lead_time": lambda: 2},
+               {"ID": "LS2", "source": "S0", "sink": "D2", "cost": 5, "lead_time": lambda: 2},
+               {"ID": "L1", "source": "D1", "sink": "R1", "cost": 1, "lead_time": lambda: 1},
+               {"ID": "L2", "source": "D2", "sink": "R1", "cost": 2, "lead_time": lambda: 1}],
+        demands=[{"ID": "c1", "name": "c1", "demand_node": "R1", "order_arrival_model": lambda: 1,
+                  "order_quantity_model": lambda: 12}])
+    return sc
+
+
+def test_get_link_wise_performance_one_column_per_link():
+    sc = _two_supplier_network()
+    scm.simulate_sc_net(sc, sim_time=30, logging=False)
+    rows = scm.get_link_wise_performance(sc["nodes"]["R1"].suppliers)
+    assert {row["Performance Metric"] for row in rows} == set(scm.LinkStatistics._stats_keys)
+    assert list(rows[0]) == ["Performance Metric", "D1 to R1", "D2 to R1"]
+    placed = next(row for row in rows if row["Performance Metric"] == "demand_placed")
+    assert placed["D1 to R1"][0] > 0 and placed["D2 to R1"][0] > 0   # both suppliers were used
+    assert scm.get_link_wise_performance(sc["links"].values())   # a dict's values work too
+
+
+def test_format_link_wise_performance_table():
+    sc = _two_supplier_network()
+    scm.simulate_sc_net(sc, sim_time=30, logging=False)
+    table = scm.format_link_wise_performance(sc["nodes"]["R1"].suppliers)
+    lines = table.splitlines()
+    assert lines[0].split() == ["Performance", "Metric", "D1", "to", "R1", "D2", "to", "R1"]
+    assert len(lines) == 1 + len(scm.LinkStatistics._stats_keys)
+    assert any(line.startswith("fill_rate") for line in lines)
+    assert scm.format_link_wise_performance([]) == ""
+
+
+def test_link_wise_performance_keeps_links_with_the_same_name():
+    env = simpy.Environment()
+    s = scm.Supplier(env=env, ID="S", name="S", node_type="infinite_supplier")
+    r = scm.InventoryNode(env=env, ID="R", name="R", node_type="retailer", capacity=10, initial_level=5,
+                          inventory_holding_cost=0, replenishment_policy=None, policy_param={},
+                          product_buy_price=1, product_sell_price=2)
+    first = scm.Link(env=env, ID="La", source=s, sink=r, cost=0, lead_time=1)
+    second = scm.Link(env=env, ID="Lb", source=s, sink=r, cost=0, lead_time=2)
+    rows = scm.get_link_wise_performance([first, second])
+    assert list(rows[0]) == ["Performance Metric", "S to R", "S to R (Lb)"]
+
+
+def test_print_link_wise_performance_for_one_site(capsys):
+    sc = _two_supplier_network()
+    scm.simulate_sc_net(sc, sim_time=30, logging=False)
+    scm.print_link_wise_performance(sc["nodes"]["R1"].suppliers)   # what R1 ordered, and from whom
+    assert "D1 to R1" in capsys.readouterr().out
+    scm.print_link_wise_performance(sc["nodes"]["S0"].buyers)      # who ordered from S0
+    out = capsys.readouterr().out
+    assert "S0 to D1" in out and "S0 to D2" in out
+    scm.print_link_wise_performance([])
+    assert "No links provided." in capsys.readouterr().out
+    assert scm.get_link_wise_performance([]) == []
+
+
+def test_reset_stats_resets_every_node_demand_and_link():
+    sc = _two_supplier_network()
+    scm.simulate_sc_net(sc, sim_time=10, logging=False)
+    assert sc["links"]["L1"].stats.demand_placed[0] > 0
+    scm.reset_stats(sc)
+    for group in ("nodes", "demands", "links"):
+        for item in sc[group].values():
+            assert item.stats.start_time == sc["env"].now, (group, item.ID)
+            assert item.stats.demand_placed == [0, 0], (group, item.ID)
+    scm.simulate_sc_net(sc, sim_time=30, logging=False)
+    assert sc["links"]["L1"].stats.elapsed_time == 20
+
+
+def test_network_reset_stats_returns_the_network():
+    net = scm.Network(_two_supplier_network())
+    assert net.simulate(10, logging=False).reset_stats() is net
+    assert all(link.stats.start_time == 10 for link in net.links.values())
+    assert all(node.stats.start_time == 10 for node in net.nodes.values())
