@@ -1402,6 +1402,83 @@ Everything a site lost is `lost_sales + disruption_lost_sales` (§3.26). A suppl
 
 **Found while verifying (not changed here).** In the manufacturer test network, a raw-material order larger than the raw-material supplier's capacity (292 units ordered from a supplier that holds at most 200) waits at the supplier for ever, so the manufacturer never produces again. The same happens with the old code. Customers have a guard for this case (`_discard_unservable`); replenishment orders do not. Recorded as §3.27 (deferred).
 
+### 6.10 Probability-based supplier selection ⏸️ Designed (user, 2026-10-16)
+Requested by the user. A new supplier-selection policy, `SelectProbabilistic`, in `core.py`, with small changes to `SupplierSelectionPolicy`, `InventoryNode`, `Manufacturer` and `create_sc_net`. Builds on §6.8 (the link statistics show how the orders really split).
+
+**Purpose.** The built in policies always choose a supplier by a fixed rule (the first, the first that can fill the order, the cheapest, the fastest). Many buyers in reality split their orders among suppliers in set shares, for example half to one distributor and the rest to two others. This policy chooses the supplier of each replenishment order at random, with a probability for each supplier. It is a general feature of the library. Its first user is the GNN optimization study (`GNN-optimization/STUDY_LOG.md`, Stage 1), where the probabilities are inputs that a gradient-based optimizer adjusts, so the expected results must change smoothly with them and runs must be repeatable with common random numbers. The study's simulations have no disruptions.
+
+**How a supplier is chosen.** For every call to `select`, the policy draws exactly one number *u* from its own random number generator, uniform in [0, 1). The probabilities of the site's suppliers are stacked in the order of `node.suppliers` (the order the links were created in), and *u* picks the supplier whose stretch it falls in. With 0.5, 0.3 and 0.2, *u* < 0.5 picks the first supplier, 0.5 ≤ *u* < 0.8 the second, and 0.8 ≤ *u* < 1 the third. A supplier with probability 0 has a stretch of no length and is never chosen. If rounding leaves *u* past the end of the stack (the probabilities sum to 0.9999999, say), the last supplier with a probability above 0 is chosen. One draw per call, never more and never fewer, keeps the draws of two settings in line: with the same seed, changing a probability slightly changes only the orders whose *u* falls near a boundary.
+
+**Where the probabilities come from.** A new site parameter `supplier_selection_param` (a dict, default `None`), on `InventoryNode` and as a key of the node dict in `create_sc_net`, in the same way `policy_param` serves the replenishment policy:
+
+```python
+{"ID": "R1", ..., "supplier_selection_policy": scm.SelectProbabilistic,
+ "supplier_selection_param": {"probabilities": {"D1": 0.5, "D2": 0.3, "D3": 0.2},
+                              "on_disruption": "rescale", "seed": 7}}
+```
+
+- `probabilities`: a dict from supplier ID (`link.source.ID`) to its probability. The policy finds each link's probability from `link.source.ID`, so the probabilities can be given before the links exist. A program that builds random networks picks the links first and writes the probabilities into each site's dict in the same loop. In a full grid (every distributor linked to every retailer), suppliers that are not to be used are listed with 0.
+- `on_disruption` (optional, `"rescale"` by default, or `"block"`), see below.
+- `seed` or `rng` (optional), see below.
+- `SelectProbabilistic.set_probabilities(probabilities)` sets or replaces the probabilities later, for networks built from objects (a program may create a site before it knows its links). So `probabilities` may be left out at creation. It applies the same checks as at creation, and the link check below runs again at the next order (not at once, because more links may still be added).
+- Not on `Link`: a setting used by only one policy is kept out of every link (decided by the user).
+
+**How the parameter reaches the policy.** `SupplierSelectionPolicy.__init__(node, mode="fixed", params=None)`. The site passes `mode` only when `supplier_selection_mode` is given and `params` only when `supplier_selection_param` is given (see Mode below), so custom policies written as `__init__(self, node, mode="fixed")` keep working. Each policy declares `_param_keys`, as replenishment policies do. The four existing policies declare an empty tuple, `SelectProbabilistic` declares `probabilities`, `on_disruption`, `seed` and `rng`. Any other key gets the same warning as an unknown `policy_param` key (`warnings.warn` plus a log line, the text without the site's ID). `supplier_selection_param` must be a named parameter of `InventoryNode`, not left in `**kwargs`, because `**kwargs` goes on to `Inventory`, which rejects unknown names.
+
+**Checks.** Errors are `ValueError`, raised through `global_logger` like the other setting checks.
+
+- At creation and in `set_probabilities`: `probabilities` is a dict of numbers, none negative, at least one above 0, summing to 1 within a small tolerance (so 0.1 + 0.2 + 0.7 passes).
+- Once the links are known: the probabilities have been given (at creation or with `set_probabilities`), every link in `node.suppliers` has a probability, every supplier ID in `probabilities` has a link, and no supplier has two links to this site (the ID would not say which link is meant). A link or ID left over is most likely a typo, so it is an error, not a probability of 0. This check runs in `create_sc_net` after all links are created, and again at the policy's first `select`, so models run with `env.run` are covered too. The base class gets a method for it that does nothing (name left to the builder), `SelectProbabilistic` overrides it, and `create_sc_net` calls it for every site.
+
+**Disruptions.** Two choices, set by `on_disruption`. The candidates are the suppliers with a probability above 0.
+
+- `"rescale"` (default): the draw is made over the candidates that can take an order (`can_take_order()`), with their probabilities scaled up to sum to 1, so their ratios are kept. With 0.5, 0.3, 0.2 and the first supplier disrupted, the other two get 0.6 and 0.4 for that order. The stored probabilities never change. If no candidate can take an order (only suppliers with probability 0 are working), the policy draws over all candidates and returns the chosen link although it is disrupted.
+- `"block"`: the draw is made over all candidates with the given probabilities, and the chosen link is returned even if it is disrupted.
+
+A disrupted link returned by `select` needs no new code: the second check in `InventoryNode.process_order` (`not supplier.can_take_order()`) already records `blocked` at the site and on that link and places nothing, and the site orders again when a supplier or link recovers (`wake_replenishment`) or when its inventory drops. When no supplier at all can take the order, `place_order` blocks it before `select` is called, as today, and no number is drawn.
+
+The docs must say plainly that the probabilities are the shares while every supplier can take orders, and that with disruptions the shares of orders at the end of a run differ from them. Example for the docs: the first supplier is disrupted for 40% of the orders and the others never are. With `"rescale"` it gets about 30% of the orders sent (0.5 × 0.6), and the site never goes without. With `"block"` it still gets 50% of the draws, but about 37.5% of the orders sent (0.3 / 0.8), and the site goes without for the blocked orders. Only waiting for the drawn supplier to recover would keep 50% of the orders sent, and `place_order` must not wait (§3.23). The link statistics record the real shares.
+
+**Random numbers.** `seed` (a number or a string, as in the Running Experiments guide) makes the policy create its own `random.Random(seed)`. `rng` uses a `random.Random` the user made. Giving both is an error. With neither, the policy draws one seed from the site's generator (`node.rng`, which is the library's `_rng` unless the site was given its own `rng`) when it is created, following the library's rule for random numbers (CLAUDE.md, RNG control). So `scm.set_seed`, or a seeded `rng` on the site, still makes the run repeatable. After that its draws come only from its own generator and disturb no other random numbers. Drawing that seed moves the later numbers of the site's generator by one, but only in models that use this policy, so no existing result changes.
+
+**Mode.** "Fixed" makes no sense here (the first random choice would be kept for ever), and "dynamic" is what the policy does. Each policy keeps its own default (decided by the user, 2026-10-16), so the sites do not set one.
+
+- `InventoryNode` and `Manufacturer` change `supplier_selection_mode="fixed"` to `None`, and pass the mode to the policy only when it is given (for example `policy(self, **kwargs)`, with `mode` and `params` in `kwargs` only when given). Left out, the policy's own default applies: `"fixed"` for the four existing policies (the default of `SupplierSelectionPolicy.__init__` and of `SelectFirst.__init__`, already today), `"dynamic"` for `SelectProbabilistic`. No `_default_mode` attribute is needed.
+- `SelectProbabilistic.__init__` has `mode="dynamic"` and raises an error if it is given `"fixed"`.
+- No result changes: the sites passed `"fixed"` until now, and every existing policy defaults to `"fixed"`. The examples that use `"dynamic"` (the milk case study, `examples/notebooks/performance_ana.ipynb`, one test) pass it explicitly. One effect for the CHANGELOG: a custom policy whose own `__init__(self, node, mode)` has no default for `mode` fails when the mode is left out. The guide's example does not override `__init__`.
+- `SelectProbabilistic` does not use `_apply_mode` or `_active_suppliers`. The three-step pattern for new policies (CLAUDE.md) gets a note that a policy with its own disruption rule may skip them.
+
+**Info.** `_info_keys` adds `probabilities` and `on_disruption`, so they appear in `get_info()` and saved network records. The generator is not included.
+
+**Manufacturers: out of scope.** A `Manufacturer` takes `supplier_selection_policy` and stores it, but never uses it: for each raw material it orders from the first raw-material supplier of that raw material that can take the order (`_raw_material_links`). The built in policies also choose among all of a site's suppliers, while a manufacturer needs one choice per raw material. Here, `Manufacturer` takes the same `supplier_selection_mode` and `supplier_selection_param` as `InventoryNode` and builds its policy the same way (so a `supplier_selection_param` key in the dict style does not end in an unclear `TypeError` from `Inventory`). Given a policy other than `SelectFirst`, it warns once that the policy is not used (`warnings.warn` plus a log line, the text without the site's ID), and `docs/known-issues.md` gets an entry. The link check of `SelectProbabilistic` is not run for a manufacturer, since its policy is never used.
+
+**Also out of scope.**
+
+- The quota method of the study log (each order goes to the supplier furthest behind its share). It would send several orders in a row to a supplier that has just recovered, which may cause shortages there. The user will write it as a custom policy in the study if needed, and update decision D3 in STUDY_LOG.md.
+- Probabilities that change during a run (given as functions).
+
+**Docs.** A section in `docs/guide/supplier-selection.md` (scenario first, the dict example, building probabilities for a random network, both disruption choices with the example above, the seed). The sentence there saying fixed is the default stays true for the four existing policies, but should say so. Glossary entries for the new terms before they are used. `docs/known-issues.md`: drop the "Probability-based supplier selection" bullet from Next updates, and add the manufacturer limitation. Also `docs/about.md` (Features and Architecture lists), `docs/api-reference/api-intro.md` if it lists the policies, CHANGELOG, and the CLAUDE.md bullets on supplier-selection policies.
+
+**Tests.**
+
+- Nothing else changes: every existing test passes, `intro_simple.py` gives −4435.0, and the existing four policies behave the same with the mode left out, given as `"fixed"` and given as `"dynamic"`.
+- Shares: over many orders without disruptions, the shares of orders over each link are close to the probabilities (statistical tolerance), checked with the link statistics.
+- A supplier with probability 0 is never chosen, including when it is the only one working (the order is blocked).
+- Same seed, same sequence of chosen suppliers; different seed, a different sequence; `scm.set_seed` without `seed` repeats a run.
+- The policy's draws do not disturb other random numbers: with a given `seed`, a seeded disruption sequence is the same whatever the probabilities.
+- Exactly one draw per `select`, also when only one candidate can take the order.
+- Rescale: with one supplier disrupted, the others share its orders in their ratio. Block: a draw that lands on a disrupted supplier records `blocked` at the site and on that link, and the site orders again after the recovery.
+- Errors: probabilities that do not sum to 1, a negative one, all zero, not a dict; a link without a probability and a probability without a link (in `create_sc_net`, and at the first order with `env.run`); two links from the same supplier; `seed` and `rng` together; `"fixed"` mode; an unknown `on_disruption` value. An unknown key warns.
+- `set_probabilities` replaces the probabilities and applies the checks.
+- Mode default: a custom policy without its own `__init__`, and one with `__init__(self, node, mode="fixed")`, still work with the mode left out and given.
+- Probabilities never given (neither at creation nor with `set_probabilities`): a clear error in `create_sc_net` and at the first order.
+- With neither `seed` nor `rng`, a site given its own seeded `rng` repeats its run.
+- A `Manufacturer` given another policy, including `SelectProbabilistic` with `supplier_selection_param`, warns and does not fail.
+
+**Settled by Claude after the design review (2026-10-16), for the user to check:** `probabilities` may be left out at creation; `Manufacturer` takes the same two settings and only warns; the seed comes from `node.rng` when neither `seed` nor `rng` is given.
+
+**Left to the builder.** Names of helper methods, the tolerance, log and error texts, where in `core.py` the class goes (after `SelectFastest`), and the exact text of the docs.
+
 ### 6.11 Check that the whole network is valid ⏸️ Planned (user, 2026-10-16)
 To be discussed and designed after §6.8 (link statistics) and §6.10 (probability-based supplier selection).
 
