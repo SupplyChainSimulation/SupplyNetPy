@@ -7,7 +7,7 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
-## Unreleased
+## 0.4.0 (2026-10-16)
 
 Simulation results are the same as in 0.3.0. This release adds statistics for
 each link, and a User Guide with seven guides to common tasks.
