@@ -7,7 +7,11 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
-## Unreleased
+## 0.5.0 (2026-10-17)
+
+Simulation results are the same as in 0.4.0. This release adds
+probability-based supplier selection, and supplier-selection policies can now
+take settings.
 
 * **[NEW]** `SelectProbabilistic`, a supplier-selection policy that chooses
   the supplier of each replenishment order at random, with a probability for
@@ -38,6 +42,17 @@ action from you, and **[DOCS]** documentation only.
   probabilities of `SelectProbabilistic`. A distributor or retailer now
   reports its replenishment policy in `get_info()`, as a manufacturer already
   did.
+* **[DOCS]** The Supplier Selection guide has two new sections. One shows how
+  to choose suppliers at random with `SelectProbabilistic`, and the other how
+  to give settings to a supplier-selection policy you write yourself
+  (`self.params`, `_param_keys` and `check_links`). New glossary entries for probability-based supplier
+  selection and selection probability. The Known Issues page says that a
+  manufacturer does not use its supplier-selection policy yet.
+* **[DOCS]** Level 3 headings in the guides and other pages are shown as plain
+  headings. The grey box is kept for the classes and functions of the API
+  reference.
+* **[DOCS]** The source code shown in the API reference keeps its line breaks
+  and indentation again.
 
 ## 0.4.0 (2026-10-16)
 
