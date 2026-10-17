@@ -840,6 +840,30 @@ class TestSelectionPolicySettings(unittest.TestCase):
                 _selection_manufacturer(_fresh_env(), supplier_selection_policy=scm.SelectProbabilistic,
                                         supplier_selection_param={"probabilities": {"S1": 0.4}})
 
+    def test_unused_probabilistic_policy_on_manufacturer_draws_nothing(self):
+        # The policy is ignored, so it must not move the library's random numbers:
+        # a site created after the manufacturer gets the same seed either way.
+        def later_draws(**manufacturer_kw):
+            scm.set_seed(11)
+            env = _fresh_env()
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                _selection_manufacturer(env, **manufacturer_kw)
+            site = _selection_site(env, supplier_selection_policy=scm.SelectProbabilistic)
+            return [site.selection_policy.rng.random() for _ in range(5)]
+        expected = later_draws()
+        assert later_draws(supplier_selection_policy=scm.SelectProbabilistic) == expected
+        assert later_draws(supplier_selection_policy=scm.SelectProbabilistic,
+                           supplier_selection_param={"probabilities": {"S1": 1.0}, "seed": None}) == expected
+
+    def test_unused_probabilistic_policy_on_manufacturer_keeps_user_settings(self):
+        settings = {"probabilities": {"S1": 1.0}}
+        with pytest.warns(UserWarning, match="manufacturer does not use"):
+            m = _selection_manufacturer(_fresh_env(), supplier_selection_policy=scm.SelectProbabilistic,
+                                        supplier_selection_param=settings)
+        assert settings == {"probabilities": {"S1": 1.0}}  # the user's dict is not changed
+        assert m.selection_policy.probabilities == {"S1": 1.0}
+
     def test_manufacturer_with_the_default_policy_does_not_warn(self):
         with warnings.catch_warnings():
             warnings.simplefilter("error")

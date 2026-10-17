@@ -4701,6 +4701,19 @@ class Manufacturer(Node):
                        "is ignored.")
             self.logger.warning(f"{self.ID}: {message}")
             warnings.warn(message, UserWarning, stacklevel=2)
+        # A policy with its own random numbers (SelectProbabilistic) given no
+        # seed or rng would draw its seed from this site's random number
+        # generator, which is usually the library's. That one draw would move
+        # every later number of it, so the disruptions of the network would
+        # change although the policy is ignored. Since the policy never
+        # chooses, give it a generator of its own and draw nothing. Remove
+        # this when manufacturers use their policy.
+        if (isinstance(supplier_selection_param, (dict, type(None)))
+                and "rng" in (getattr(supplier_selection_policy, "_param_keys", None) or ())):
+            settings = dict(supplier_selection_param or {})  # a copy, so the user's dict is not changed
+            if settings.get("seed") is None and settings.get("rng") is None:
+                settings["rng"] = random.Random(0)
+                supplier_selection_param = settings
         self.selection_policy = self._make_selection_policy(supplier_selection_policy, supplier_selection_mode,
                                                             supplier_selection_param)
         
