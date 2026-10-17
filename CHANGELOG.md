@@ -32,6 +32,12 @@ action from you, and **[DOCS]** documentation only.
   policies do for `policy_param`. A manufacturer given a supplier-selection
   policy, a mode or settings warns that they are not used, since it does not
   use its policy yet.
+* **[CHANGE]** `get_sc_net_info` shows the settings of each site's
+  replenishment policy and supplier-selection policy, not only their names,
+  for example `(s: 100, S: 150, first_review_delay: 0, period: 0)` or the
+  probabilities of `SelectProbabilistic`. A distributor or retailer now
+  reports its replenishment policy in `get_info()`, as a manufacturer already
+  did.
 
 ## 0.4.0 (2026-10-16)
 

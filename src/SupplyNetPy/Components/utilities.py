@@ -13,6 +13,8 @@ from SupplyNetPy.Components.core import (
     InventoryNode,
     Manufacturer,
     Demand,
+    InventoryReplenishment,
+    SupplierSelectionPolicy,
     global_logger,
 )
 
@@ -104,6 +106,11 @@ def process_info_dict(info_dict, logger):
     # each produce dozens of lines.
     parts = []
     for key, value in info_dict.items():
+        # A policy as text is only its name. Show its settings too, so that,
+        # for example, two retailers that split their orders 70/30 and 50/50
+        # can be told apart.
+        if isinstance(value, (InventoryReplenishment, SupplierSelectionPolicy)):
+            value = _describe_policy(value)
         if isinstance(value, object):
             value = str(value)
         if callable(value):
@@ -111,6 +118,38 @@ def process_info_dict(info_dict, logger):
         parts.append(f"{key}: {value}")
         logger.info(f"{key}: {value}")
     return "\n".join(parts) + ("\n" if parts else "")
+
+def _describe_policy(policy):
+    """
+    Describe a replenishment policy or a supplier-selection policy on one line:
+    its name followed by its settings, for example
+    ``min-max replenishment (s, S) (s: 100, S: 150, first_review_delay: 0, period: 0)``.
+
+    The settings come from the policy's own ``get_info()``. The site the policy
+    belongs to (``node``) is left out, because the line is already part of that
+    site's description, and so is the name, which starts the line. The values
+    in ``params`` are listed one by one, so that ``s`` and ``S`` read as
+    settings of their own. A value given in ``params`` is shown once, even if
+    the policy also keeps it as an attribute.
+
+    Parameters:
+        policy (InventoryReplenishment or SupplierSelectionPolicy): The policy to describe.
+
+    Returns:
+        str: The name of the policy, followed by its settings in brackets when it has any.
+    """
+    settings = {}
+    for key, value in policy.get_info().items():
+        if key in ("node", "name"):
+            continue
+        if key == "params" and isinstance(value, dict):
+            for param_key, param_value in value.items():
+                settings.setdefault(param_key, param_value)
+        elif not (key == "params" and value is None):
+            settings.setdefault(key, value)
+    if not settings:
+        return str(policy)
+    return f"{policy} ({', '.join(f'{key}: {value}' for key, value in settings.items())})"
 
 # Column position for each NodeType when drawing the network with
 # ``multipartite_layout``. Putting each type in its own column makes the

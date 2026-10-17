@@ -1,6 +1,7 @@
 import pytest
 import simpy
 from unittest.mock import MagicMock, patch
+import SupplyNetPy.Components as scm
 import SupplyNetPy.Components.utilities as utilities
 
 # Dummy classes to mock core.py dependencies
@@ -146,6 +147,50 @@ def test_get_sc_net_info_returns_string():
     assert "Edges in the network" in result
     assert "Demands in the network" in result
     assert "extra_metric: 123" in result
+
+
+def _policy_net(d1_policy_param=None):
+    nodes = [{"ID": "S1", "name": "S1", "node_type": "infinite_supplier"},
+             {"ID": "S2", "name": "S2", "node_type": "infinite_supplier"},
+             {"ID": "D1", "name": "D1", "node_type": "distributor", "capacity": 150, "initial_level": 50,
+              "inventory_holding_cost": 0.2, "replenishment_policy": scm.SSReplenishment,
+              "policy_param": d1_policy_param or {"s": 100, "S": 150},
+              "product_buy_price": 100, "product_sell_price": 105,
+              "supplier_selection_policy": scm.SelectProbabilistic,
+              "supplier_selection_param": {"probabilities": {"S1": 0.7, "S2": 0.3}, "seed": 7}},
+             {"ID": "R1", "name": "R1", "node_type": "retailer", "capacity": 50, "initial_level": 20,
+              "inventory_holding_cost": 0.2, "replenishment_policy": None, "policy_param": None,
+              "product_buy_price": 100, "product_sell_price": 105}]
+    links = [{"ID": "L1", "source": "S1", "sink": "D1", "cost": 5, "lead_time": lambda: 2},
+             {"ID": "L2", "source": "S2", "sink": "D1", "cost": 5, "lead_time": lambda: 2},
+             {"ID": "L3", "source": "D1", "sink": "R1", "cost": 5, "lead_time": lambda: 2}]
+    demands = [{"ID": "d1", "name": "d1", "order_arrival_model": lambda: 1, "order_quantity_model": lambda: 10,
+                "demand_node": "R1"}]
+    return utilities.create_sc_net(nodes, links, demands)
+
+
+def _policy_lines(net, key):
+    return [line for line in utilities.get_sc_net_info(net).splitlines() if line.startswith(f"{key}:")]
+
+
+def test_get_sc_net_info_shows_selection_policy_settings():
+    lines = _policy_lines(_policy_net(), "selection_policy")
+    assert lines[0] == ("selection_policy: Probability-based supplier (mode: dynamic, "
+                        "probabilities: {'S1': 0.7, 'S2': 0.3}, on_disruption: rescale)")
+    assert lines[1].endswith("(mode: fixed)")  # R1 uses SelectFirst
+    assert not any("node:" in line for line in lines)
+
+
+def test_get_sc_net_info_shows_replenishment_policy_settings():
+    lines = _policy_lines(_policy_net(), "replenishment_policy")
+    assert lines[0].endswith("(s: 100, S: 150, first_review_delay: 0, period: 0)")
+    assert lines[1] == "replenishment_policy: None"  # R1 has no replenishment policy
+
+
+def test_get_sc_net_info_shows_a_policy_setting_once():
+    # period is given in params and also kept by the policy as an attribute.
+    lines = _policy_lines(_policy_net({"s": 100, "S": 150, "period": 5}), "replenishment_policy")
+    assert lines[0].endswith("(s: 100, S: 150, period: 5, first_review_delay: 0)")
 
 def test_create_sc_net_with_dicts():
     nodes = [{"ID": "N1", "node_type": "infinite_supplier", "name": "S1"},

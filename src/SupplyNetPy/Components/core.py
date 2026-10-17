@@ -4192,7 +4192,8 @@ class InventoryNode(Node):
         __init__: Initializes the InventoryNode object.
         process_order: Places a replenishment order with one supplier and adds the units when they arrive.
     """
-    _info_keys = Node._info_keys + ["sell_price", "buy_price", "pending_orders", "selection_policy"]
+    _info_keys = Node._info_keys + ["sell_price", "buy_price", "pending_orders", "replenishment_policy",
+                                    "selection_policy"]
 
     def __init__(self,
                  env: simpy.Environment,
