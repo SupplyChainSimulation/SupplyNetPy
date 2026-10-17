@@ -137,3 +137,32 @@ A site reaches each supplier over a link, so the policy works with links. `selec
 3. `return self._apply_mode(selected)` applies the fixed or dynamic mode, so your policy follows `supplier_selection_mode` like the built in ones.
 
 To compare suppliers, use what the link offers. `link.available_quantity()` gives the supplier's inventory level, so the policy does not need to reach past the link into the supplier's inventory. `link.cost` is the transportation cost, `link.lead_time()` draws a lead time, and `link.source` is the supplier itself.
+
+### Policies with settings
+
+A policy can take settings, given to the site in `supplier_selection_param`, just as `SelectProbabilistic` takes its probabilities. Suppose the retailer should order from the cheapest distributor, but skip any distributor that has fewer than 20 units.
+
+```python
+class SelectCheapestInStock(scm.SupplierSelectionPolicy):
+    _param_keys = ("min_units",)
+
+    def select(self, order_quantity):
+        min_units = (self.params or {}).get("min_units", 0)
+        candidates = self._active_suppliers()
+        stocked = [link for link in candidates if link.available_quantity() >= min_units]
+        selected = min(stocked or candidates, key=lambda link: link.cost)
+        return self._apply_mode(selected)
+```
+
+The site gives the setting with the policy.
+
+```python
+'supplier_selection_policy': SelectCheapestInStock, 'supplier_selection_mode': 'dynamic',
+'supplier_selection_param': {'min_units': 20},
+```
+
+The policy finds its settings in `self.params`. When the site is given no settings, `self.params` is `None`, so the example reads from an empty dict instead and uses 0. When no distributor has 20 units, the policy takes the cheapest one anyway.
+
+`_param_keys` lists the settings the policy reads. The library warns about any other setting, because the policy would ignore it, so a typo such as `'min_unit'` does not go unnoticed. Without `_param_keys`, no setting is checked.
+
+Some settings name suppliers, as the probabilities of `SelectProbabilistic` do. To check them against the site's links, override `check_links(self)` and raise a `ValueError` when a setting does not match. `self.node.suppliers` gives the links, and `link.source.ID` gives the ID of each supplier. `create_sc_net` calls `check_links` once every link exists, so a mistyped supplier ID is reported before the run. If you run a network without `create_sc_net`, call `site.selection_policy.check_links()` yourself once its links are created.
