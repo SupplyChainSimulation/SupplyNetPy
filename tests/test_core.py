@@ -721,6 +721,36 @@ class TestSelectProbabilisticInNetworks(unittest.TestCase):
         with pytest.raises(ValueError, match="D3"):
             scm.create_sc_net(*_probabilistic_netlist({"D1": 0.5, "D2": 0.5}))
 
+    def test_probability_without_link_fails_in_create_sc_net(self):
+        # D4 is not linked to R1, most likely a typo: reported before the run.
+        with pytest.raises(ValueError, match="D4"):
+            scm.create_sc_net(*_probabilistic_netlist({"D1": 0.5, "D2": 0.3, "D3": 0.1, "D4": 0.1}))
+
+    def test_probabilities_never_given_fails_in_create_sc_net(self):
+        nodes, links, demands = _probabilistic_netlist({"D1": 1.0, "D2": 0.0, "D3": 0.0})
+        del nodes[-1]["supplier_selection_param"]  # R1 uses SelectProbabilistic with no probabilities
+        with pytest.raises(ValueError, match="no probabilities"):
+            scm.create_sc_net(nodes, links, demands)
+
+    def test_block_mode_orders_again_after_the_recovery(self):
+        # S1 is disrupted from 0.5 to 5.5. D1's first order (at 1) draws S1 and is
+        # blocked. Nothing leaves D1's empty inventory, so only S1's recovery can
+        # make D1 check its position again: it must order at 5.5 and receive the units.
+        env = _fresh_env()
+        s1_disruption = dict(node_disrupt_time=lambda: 0.5 if env.now == 0 else 10**6, node_recovery_time=lambda: 5)
+        sups, d1, (l1, l2, _) = _probabilistic_net(
+            env, probabilities={"S1": 0.6, "S2": 0.4, "S3": 0.0}, rng=_ScriptedRandom([0.1, 0.2, 0.2]),
+            on_disruption="block", sup_kw={"S1": s1_disruption},
+            site_kw=dict(capacity=100, replenishment_policy=scm.SSReplenishment,
+                         policy_param={"s": 10, "S": 50, "first_review_delay": 1}))
+        env.run(until=10)
+        assert d1.stats.blocked == [1, 50]
+        assert l1.stats.blocked == [1, 50]
+        assert l1.stats.demand_placed == [1, 50]  # the order after the recovery
+        assert l2.stats.demand_placed == [0, 0]   # "block" does not send the order elsewhere
+        assert d1.stats.fulfillment_received == [1, 50]
+        assert d1.inventory.level == 50
+
     def test_full_grid_with_zeros(self):
         sc = scm.create_sc_net(*_probabilistic_netlist({"D1": 1.0, "D2": 0.0, "D3": 0.0}))
         scm.simulate_sc_net(sc, 200, logging=False)
@@ -785,6 +815,12 @@ class TestSelectionPolicySettings(unittest.TestCase):
         site = _selection_site(_fresh_env(), supplier_selection_policy=scm.SelectCheapest,
                                supplier_selection_mode="dynamic")
         assert site.selection_policy.mode == "dynamic"
+
+    def test_mode_given_is_kept_by_every_original_policy(self):
+        for policy in (scm.SelectFirst, scm.SelectAvailable, scm.SelectCheapest, scm.SelectFastest):
+            for mode in ("fixed", "dynamic"):
+                site = _selection_site(_fresh_env(), supplier_selection_policy=policy, supplier_selection_mode=mode)
+                assert site.selection_policy.mode == mode, (policy.__name__, mode)
 
     def test_custom_policy_without_init(self):
         class Custom(scm.SupplierSelectionPolicy):
