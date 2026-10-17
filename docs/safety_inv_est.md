@@ -34,7 +34,7 @@ __Replenishment policies.__
 
 ## Numerical Example
 
-<p style="font-size: 20px;"><b>Evaluating Safety Inventory, Given an Inventory Policy</b></p>
+### Evaluating Safety Inventory, Given an Inventory Policy
 
 Assume that weekly demand for phones at B&M Office Supplies is normally distributed, with a mean of 2,500 and a standard deviation of 500. The manufacturer takes two weeks to fill an order placed by the B&M manager. The store manager currently orders 10,000 phones when the inventory drops to 6,000. Evaluate the safety inventory and the average inventory carried by B&M. Also evaluate the average time a phone spends at B&M.
 
