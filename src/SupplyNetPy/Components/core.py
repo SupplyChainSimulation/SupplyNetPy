@@ -2386,20 +2386,20 @@ class SelectProbabilistic(SupplierSelectionPolicy):
         u = self.rng.random()  # exactly one number for every order
         candidates = [(link, self.probabilities[link.source.ID]) for link in self.node.suppliers
                       if self.probabilities[link.source.ID] > 0]
-        pool = candidates
+        choices = candidates  # the suppliers this order can go to
         if self.on_disruption == "rescale":
             working = [(link, p) for link, p in candidates if link.can_take_order()]
             if working:
-                pool = working
-        # Scaling u by the total probability of the pool shares out the
-        # probability of the suppliers left out, keeping the ratios.
-        target = u * sum(p for _, p in pool)
+                choices = working
+        # Scaling u by the total probability of these suppliers shares out the
+        # probability of the suppliers left out, keeping their ratios.
+        target = u * sum(p for _, p in choices)
         running = 0.0
-        for link, p in pool:
+        for link, p in choices:
             running += p
             if target < running:
                 return link
-        return pool[-1][0]  # rounding left u just past the end
+        return choices[-1][0]  # rounding left u just past the end
 
 # ---------------------------------------------------------------------------
 # Disruption impact helpers
