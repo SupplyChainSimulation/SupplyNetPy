@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/glossary/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Glossary - SupplyNetPy</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Glossary";
+        var mkdocs_page_input_path = "glossary.md";
+        var mkdocs_page_url = "/SupplyNetPy/glossary/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../about/">About</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../changelog/">Release History</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../example/">Supply Chain With a Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../example-complex/">Complex Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Case Studies</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../case_study_pharma/">Pharmacy Supply Chain</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../case-studies/milk-supply-chain-india/">Milk Supply Chain (India)</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/customer-demand/">Customer Demand</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/replenishment-policies/">Replenishment Policies</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/supplier-selection/">Supplier Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/disruptions/">Disruptions</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/perishable-products/">Perishable Products</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/statistics/">Statistics and Results</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/running-experiments/">Running Experiments</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Glossary</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#the-network">The network</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#kinds-of-node">Kinds of node</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#inventory">Inventory</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#perishable-goods">Perishable goods</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#orders">Orders</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#replenishment-policies">Replenishment policies</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#production-and-mining">Production and mining</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#costs-and-results">Costs and results</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#disruptions">Disruptions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#time">Time</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#experiments">Experiments</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/SupplyChainSimulation/SupplyNetPy">SupplyNetPy on GitHub</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">Glossary</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="glossary">Glossary</h1>
+<p>SupplyNetPy uses <strong>one word for each idea</strong>. This page lists those words, says what each one means, and gives the name it has in the code. The same words are used in this documentation, in the code's comments and docstrings, and in the API reference, so that two words never stand for the same thing.</p>
+<p>A few names in the code use a different word from the one chosen here (for example <code>inventory.on_hand</code>). They are kept so that existing programs keep working; the entry explains what they really hold.</p>
+<hr />
+<h2 id="the-network">The network</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Supply chain network</strong></td>
+<td>The whole model: the sites, the links between them, and the customers.</td>
+<td><code>create_sc_net</code> returns it as a dictionary (often named <code>supplychainnet</code>); <code>Network</code> wraps the same dictionary.</td>
+</tr>
+<tr>
+<td><strong>Node</strong></td>
+<td>Any point in the network: a raw-material supplier, a manufacturer, a warehouse, distributor or retailer, <strong>and</strong> a customer demand.</td>
+<td><code>Node</code> (all of these classes are nodes, including <code>Demand</code>).</td>
+</tr>
+<tr>
+<td><strong>Site</strong></td>
+<td>A node that holds inventory: every node <strong>except</strong> a customer demand. Use "node" when customers are included, and "site" when they are not.</td>
+<td><code>site_order</code>, <code>waiting_site_orders()</code>, and the results <code>demand_by_site</code>, <code>fulfillment_received_by_site</code>.</td>
+</tr>
+<tr>
+<td><strong>Link</strong></td>
+<td>The transport connection that carries goods from one site to another. It has a cost per order and a lead time.</td>
+<td><code>Link</code>. Its statistics (the replenishment orders its buyer placed over it, what arrived, and its disruptions) are in <code>link.stats</code>.</td>
+</tr>
+<tr>
+<td><strong>Supplier</strong> (of a site)</td>
+<td>The site at the sending end of a link, seen from the site that orders over it. A warehouse is the supplier of the retailers it serves.</td>
+<td><code>link.source</code>; chosen by a supplier-selection policy. Note: in <code>process_order(supplier, ...)</code> and <code>process_order_raw(..., supplier, ...)</code>, the parameter named <code>supplier</code> is the <strong>link</strong> to the supplier, not the supplier itself (the supplier is <code>supplier.source</code>).</td>
+</tr>
+<tr>
+<td><strong>Buyer</strong></td>
+<td>A site that buys from another site: the site at the receiving end of a link, which places orders over it. A buyer is always a site; someone who buys and takes the units out of the network is a customer.</td>
+<td><code>link.sink</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="kinds-of-node">Kinds of node</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Raw-material supplier</strong></td>
+<td>A site at the start of the network that mines a raw material. It has no supplier of its own.</td>
+<td><code>Supplier</code>, <code>node_type="supplier"</code></td>
+</tr>
+<tr>
+<td><strong>Infinite supplier</strong></td>
+<td>A raw-material supplier that never runs out.</td>
+<td><code>Supplier</code>, <code>node_type="infinite_supplier"</code></td>
+</tr>
+<tr>
+<td><strong>Manufacturer</strong></td>
+<td>A site that turns raw materials into a product.</td>
+<td><code>Manufacturer</code>, <code>node_type="manufacturer"</code> (or <code>"factory"</code>, which means the same)</td>
+</tr>
+<tr>
+<td><strong>Distributor, warehouse, retailer</strong></td>
+<td>Sites that buy a product, hold it, and sell it on. They behave the same; the name only describes their place in the network.</td>
+<td><code>InventoryNode</code>, <code>node_type="distributor"</code>, <code>"warehouse"</code>, <code>"retailer"</code>, <code>"store"</code> or <code>"shop"</code></td>
+</tr>
+<tr>
+<td><strong>Customer</strong></td>
+<td>Someone who orders units from a site and takes them out of the network (the end customer).</td>
+<td>One order from a <code>Demand</code>.</td>
+</tr>
+<tr>
+<td><strong>Customer demand</strong></td>
+<td>A stream of customer orders arriving at one site, with a given time between orders and order size.</td>
+<td><code>Demand</code>, <code>node_type="demand"</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="inventory">Inventory</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Inventory</strong></td>
+<td>The units a site holds, together with its records about them (costs, dated batches, and so on).</td>
+<td><code>Inventory</code>, reached as <code>node.inventory</code>. The units themselves sit in a SimPy container, <code>node.inventory.inventory</code>.</td>
+</tr>
+<tr>
+<td><strong>Inventory level</strong></td>
+<td>The number of units physically at the site right now.</td>
+<td><code>node.inventory.level</code></td>
+</tr>
+<tr>
+<td><strong>Average inventory level</strong></td>
+<td>The inventory level averaged over time, so that each level counts for as long as it lasted. Holding 10 units for 3 time units and then 4 units for 2 time units gives (10 × 3 + 4 × 2) / 5 = 7.6.</td>
+<td><code>stats.avg_inventory_level</code>, worked out from <code>stats.inventory_level_time</code> (the sum of inventory level × time)</td>
+</tr>
+<tr>
+<td><strong>Capacity</strong></td>
+<td>The largest inventory level a site can hold.</td>
+<td><code>capacity</code></td>
+</tr>
+<tr>
+<td><strong>In transit</strong></td>
+<td>Units that have been sent to a site but have not arrived yet.</td>
+<td>(counted inside <code>inventory.on_hand</code>)</td>
+</tr>
+<tr>
+<td><strong>Inventory position</strong></td>
+<td>What a site can count on: inventory level, plus units in transit to it, minus units it still owes (to other sites and to waiting customers). Replenishment policies decide using this number.</td>
+<td><code>node.position()</code></td>
+</tr>
+<tr>
+<td><strong><code>on_hand</code></strong></td>
+<td>Despite its name, <strong>not</strong> the units physically at the site. It holds the inventory position before units owed to waiting customers are taken off: inventory level, plus units in transit, minus units promised to other sites. Use <code>node.position()</code> for the inventory position.</td>
+<td><code>node.inventory.on_hand</code></td>
+</tr>
+<tr>
+<td><strong>Units</strong></td>
+<td>The way quantities are counted.</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Product</strong></td>
+<td>The thing a manufacturer makes and the other sites sell.</td>
+<td><code>Product</code></td>
+</tr>
+<tr>
+<td><strong>Raw material</strong></td>
+<td>What a raw-material supplier mines and a manufacturer uses up.</td>
+<td><code>RawMaterial</code>; a product lists them in <code>raw_materials</code> as <code>(raw material, quantity per unit)</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="perishable-goods">Perishable goods</h3>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Perishable</strong></td>
+<td>Goods that can only be sold for a limited time after they are made.</td>
+<td><code>inventory_type="perishable"</code></td>
+</tr>
+<tr>
+<td><strong>Shelf life</strong></td>
+<td>How long a perishable unit can be sold after it is made. "Shelf life" is the standard industry term, so it is kept even though "shelf" is otherwise avoided.</td>
+<td><code>shelf_life</code></td>
+</tr>
+<tr>
+<td><strong>Manufacturing date</strong></td>
+<td>When a unit was made.</td>
+<td><code>manufacturing_date</code></td>
+</tr>
+<tr>
+<td><strong>Batch</strong></td>
+<td>Units of a perishable good that share a manufacturing date. Every order takes units from the oldest batch first, then from the next oldest, and so on.</td>
+<td>entries <code>(manufacturing date, quantity)</code> in <code>inventory.perish_queue</code></td>
+</tr>
+<tr>
+<td><strong>Expired units</strong></td>
+<td>Perishable units that reached the end of their shelf life and were thrown away.</td>
+<td><code>inventory.waste</code>; reported as <code>inventory_waste</code></td>
+</tr>
+<tr>
+<td><strong>Destroyed units</strong></td>
+<td>Units lost in a disruption (fire, flood, theft, and so on).</td>
+<td><code>Inventory.destroy</code>; recorded as <code>destroyed_qty</code> and <code>destroyed_value</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="orders">Orders</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Order</strong></td>
+<td>A request for a number of units. There are two kinds: replenishment orders and customer orders.</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Replenishment order</strong></td>
+<td>An order a site places with its supplier, to refill its inventory (or, for a manufacturer, to get raw material). Seen from the supplier, it is an order from a site rather than from a customer, which is why the code labels it a "site order".</td>
+<td>Placed by <code>place_order</code> / <code>process_order</code> (and <code>process_order_raw</code> for raw material). At the supplier it is marked <code>site_order=True</code>, and <code>waiting_site_orders()</code> counts the ones still waiting. In the results it is counted under <code>demand_by_site</code>.</td>
+</tr>
+<tr>
+<td><strong>Customer order</strong></td>
+<td>An order placed by a customer.</td>
+<td>Created by <code>Demand</code>; counted under <code>demand_by_customers</code> in the results.</td>
+</tr>
+<tr>
+<td><strong>Request</strong></td>
+<td>Only in the code's internals: the SimPy object that waits at an inventory until enough units are there to fill an order.</td>
+<td><code>inventory.get(...)</code> returns one</td>
+</tr>
+<tr>
+<td><strong>Demand</strong></td>
+<td>In the statistics, the orders a node placed or received, counted as <code>[number of orders, number of units]</code>. Includes both customer orders and site orders.</td>
+<td><code>demand_placed</code>, <code>demand_received</code></td>
+</tr>
+<tr>
+<td><strong>Fulfilled</strong></td>
+<td>An order the supplier has sent out in full.</td>
+<td><code>demand_fulfilled</code> (at the supplier)</td>
+</tr>
+<tr>
+<td><strong>Received</strong></td>
+<td>An order that has arrived at the site that placed it.</td>
+<td><code>fulfillment_received</code> (at the buyer)</td>
+</tr>
+<tr>
+<td><strong>Lead time</strong></td>
+<td>How long an order takes to arrive after it is sent: over a link, or from a site to a customer.</td>
+<td><code>Link.lead_time</code>, <code>Demand.lead_time</code>. Over a link, the total and the average are <code>link.stats.lead_time</code> and <code>link.stats.avg_lead_time</code>.</td>
+</tr>
+<tr>
+<td><strong>Backorder</strong></td>
+<td>An order, or part of one, that a site owes right now: it has been accepted but is still waiting for units. It is removed once it is filled, or when a waiting customer gives up.</td>
+<td><code>stats.backorder</code>, as <code>[orders, units]</code></td>
+</tr>
+<tr>
+<td><strong>Shortage</strong></td>
+<td>How many units a site was missing when an order arrived. It is a running total, never reduced, whether the order is later filled or not. Customers turned away by a disruption are not part of it (see disruption lost sales).</td>
+<td><code>stats.shortage</code>, as <code>[orders, units]</code></td>
+</tr>
+<tr>
+<td><strong>Disruption lost sales</strong></td>
+<td>Customer orders a site lost because it was disrupted when they arrived. A disrupted site takes no new orders, so the customer goes away. Kept apart from shortage, which counts units the site did not have, because the cause and the remedy differ.</td>
+<td><code>stats.disruption_lost_sales</code>, as <code>[orders, units]</code></td>
+</tr>
+<tr>
+<td><strong>Lost sales</strong></td>
+<td>Customer units a site never delivered, for any reason other than a disruption. A customer with no tolerance who finds too few units, the rest of an order when the customer takes only what is there, an order too big for the site ever to hold, and what a waiting customer was still owed when they gave up. Unlike shortage, it counts only units that were never delivered. Everything a site lost is lost sales plus disruption lost sales.</td>
+<td><code>stats.lost_sales</code>, as <code>[orders, units]</code></td>
+</tr>
+<tr>
+<td><strong>Blocked order</strong></td>
+<td>A replenishment order a site could not place, because the supplier chosen for it (or the link to it) was disrupted, or every supplier it has was. It is not lost. The site orders again when a supplier or a link recovers. A site with no supplier at all has no blocked orders, because no recovery would ever let its orders through. That is a mistake in how the network is built, and a warning says so.</td>
+<td><code>stats.blocked</code>, as <code>[orders, units]</code></td>
+</tr>
+<tr>
+<td><strong>Waiting time</strong></td>
+<td>How long an order waited at a site before its units left the inventory, for orders that could not be served at once. Orders served at once wait 0.</td>
+<td><code>stats.waited</code>, <code>stats.waiting_time</code>, <code>stats.avg_waiting_time</code>. For the replenishment orders a buyer placed over a link, the same names in <code>link.stats</code>.</td>
+</tr>
+<tr>
+<td><strong>Order cycle time</strong></td>
+<td>How long a replenishment order takes from the moment the buyer places it until it arrives. It is the waiting time at the supplier plus the lead time.</td>
+<td><code>link.stats.avg_order_cycle_time</code></td>
+</tr>
+<tr>
+<td><strong>Fill rate</strong></td>
+<td>The share of the units ordered that the supplier sent at once, without the order having to wait. An order that had to wait counts as not sent at once, even if part of it was there. The <strong>order fill rate</strong> is the same share counted in orders instead of units. A fill rate of 1 means no order ever waited.</td>
+<td><code>link.stats.fill_rate</code>, <code>link.stats.order_fill_rate</code></td>
+</tr>
+<tr>
+<td><strong>Bullwhip effect</strong></td>
+<td>Orders becoming more and more uneven as they pass from the customers towards the raw-material suppliers. Customers may buy about the same amount every day, while their retailer orders in large irregular amounts, and its supplier in even larger swings. It is measured per time unit. Compare the standard deviation of the units ordered over a link in each time unit with that of the customer demand in each time unit.</td>
+<td><code>link.stats.units_per_time_unit_std</code></td>
+</tr>
+<tr>
+<td><strong>Dropped units</strong></td>
+<td>Units of a delivery that did not fit in the inventory of the site that ordered them, when no waiting customer could take them either. The site does not pay for them, and they are not stored.</td>
+<td><code>stats.dropped_qty</code></td>
+</tr>
+<tr>
+<td><strong>Tolerance</strong></td>
+<td>How long a customer is willing to wait for units that are not there. A customer with no tolerance leaves at once.</td>
+<td><code>tolerance</code></td>
+</tr>
+<tr>
+<td><strong>Partial delivery</strong></td>
+<td>Sending a customer part of an order now and the rest later.</td>
+<td><code>order_min_split_ratio</code></td>
+</tr>
+<tr>
+<td><strong>Deadlock</strong></td>
+<td>Two parts of a model each waiting for the other, so neither ever moves again. For example, a buyer waits for an order larger than its supplier's capacity, and the supplier can never hold enough units to send it. SupplyNetPy warns about this when the link between them is created.</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="replenishment-policies">Replenishment policies</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Replenishment policy</strong></td>
+<td>The rule a site follows to decide when to place a replenishment order and how many units to order.</td>
+<td><code>InventoryReplenishment</code> and its subclasses, passed as <code>replenishment_policy</code></td>
+</tr>
+<tr>
+<td><strong>(s, S) policy</strong></td>
+<td>When the inventory position falls to <code>s</code> or below, order enough to bring it back up to <code>S</code>.</td>
+<td><code>SSReplenishment</code></td>
+</tr>
+<tr>
+<td><strong>(R, Q) policy</strong></td>
+<td>When the inventory position falls to <code>R</code> or below, order a fixed <code>Q</code> units.</td>
+<td><code>RQReplenishment</code></td>
+</tr>
+<tr>
+<td><strong>Periodic policy</strong></td>
+<td>Every <code>T</code> time units, order a fixed <code>Q</code> units.</td>
+<td><code>PeriodicReplenishment</code></td>
+</tr>
+<tr>
+<td><strong>Reorder point</strong></td>
+<td>The inventory position at which a policy places an order (<code>s</code> or <code>R</code>).</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Safety stock</strong></td>
+<td>Extra units a policy keeps as a buffer against uncertain demand or lead times. A standard industry term, so "stock" is kept here.</td>
+<td><code>safety_stock</code></td>
+</tr>
+<tr>
+<td><strong>Supplier-selection policy</strong></td>
+<td>The rule a site follows to choose which of its suppliers receives an order.</td>
+<td><code>SupplierSelectionPolicy</code>, <code>SelectFirst</code>, <code>SelectAvailable</code>, <code>SelectCheapest</code>, <code>SelectFastest</code>, <code>SelectProbabilistic</code></td>
+</tr>
+<tr>
+<td><strong>Probability-based supplier selection</strong></td>
+<td>A supplier-selection policy that chooses the supplier of each replenishment order at random, with a selection probability for each supplier.</td>
+<td><code>SelectProbabilistic</code></td>
+</tr>
+<tr>
+<td><strong>Selection probability</strong></td>
+<td>The share of a site's replenishment orders that goes to one supplier, while every supplier can take orders. The probabilities of a site's suppliers sum to 1. With disruptions, the shares at the end of a run differ from them.</td>
+<td><code>supplier_selection_param["probabilities"]</code>, keyed by supplier ID</td>
+</tr>
+<tr>
+<td><strong>Fixed mode</strong>, <strong>dynamic mode</strong></td>
+<td>How often a supplier-selection policy chooses. In dynamic mode it chooses again for every replenishment order. In fixed mode it keeps the first supplier it chose, and uses another only while that supplier or the link to it is disrupted.</td>
+<td><code>supplier_selection_mode</code>, <code>"fixed"</code> (the default of every built in policy except <code>SelectProbabilistic</code>, which always works in dynamic mode) or <code>"dynamic"</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="production-and-mining">Production and mining</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Mining</strong></td>
+<td>How a raw-material supplier produces raw material: a fixed number of units every fixed amount of time, as long as its inventory is not full.</td>
+<td><code>extraction_quantity</code>, <code>extraction_time</code>, <code>mining_cost</code>, <code>total_raw_materials_mined</code></td>
+</tr>
+<tr>
+<td><strong>Production batch</strong></td>
+<td>The units a manufacturer makes in one go: at most <code>batch_size</code> units, taking <code>manufacturing_time</code>. Always say "production batch", never just "batch" (which means units with the same manufacturing date).</td>
+<td><code>batch_size</code>, <code>manufacturing_time</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="costs-and-results">Costs and results</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Holding cost</strong></td>
+<td>The cost of keeping one unit in inventory for one time unit, and the total of that cost over the run.</td>
+<td><code>inventory_holding_cost</code> (rate); <code>inventory_carry_cost</code> (total)</td>
+</tr>
+<tr>
+<td><strong>Buy price, sell price</strong></td>
+<td>What a site pays per unit, and what it charges per unit.</td>
+<td><code>product_buy_price</code>, <code>product_sell_price</code></td>
+</tr>
+<tr>
+<td><strong>Transportation cost</strong></td>
+<td>The cost of sending one order over a link.</td>
+<td><code>Link.cost</code>; total in <code>transportation_cost</code></td>
+</tr>
+<tr>
+<td><strong>Revenue</strong></td>
+<td>Sell price times the units the site fulfilled.</td>
+<td><code>revenue</code></td>
+</tr>
+<tr>
+<td><strong>Node cost</strong></td>
+<td>Everything a site spent: holding, purchases, transportation, manufacturing, destroyed units, and so on.</td>
+<td><code>node_cost</code></td>
+</tr>
+<tr>
+<td><strong>Profit</strong></td>
+<td>Revenue minus node cost.</td>
+<td><code>profit</code></td>
+</tr>
+<tr>
+<td><strong>Standard deviation</strong></td>
+<td>How far values usually are from their average. SupplyNetPy uses the sample standard deviation, which divides by one less than the number of values. With fewer than two values it is not defined and is given as <code>None</code>.</td>
+<td><code>link.stats.order_size_std</code> (one value per order), <code>link.stats.units_per_time_unit_std</code> (one value per time unit)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="disruptions">Disruptions</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Disruption</strong></td>
+<td>A period when a node or a link is out of action. While disrupted, a site receives no new orders (from other sites or from customers) and a link carries no new shipments. Orders it had already taken are still served.</td>
+<td><code>node_status == "inactive"</code>, <code>link.status == "inactive"</code></td>
+</tr>
+<tr>
+<td><strong>Disruption probability</strong></td>
+<td>The chance, each time unit, that a disruption starts.</td>
+<td><code>failure_p</code></td>
+</tr>
+<tr>
+<td><strong>Recovery</strong></td>
+<td>The end of a disruption.</td>
+<td><code>node_recovery_time</code>, <code>link_recovery_time</code></td>
+</tr>
+<tr>
+<td><strong>Availability</strong></td>
+<td>The share of time a node or a link was not disrupted.</td>
+<td><code>stats.availability</code>, worked out from <code>stats.disruptions</code> and <code>stats.disrupted_time</code>. For a link, the same names in <code>link.stats</code>.</td>
+</tr>
+<tr>
+<td><strong>Disruption impact</strong></td>
+<td>What a disruption does to the units at a site when it starts (for example, destroying all of them).</td>
+<td><code>disruption_impact</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="time">Time</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Time unit</strong></td>
+<td>SupplyNetPy has no fixed unit of time. All times (lead times, shelf lives, run length) use the same unit; the examples usually read one time unit as one day.</td>
+<td><code>sim_time</code>, <code>env.now</code></td>
+</tr>
+<tr>
+<td><strong>Warm-up</strong></td>
+<td>An opening stretch of a run that is left out of the statistics, because a run starts in an unusual state (nothing in transit, no orders waiting). Run for the warm-up period, reset the statistics, and carry on running. The simulation carries on unchanged. Only the counting starts again.</td>
+<td><code>stats.reset()</code> for one node, <code>link.stats.reset()</code> for one link, and <code>reset_stats(supplychainnet)</code> or <code>Network.reset_stats()</code> for every node, customer demand and link</td>
+</tr>
+<tr>
+<td><strong>Event-driven</strong></td>
+<td>How SupplyNetPy moves through time: it jumps from one event (an order, a delivery, an expiry) straight to the next, using SimPy. It does not step through time in fixed steps.</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="experiments">Experiments</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>In the code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Replication</strong></td>
+<td>One run of the same supply chain network with its own random numbers. A study runs many replications and reports their average, because one run shows only one of the many ways the run could have gone.</td>
+<td>a loop over seeds</td>
+</tr>
+<tr>
+<td><strong>Seed</strong></td>
+<td>The number a random number generator starts from. The same seed gives the same random numbers, and so the same run.</td>
+<td><code>random.Random(seed)</code>, <code>scm.set_seed(seed)</code></td>
+</tr>
+<tr>
+<td><strong>Confidence interval</strong></td>
+<td>A range around an average that shows how precise it is. For the average of many replications, the 95% confidence interval is the average plus or minus 1.96 times the standard deviation of their results, divided by the square root of the number of replications.</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Common random numbers</strong></td>
+<td>Using the same seeds for every setting compared, so the settings face the same customers and lead times and the differences in their results come from the settings themselves.</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../api-reference/api-intro/" class="btn btn-neutral float-left" title="Introduction"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../api-reference/api-ref-core/" class="btn btn-neutral float-right" title="Core Components">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../api-reference/api-intro/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../api-reference/api-ref-core/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

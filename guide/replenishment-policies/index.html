@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/guide/replenishment-policies/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Replenishment Policies - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Replenishment Policies";
+        var mkdocs_page_input_path = "guide/replenishment-policies.md";
+        var mkdocs_page_url = "/SupplyNetPy/guide/replenishment-policies/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Release History</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With a Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Case Studies</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case-studies/milk-supply-chain-india/">Milk Supply Chain (India)</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../customer-demand/">Customer Demand</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Replenishment Policies</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#giving-a-site-its-policy">Giving a site its policy</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#the-built-in-policies">The built in policies</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#when-a-policy-checks">When a policy checks</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#safety-stock">Safety stock</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#mistakes-caught-when-the-network-is-created">Mistakes caught when the network is created</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#writing-your-own-policy">Writing your own policy</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../supplier-selection/">Supplier Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../disruptions/">Disruptions</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../perishable-products/">Perishable Products</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../statistics/">Statistics and Results</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../running-experiments/">Running Experiments</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../glossary/">Glossary</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/SupplyChainSimulation/SupplyNetPy">SupplyNetPy on GitHub</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">User Guide</li>
+      <li class="breadcrumb-item active">Replenishment Policies</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="replenishment-policies">Replenishment Policies</h1>
+<p>Imagine a small shop that sells about 30 loaves of bread a day. Again and again, the owner has to decide two things, when to order more bread from the bakery and how many loaves to order. One owner orders whenever the count gets low. Another orders the same amount every Monday. In SupplyNetPy, such a rule is called a replenishment policy. Every distributor, retailer and manufacturer follows one, and you choose it when you create the site.</p>
+<p>This guide shows how to choose a built in policy and set it up, and how to write your own policy when none of them fits. The words used here are explained in the <a href="../../glossary/">Glossary</a>.</p>
+<h2 id="giving-a-site-its-policy">Giving a site its policy</h2>
+<p>A policy is given with two settings. <code>replenishment_policy</code> is the policy's class, and <code>policy_param</code> is a dictionary with its parameters. Pass the class itself, such as <code>scm.SSReplenishment</code>, without creating an object from it. The site creates its policy when the site itself is created.</p>
+<pre><code class="language-python">retailer = {'ID': 'R1', 'name': 'Retailer1', 'node_type': 'retailer',
+            'capacity': 300, 'initial_level': 100, 'inventory_holding_cost': 0.2,
+            'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s': 80, 'S': 300},
+            'product_buy_price': 100, 'product_sell_price': 105}
+</code></pre>
+<p>The same two settings work when you create an <code>InventoryNode</code> or a <code>Manufacturer</code> object yourself.</p>
+<h2 id="the-built-in-policies">The built in policies</h2>
+<p>The (s, S) and (R, Q) policies decide using the inventory position, the units the site can count on. It is the inventory level, plus the units in transit to the site, minus the units the site still owes to other sites and to waiting customers. The periodic policy orders on a timer instead.</p>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>When it orders</th>
+<th>How many units</th>
+<th>Parameters</th>
+<th>Class</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../../api-reference/api-ref-core/#SupplyNetPy.Components.core.SSReplenishment">(s, S) policy</a></td>
+<td>The inventory position falls to <code>s</code> or below</td>
+<td>Enough to bring the inventory position back up to <code>S</code></td>
+<td><code>s</code>, <code>S</code>, and optionally <code>safety_stock</code>, <code>period</code>, <code>first_review_delay</code></td>
+<td><code>SSReplenishment</code></td>
+</tr>
+<tr>
+<td><a href="../../api-reference/api-ref-core/#SupplyNetPy.Components.core.RQReplenishment">(R, Q) policy</a></td>
+<td>The inventory position falls to <code>R</code> or below</td>
+<td>Always <code>Q</code></td>
+<td><code>R</code>, <code>Q</code>, and optionally <code>period</code>, <code>first_review_delay</code></td>
+<td><code>RQReplenishment</code></td>
+</tr>
+<tr>
+<td><a href="../../api-reference/api-ref-core/#SupplyNetPy.Components.core.PeriodicReplenishment">Periodic policy</a></td>
+<td>Every <code>T</code> time units</td>
+<td><code>Q</code>, plus any units missing from the safety stock</td>
+<td><code>T</code>, <code>Q</code>, and optionally <code>safety_stock</code>, <code>first_review_delay</code></td>
+<td><code>PeriodicReplenishment</code></td>
+</tr>
+</tbody>
+</table>
+<p>Which one to choose depends on how the real site orders.</p>
+<ul>
+<li>The (s, S) policy suits a site that can order any amount and wants each order to fill its inventory up again. The size of each order depends on how much was sold.</li>
+<li>The (R, Q) policy suits a site that orders a fixed amount each time, such as one full truck or one pallet.</li>
+<li>The periodic policy suits a site whose supplier delivers on fixed days, such as once a week. It orders <code>Q</code> units every time, whatever the inventory position. If customers buy fewer than <code>Q</code> units in <code>T</code> time units, the inventory fills up, and later orders are reduced to fit the site's capacity.</li>
+</ul>
+<p>Every policy chooses how many units to order, but not from whom. When a site has more than one supplier, its <a href="../supplier-selection/">supplier-selection policy</a> chooses which one receives each order.</p>
+<h2 id="when-a-policy-checks">When a policy checks</h2>
+<p>By default, the (s, S) and (R, Q) policies check the inventory position each time units leave the site's inventory, so they never miss the moment it reaches the reorder point. Many real sites count their inventory only now and then, for example once a week. To model this, give <code>period</code>, and the policy checks only every <code>period</code> time units. Between two checks it does nothing, even if the inventory position has fallen below the reorder point.</p>
+<p><code>first_review_delay</code> sets how long a policy waits before its first check, or, for the periodic policy, before its first order.</p>
+<pre><code class="language-python">'policy_param': {'s': 80, 'S': 300, 'period': 5, 'first_review_delay': 1}   # checks at 1, 6, 11, 16, ...
+</code></pre>
+<p>A policy without a <code>period</code> is also woken when one of the site's suppliers, or the link to it, recovers from a disruption. While every supplier is disrupted, the site cannot place an order, so the policy checks again the moment one recovers, instead of waiting for the next sale. A policy with a <code>period</code> keeps to its own timer.</p>
+<h2 id="safety-stock">Safety stock</h2>
+<p>Safety stock is extra units kept as a buffer against uncertain demand or lead times. The two policies that take a <code>safety_stock</code> use it differently.</p>
+<ul>
+<li>The (s, S) policy adds <code>safety_stock</code> to both <code>s</code> and <code>S</code>. So <code>{'s': 80, 'S': 300, 'safety_stock': 20}</code> behaves like <code>{'s': 100, 'S': 320}</code>.</li>
+<li>The periodic policy looks at the inventory level when it orders. If the level is below <code>safety_stock</code>, the order gets the missing units on top of <code>Q</code>.</li>
+</ul>
+<p>The (R, Q) policy has no safety stock. To keep a buffer with it, raise <code>R</code>.</p>
+<h2 id="mistakes-caught-when-the-network-is-created">Mistakes caught when the network is created</h2>
+<p>A policy ignores any parameter it does not read. So that a typing mistake, or a parameter meant for another policy, does not go unnoticed, a built in policy warns about such a parameter. Passing <code>T</code> to the (s, S) policy, for example, gives this warning.</p>
+<pre><code class="language-text">UserWarning: SSReplenishment does not use the parameter(s) 'T' in policy_param, so they are ignored. It uses only 's', 'S', 'safety_stock', 'first_review_delay', 'period'. Check whether you meant to use another replenishment policy.
+</code></pre>
+<p>Settings that cannot work stop with an error, for example an <code>s</code> larger than <code>S</code>, a negative reorder point, or a <code>Q</code>, <code>S</code> or <code>T</code> that is not positive.</p>
+<h2 id="writing-your-own-policy">Writing your own policy</h2>
+<p>When no built in policy fits, write your own as a subclass of <code>InventoryReplenishment</code>. Suppose the retailer above orders up to <code>S</code> like the (s, S) policy, but its supplier accepts at most 100 units in one order.</p>
+<pre><code class="language-python">class CappedSSReplenishment(scm.InventoryReplenishment):
+    _param_keys = (&quot;s&quot;, &quot;S&quot;, &quot;max_order&quot;)
+
+    def run(self):
+        s, S = self.params[&quot;s&quot;], self.params[&quot;S&quot;]
+        max_order = self.params[&quot;max_order&quot;]
+        while True:
+            position = self.node.position()
+            if position &lt;= s:
+                self.node.place_order(min(S - position, max_order))
+            yield from self.node.wait_for_drop()
+</code></pre>
+<p>Give it to a site like a built in policy.</p>
+<pre><code class="language-python">'replenishment_policy': CappedSSReplenishment,
+'policy_param': {'s': 80, 'S': 300, 'max_order': 100},
+</code></pre>
+<p>In the policy, <code>self.node</code> is the site, <code>self.params</code> is its <code>policy_param</code>, and <code>self.env</code> is the SimPy environment. The <code>run</code> method runs for the whole simulation. It loops forever, and in each round it checks, perhaps orders, and then pauses with <code>yield</code>, either until the next drop in inventory with <code>yield from self.node.wait_for_drop()</code>, or for a fixed time with <code>yield self.env.timeout(t)</code>.</p>
+<p>The policy works with its site through a small set of helper methods on <code>Node</code>, rather than reading or changing the site's internal attributes directly. The built in policies use the same helpers, so a policy written this way does not depend on how <code>Node</code> is built inside.</p>
+<ul>
+<li><code>node.position()</code> returns the inventory position. Use it instead of working the position out yourself from <code>node.inventory.on_hand</code> and <code>node.stats.backorder</code>.</li>
+<li><code>node.place_order(quantity)</code> first checks that some supplier can take the order, then chooses a supplier with the site's supplier-selection policy and places the replenishment order. If every supplier, or the link to it, is disrupted, no order is placed. Use it instead of calling <code>selection_policy.select(...)</code> and <code>env.process(process_order(...))</code> yourself.</li>
+<li><code>node.wait_for_drop()</code> waits until the site's inventory drops, or until one of its suppliers or the link to it recovers from a disruption, then gets ready for the next time. A policy that found no supplier to order from is woken this way, so it can check again. Use it as <code>yield from node.wait_for_drop()</code>.</li>
+</ul>
+<p>To give your policy the warning about unused parameters, list the keys it reads in the class attribute <code>_param_keys</code>, as in the example. A policy without such a list is not checked.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../customer-demand/" class="btn btn-neutral float-left" title="Customer Demand"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../supplier-selection/" class="btn btn-neutral float-right" title="Supplier Selection">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../customer-demand/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../supplier-selection/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

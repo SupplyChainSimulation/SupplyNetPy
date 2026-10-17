@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/guide/statistics/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Statistics and Results - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Statistics and Results";
+        var mkdocs_page_input_path = "guide/statistics.md";
+        var mkdocs_page_url = "/SupplyNetPy/guide/statistics/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Release History</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With a Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Case Studies</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case-studies/milk-supply-chain-india/">Milk Supply Chain (India)</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../customer-demand/">Customer Demand</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../replenishment-policies/">Replenishment Policies</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../supplier-selection/">Supplier Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../disruptions/">Disruptions</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../perishable-products/">Perishable Products</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Statistics and Results</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#results-for-the-whole-network">Results for the whole network</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#statistics-of-a-node">Statistics of a node</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#statistics-of-a-link">Statistics of a link</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#warm-ups">Warm-ups</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../running-experiments/">Running Experiments</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../glossary/">Glossary</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/SupplyChainSimulation/SupplyNetPy">SupplyNetPy on GitHub</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">User Guide</li>
+      <li class="breadcrumb-item active">Statistics and Results</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="statistics-and-results">Statistics and Results</h1>
+<p>Imagine you have just simulated a year of a supply chain with one distributor and three retailers. Now come the questions. Did the network make a profit? Did the retailers serve their customers, or did they run short? Which retailer held too much inventory? And which supplier, or which link, kept the others waiting? SupplyNetPy answers these at three levels, the whole network, each node, and each link.</p>
+<p>This guide shows where each answer is found, how to read it, and how to leave the first part of a run out of the statistics with a warm-up. The words used here are explained in the <a href="../../glossary/">Glossary</a>.</p>
+<h2 id="results-for-the-whole-network">Results for the whole network</h2>
+<p><code>simulate_sc_net</code> adds the results for the whole network to the dictionary it is given. They are added up from every node, and include the total cost, the revenue and the profit, the orders placed and received, the shortage, the lost sales and the backorders.</p>
+<pre><code class="language-python">scm.simulate_sc_net(sc, sim_time=365)
+print(sc[&quot;profit&quot;], sc[&quot;total_cost&quot;], sc[&quot;shortage&quot;])
+</code></pre>
+<p>With a <code>Network</code>, the same results are in <code>net.results</code>. What each result means is listed under <code>simulate_sc_net</code> in the <a href="../../api-reference/api-ref-utilities/">API reference</a>.</p>
+<h2 id="statistics-of-a-node">Statistics of a node</h2>
+<p>Every node keeps its own statistics in <code>node.stats</code>. Read them with <code>node.stats.get_statistics()</code>, or print a table of several nodes side by side with <code>print_node_wise_performance</code>.</p>
+<pre><code class="language-python">print(sc[&quot;nodes&quot;][&quot;R1&quot;].stats.get_statistics())                        # one node
+scm.print_node_wise_performance(sc[&quot;nodes&quot;].values())                 # every node, as a table
+rows = scm.get_node_wise_performance(sc[&quot;nodes&quot;].values())            # every node, as data
+</code></pre>
+<p><code>get_node_wise_performance</code> returns the values as data, ready for a pandas DataFrame, and <code>format_node_wise_performance</code> returns the table as text.</p>
+<p>The statistics answer a few kinds of question. Counts of orders are given as <code>[number of orders, units]</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Statistics</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>How many orders went in and out?</td>
+<td><code>demand_placed</code> and <code>fulfillment_received</code> for the orders the site placed and what arrived, <code>demand_received</code> and <code>demand_fulfilled</code> for the orders placed with it and those it fulfilled</td>
+</tr>
+<tr>
+<td>Did the site serve its orders?</td>
+<td><code>shortage</code>, <code>backorder</code>, <code>lost_sales</code>, <code>waited</code>, <code>avg_waiting_time</code></td>
+</tr>
+<tr>
+<td>How much inventory did it hold?</td>
+<td><code>inventory_level</code> at the end, <code>avg_inventory_level</code>, <code>zero_inventory_share</code> (the share of time it had no units), <code>inventory_waste</code> (expired units), <code>dropped_qty</code> (delivered units that did not fit)</td>
+</tr>
+<tr>
+<td>How did disruptions affect it?</td>
+<td><code>disruptions</code>, <code>disrupted_time</code>, <code>availability</code>, <code>blocked</code>, <code>disruption_lost_sales</code>, explained in the <a href="../disruptions/">Disruptions</a> guide</td>
+</tr>
+<tr>
+<td>What did it cost and earn?</td>
+<td><code>inventory_carry_cost</code> (the holding cost), <code>inventory_spend_cost</code> (what it paid for the units it received), <code>transportation_cost</code>, <code>destroyed_value</code>, then <code>node_cost</code> (all of them added up), <code>revenue</code> and <code>profit</code></td>
+</tr>
+</tbody>
+</table>
+<p>A raw-material supplier also records what it mined and what mining cost, and a manufacturer what it made and what making it cost. Both costs are part of its <code>node_cost</code>.</p>
+<p>Three of these are easy to mix up.</p>
+<ul>
+<li><code>shortage</code> counts the units a site was missing when an order arrived. It is a running total and is never reduced, even if the order is filled later.</li>
+<li><code>backorder</code> is what the site owes right now, the orders still waiting for units.</li>
+<li><code>lost_sales</code> counts the customer units the site never delivered, for example because the customer would not wait.</li>
+</ul>
+<p>So a customer who orders 20 units when the site has 15 adds 5 to <code>shortage</code>, whatever happens next. The rest depends on the customer.</p>
+<ul>
+<li>A customer who does not wait (the default) leaves without any units, so all 20 are lost sales. With <code>consume_available</code>, the customer takes the 15 units, and only the missing 5 are lost sales.</li>
+<li>A customer who waits (a customer demand with a <code>tolerance</code>) puts the whole order of 20 in <code>backorder</code> until the units are there. If the wait runs past the tolerance, the customer gives up and the 20 units are lost sales.</li>
+</ul>
+<p>Averages and shares are worked out when they are read, from the totals. When there is nothing to divide by yet, for example <code>avg_waiting_time</code> before any order has been fulfilled, the value is <code>None</code>. The inventory values are also <code>None</code> for an infinite supplier and for a customer demand, which have no inventory to measure.</p>
+<p>A customer demand has statistics too. <code>demand_placed</code> and <code>fulfillment_received</code> show what its customers ordered and what reached them.</p>
+<h2 id="statistics-of-a-link">Statistics of a link</h2>
+<p>Imagine a retailer that buys from two distributors. Its node statistics say how much it ordered and received in total, but not how much came from each distributor, how long each one made it wait, or how often each link was disrupted. Every link keeps its own statistics for this, in <code>link.stats</code>. They count the replenishment orders the buyer placed over the link, what arrived, the shortage and backorders at the supplier, the waiting time (how long orders waited at the supplier before they were sent), the lead time, the costs, and the disruptions of the link. From these totals they work out averages such as the fill rate (the share of the units ordered that the supplier sent at once, without the order having to wait), the order cycle time (waiting time plus lead time) and the availability of the link.</p>
+<p>Read one link with <code>link.stats.get_statistics()</code>, or several at once with <code>print_link_wise_performance(links)</code>, which prints the same kind of table as <code>print_node_wise_performance</code>. For the view of one site, pass its links. <code>node.suppliers</code> holds the links the site orders over, and <code>node.buyers</code> holds the links its buyers order over.</p>
+<pre><code class="language-python">retailer = sc[&quot;nodes&quot;][&quot;R1&quot;]
+scm.print_link_wise_performance(retailer.suppliers)           # what R1 ordered, and from whom
+scm.print_link_wise_performance(sc[&quot;nodes&quot;][&quot;D1&quot;].buyers)     # who ordered from D1
+rows = scm.get_link_wise_performance(sc[&quot;links&quot;].values())   # every link, as data
+</code></pre>
+<p><code>get_link_wise_performance</code> returns the values as data, and <code>format_link_wise_performance</code> returns the table as text. The full example is in <code>examples/py/link_statistics.py</code>.</p>
+<p>Link statistics count replenishment orders only. Customers do not order over links, so customer demand is found in the statistics of each customer demand. The figures on the links of a site add up to the figures of the site itself, so the two can be checked against each other. One exception is <code>blocked</code>. An order that no supplier can take is never sent over any link, so it is counted only at the buyer.</p>
+<p>Two statistics describe how uneven the orders are, and they answer different questions. <code>order_size_std</code> is the standard deviation of the order sizes, and <code>units_per_time_unit_std</code> is the standard deviation of the units ordered in each time unit, where a time unit with no order counts as 0. A distributor that orders 60 units at time 3 and 60 units at time 7 has an <code>order_size_std</code> of 0, because every order is the same size, but a large <code>units_per_time_unit_std</code>, because its orders come in bursts. Compare <code>units_per_time_unit_std</code> along the supply chain to measure the bullwhip effect, the way orders become more uneven as they pass from the customers towards the raw-material suppliers.</p>
+<h2 id="warm-ups">Warm-ups</h2>
+<p>A run starts in an unusual state. Every site starts with its initial inventory level, nothing is in transit, and no orders are waiting. If you are interested in how the network behaves once it has settled, leave this first stretch out of the statistics with a warm-up. Run for the warm-up period, reset the statistics, and carry on running.</p>
+<pre><code class="language-python">scm.simulate_sc_net(sc, sim_time=30)    # warm-up
+scm.reset_stats(sc)
+scm.simulate_sc_net(sc, sim_time=230)   # the measured period
+</code></pre>
+<p><code>reset_stats(sc)</code> starts the statistics of every node, customer demand and link again in one call, and the results of the second <code>simulate_sc_net</code> cover only the measured period, from 30 to 230. With a <code>Network</code>, the same is <code>net.simulate(30).reset_stats().simulate(230)</code>. To reset only one node or one link, call <code>node.stats.reset()</code> or <code>link.stats.reset()</code>.</p>
+<p>A reset changes only the counting, not the simulation. The running totals go back to zero and the clock of each statistic starts at the moment of the reset, so the averages cover the measured period only. What describes the present is kept, such as the orders still waiting in <code>backorder</code> and the current inventory level, and so are the inventory, the orders in transit and any disruption still going on.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../perishable-products/" class="btn btn-neutral float-left" title="Perishable Products"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../running-experiments/" class="btn btn-neutral float-right" title="Running Experiments">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../perishable-products/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../running-experiments/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

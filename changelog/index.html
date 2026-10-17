@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/changelog/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Release History - SupplyNetPy</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Release History";
+        var mkdocs_page_input_path = "changelog.md";
+        var mkdocs_page_url = "/SupplyNetPy/changelog/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../about/">About</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Release History</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#050-2026-10-17">0.5.0 (2026-10-17)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#040-2026-10-16">0.4.0 (2026-10-16)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#030-2026-10-16">0.3.0 (2026-10-16)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#022-2026-10-13">0.2.2 (2026-10-13)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#021-2026-10-12">0.2.1 (2026-10-12)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#020-2026-10-11">0.2.0 (2026-10-11)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#0112-2026-05-31">0.1.12 (2026-05-31)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#0111-2026-05-09">0.1.11 (2026-05-09)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#0110-2026-05-06">0.1.10 (2026-05-06)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#019-2026-04-28">0.1.9 (2026-04-28)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#018-2026-04-24">0.1.8 (2026-04-24)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#017-2026-03-13">0.1.7 (2026-03-13)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#016-2025-11-19">0.1.6 (2025-11-19)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#015-2025-11-08">0.1.5 (2025-11-08)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#012-to-014-2025-09-15">0.1.2 to 0.1.4 (2025-09-15)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#011-2025-09-02">0.1.1 (2025-09-02)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#010-2025-08-21">0.1.0 (2025-08-21)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#before-the-first-release">Before the first release</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../example/">Supply Chain With a Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../example-complex/">Complex Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Case Studies</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../case_study_pharma/">Pharmacy Supply Chain</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../case-studies/milk-supply-chain-india/">Milk Supply Chain (India)</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/customer-demand/">Customer Demand</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/replenishment-policies/">Replenishment Policies</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/supplier-selection/">Supplier Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/disruptions/">Disruptions</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/perishable-products/">Perishable Products</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/statistics/">Statistics and Results</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guide/running-experiments/">Running Experiments</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../glossary/">Glossary</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/SupplyChainSimulation/SupplyNetPy">SupplyNetPy on GitHub</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Release History</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <style>
+  /* Release history only: undo the grey h3 banner from css/extra.css */
+  h3 { padding: 0; margin: 1em 0 0.4em; border: none; border-radius: 0; background: none; }
+</style>
+
+<h1 id="release-history">Release history</h1>
+<p>Changes to SupplyNetPy, newest first. The library was first published on PyPI
+on 2025-08-21 (version 0.1.0).</p>
+<p>Each entry is tagged: <strong>[NEW]</strong> a new feature, <strong>[FIX]</strong> a bug fix,
+<strong>[CHANGE]</strong> a change in behavior, <strong>[BREAKING]</strong> a change that may need
+action from you, and <strong>[DOCS]</strong> documentation only.</p>
+<h2 id="050-2026-10-17">0.5.0 (2026-10-17)</h2>
+<p>Simulation results are the same as in 0.4.0. This release adds
+probability-based supplier selection, and supplier-selection policies can now
+take settings.</p>
+<ul>
+<li><strong>[NEW]</strong> <code>SelectProbabilistic</code>, a supplier-selection policy that chooses
+  the supplier of each replenishment order at random, with a probability for
+  each supplier. The probabilities are given in the new site setting
+  <code>supplier_selection_param</code>, keyed by supplier ID, and must sum to 1. When a
+  supplier is disrupted, the others share its orders in their ratios
+  (<code>on_disruption="rescale"</code>, the default), or the order is blocked
+  (<code>"block"</code>). The policy draws one random number per order from its own
+  random number generator (<code>seed</code> or <code>rng</code>), so its choices change no other
+  random numbers. <code>create_sc_net</code> checks that every link to the site has a
+  probability. See the Supplier Selection guide.</li>
+<li><strong>[CHANGE]</strong> A site gives its supplier-selection policy a mode only when
+  <code>supplier_selection_mode</code> is given, so each policy keeps its own default:
+  "fixed" for the four existing policies, as before, and "dynamic" for
+  <code>SelectProbabilistic</code>. Results are the same as in 0.4.0.</li>
+<li><strong>[BREAKING]</strong> A custom supplier-selection policy whose own <code>__init__</code>
+  takes <code>mode</code> without a default value now fails when the site is given no
+  mode. Give <code>mode</code> a default, such as <code>mode="fixed"</code>. Policies that do not
+  override <code>__init__</code> are not affected.</li>
+<li><strong>[CHANGE]</strong> A built in supplier-selection policy given settings it does
+  not use in <code>supplier_selection_param</code> warns about them, as replenishment
+  policies do for <code>policy_param</code>. A manufacturer given a supplier-selection
+  policy, a mode or settings warns that they are not used, since it does not
+  use its policy yet.</li>
+<li><strong>[CHANGE]</strong> <code>get_sc_net_info</code> shows the settings of each site's
+  replenishment policy and supplier-selection policy, not only their names,
+  for example <code>(s: 100, S: 150, first_review_delay: 0, period: 0)</code> or the
+  probabilities of <code>SelectProbabilistic</code>. A distributor or retailer now
+  reports its replenishment policy in <code>get_info()</code>, as a manufacturer already
+  did.</li>
+<li><strong>[DOCS]</strong> The Supplier Selection guide has two new sections. One shows how
+  to choose suppliers at random with <code>SelectProbabilistic</code>, and the other how
+  to give settings to a supplier-selection policy you write yourself
+  (<code>self.params</code>, <code>_param_keys</code> and <code>check_links</code>). New glossary entries for probability-based supplier
+  selection and selection probability. The Known Issues page says that a
+  manufacturer does not use its supplier-selection policy yet.</li>
+<li><strong>[DOCS]</strong> Level 3 headings in the guides and other pages are shown as plain
+  headings. The grey box is kept for the classes and functions of the API
+  reference.</li>
+<li><strong>[DOCS]</strong> The source code shown in the API reference keeps its line breaks
+  and indentation again.</li>
+</ul>
+<h2 id="040-2026-10-16">0.4.0 (2026-10-16)</h2>
+<p>Simulation results are the same as in 0.3.0. This release adds statistics for
+each link, and a User Guide with seven guides to common tasks.</p>
+<ul>
+<li><strong>[NEW]</strong> Every link now keeps statistics, in <code>link.stats</code>. They count the
+  replenishment orders the buyer placed over the link, what arrived, the
+  shortage and backorders at the supplier, how long orders waited at the
+  supplier, the lead time, the costs, and the disruptions of the link. From
+  these they work out the average waiting time, lead time and order cycle
+  time, the fill rate (the share of units the supplier sent without the
+  order having to wait), the availability of the link, and two spreads of
+  order sizes, one per order and one per time unit, for studying the
+  bullwhip effect. Read them with <code>link.stats.get_statistics()</code>.</li>
+<li><strong>[NEW]</strong> <code>get_link_wise_performance</code>, <code>format_link_wise_performance</code> and
+  <code>print_link_wise_performance</code> give the statistics of several links as data,
+  as text or printed, like the node versions. Pass <code>node.suppliers</code> to see what
+  a site ordered and from whom, or <code>node.buyers</code> to see who ordered from it.</li>
+<li><strong>[NEW]</strong> <code>reset_stats(supplychainnet)</code> and <code>Network.reset_stats()</code> start the
+  statistics of every node, customer demand and link again in one call, for a
+  warm-up.</li>
+<li><strong>[FIX]</strong> A raw-material supplier given a perishable inventory
+  (<code>inventory_type="perishable"</code>) now raises a clear error when it is created.
+  SupplyNetPy does not model perishable raw materials yet. Before, the
+  setting was accepted, and the run failed at the first mining with a message
+  about a missing manufacturing date.</li>
+<li><strong>[CHANGE]</strong> <code>SelectAvailable</code>, <code>SelectCheapest</code> and <code>SelectFastest</code> (and the
+  base class <code>SupplierSelectionPolicy</code>) now default to fixed mode, as
+  <code>SelectFirst</code> and every site already did. A site always passes its own
+  <code>supplier_selection_mode</code>, so networks give the same results as before. Only
+  a policy created directly, without a mode, behaves differently.</li>
+<li><strong>[DOCS]</strong> A new User Guide with seven guides, on customer demand,
+  replenishment policies, supplier selection, disruptions, perishable
+  products, statistics and results (including link statistics and
+  warm-ups), and running experiments. The longer sections of the API introduction moved
+  into them, and the introduction is now a short overview of the modules.</li>
+<li><strong>[DOCS]</strong> New glossary entries for order cycle time, fill rate, bullwhip
+  effect, standard deviation, fixed and dynamic mode, and, in a new
+  Experiments section, replication, seed, confidence interval and common
+  random numbers. Also a new example,
+  <code>examples/py/link_statistics.py</code>.</li>
+<li><strong>[DOCS]</strong> The About page describes the newer features (customer demand
+  options, supplier selection modes, perishable products, link statistics
+  and reproducible experiments), links to the guides, and mentions the
+  validation against anyLogistix. The home page lists the case studies, the
+  User Guide, the known issues and the release history.</li>
+<li><strong>[DOCS]</strong> The planned work on the known issues page is split into next
+  updates (probability-based supplier selection, orders in smaller parts,
+  checking the whole network, and the new entry for perishable raw
+  materials) and long-term goals.</li>
+</ul>
+<h2 id="030-2026-10-16">0.3.0 (2026-10-16)</h2>
+<p>This release adds new node statistics, fixes how statistics are reset for a
+warm-up, and adds warnings for two mistakes in how a network is built.
+Results stay the same for networks that are not reset during a run and have
+no disrupted site with customers, such as the quickstart example. The three
+fixes below say which results change.</p>
+<ul>
+<li><strong>[FIX]</strong> Customers can no longer order from a disrupted site. Before, they
+  were served from its inventory as usual, although a disrupted site takes no
+  new replenishment orders. A customer who arrives while the site is
+  disrupted now goes away, and the order is recorded in the new statistic
+  <code>disruption_lost_sales</code>. It is kept apart from <code>shortage</code>, because a
+  shortage is units the site did not have, and a disruption lost sale is an
+  order the site could not take. Customers already waiting when the
+  disruption starts are still served. Results change for networks in which a
+  site with customers can be disrupted.</li>
+<li><strong>[FIX]</strong> <code>stats.reset()</code>, used for a warm-up, now starts the counting again
+  without changing the present. Before, it also set <code>backorder</code> and
+  <code>inventory_level</code> to zero. A site with orders waiting at the reset then
+  ordered too little, and its backorders went below zero once those orders
+  were served. The holding cost is now brought up to date before the reset,
+  so afterwards it covers only the time since the reset, also when the run
+  was advanced with <code>env.run()</code>. The record of inventory levels
+  (<code>inventory.instantaneous_levels</code>) also starts again. Results after a
+  warm-up change when orders are waiting at the reset, or when the run was
+  advanced with <code>env.run()</code>.</li>
+<li><strong>[FIX]</strong> A manufacturer's raw-material order now counts in its
+  <code>demand_placed</code> and <code>transportation_cost</code> when it is placed, as for every
+  other site. Before, it counted only once the supplier served it. Totals at
+  the end of a run change only for raw-material orders still waiting then.</li>
+<li><strong>[NEW]</strong> Statistics about disruptions. <code>disruptions</code> and <code>disrupted_time</code>
+  (including a disruption still going on when read), <code>availability</code> (the
+  share of time the node was not disrupted), and <code>blocked</code> (replenishment
+  orders a site could not place because every supplier it has, or the link
+  to it, was disrupted).</li>
+<li><strong>[NEW]</strong> Statistics about inventory over time. <code>avg_inventory_level</code> and
+  <code>inventory_level_time</code> (inventory level times time), worked out exactly and
+  apart from the holding cost, and <code>zero_inventory_time</code> and
+  <code>zero_inventory_share</code> (how long the inventory level was zero).</li>
+<li><strong>[NEW]</strong> Statistics about orders that end badly or wait. <code>lost_sales</code> (the
+  customer units a site never delivered), <code>dropped_qty</code> (delivered units that
+  did not fit in the inventory), and <code>waited</code>, <code>waiting_time</code> and
+  <code>avg_waiting_time</code>, for customers and for orders from other sites.</li>
+<li><strong>[NEW]</strong> Each node's statistics keep a clock. <code>start_time</code> is when counting
+  began, and <code>elapsed_time</code> is the time since then. A reset moves
+  <code>start_time</code>, so averages after a warm-up cover only the measured period.
+  Averages are worked out when they are read and are <code>None</code> when there is
+  nothing to divide by.</li>
+<li><strong>[NEW]</strong> <code>simulate_sc_net</code> and <code>Network.results</code> add up <code>lost_sales</code> and
+  <code>disruption_lost_sales</code> for the whole network.</li>
+<li><strong>[NEW]</strong> <code>Node.has_suppliers()</code> tells whether a site has any supplier at
+  all. For a manufacturer it checks that every raw material has one.</li>
+<li><strong>[CHANGE]</strong> <code>get_statistics()</code> and the performance tables show the new
+  statistics, so they have more rows.</li>
+<li><strong>[CHANGE]</strong> Two new warnings for mistakes in how a network is built. A site
+  with no supplier at all that tries to order is warned about once, and is
+  not counted as <code>blocked</code>. A buyer that can order more than its supplier can
+  hold is warned about when the link between them is created, and again when
+  such an order is placed. A supplier sends an order only when it has all of
+  it, so such an order can never be filled, and the buyer would wait for it
+  for ever. The warning names both sites.</li>
+<li><strong>[DOCS]</strong> New glossary entries for warm-up, disruption lost sales, lost
+  sales, blocked order, waiting time, dropped units, average inventory level,
+  availability and deadlock. The known issues page explains the deadlock
+  above and lists two planned features, receiving such orders in smaller
+  parts, and checking the whole network.</li>
+</ul>
+<h2 id="022-2026-10-13">0.2.2 (2026-10-13)</h2>
+<p>Simulation results are the same as in 0.2.1. This release adds warnings for
+mistakes in how a model is set up, and makes the source package smaller.</p>
+<ul>
+<li><strong>[NEW]</strong> A replenishment policy now warns about keys in <code>policy_param</code>
+  that it does not use, and asks whether another policy was meant. For
+  example, <code>'T'</code> is read only by the periodic policy, so passing it to the
+  (s, S) policy now gives a warning instead of being silently ignored.</li>
+<li><strong>[CHANGE]</strong> Problems in how a model is set up are now shown with Python's
+  warnings, so they appear even when logging is off. They are still written to
+  the trace log. This covers the unused policy parameters above, a manufacturer
+  without a supplier for every raw material, an unknown statistic name passed
+  to <code>update_stats</code>, and these <code>simulate_sc_net</code> calls: a <code>sim_time</code> that is not
+  later than the current time, <code>logging=(start, stop)</code> (deprecated, now a
+  <code>FutureWarning</code>), and <code>logging=(start, stop)</code> together with <code>log_window</code>.
+  Events during a run, such as a delivery that does not fit in the inventory,
+  are still only logged.</li>
+<li><strong>[CHANGE]</strong> The source archive on PyPI now carries only the library, its
+  tests, README, LICENSE and CHANGELOG, so it is about 115 KB instead of over
+  4 MB. The docs and examples stay in the repository. The wheel is unchanged.</li>
+<li><strong>[DOCS]</strong> The docs now say that a run stops just before its end time, so
+  events due at exactly <code>sim_time</code> do not happen. This is how SimPy works. To
+  include them, run to a slightly later time, such as <code>sim_time + 1</code>.</li>
+</ul>
+<h2 id="021-2026-10-12">0.2.1 (2026-10-12)</h2>
+<p>Results change for networks with disruptions. Networks without disruptions,
+such as the quickstart example, give the same results as before.</p>
+<ul>
+<li><strong>[FIX]</strong> A site whose replenishment order was blocked by a disruption now
+  orders as soon as its supplier, or the link to it, recovers. Before, a
+  replenishment policy without a review period could stop ordering for good. If
+  the site had no units left, nothing woke the policy again, even after the
+  supplier recovered.</li>
+<li><strong>[FIX]</strong> Supplier-selection policies now skip a supplier whose site is
+  disrupted, not only one whose link is disrupted. Before, a site with two
+  suppliers could send its order to the disrupted one and lose it, while the
+  other supplier was working.</li>
+<li><strong>[CHANGE]</strong> <code>place_order</code> now checks that some supplier can take the order
+  before choosing one. If none can, no order is placed. New methods
+  <code>Link.can_take_order</code>, <code>Node.can_place_order</code>, <code>Node.wake_replenishment</code> and
+  <code>Node.add_buyer_link</code>, and a new list <code>Node.buyers</code> of the links to a node's
+  buyers.</li>
+<li><strong>[FIX]</strong> The performance table (<code>get_node_wise_performance</code>,
+  <code>format_node_wise_performance</code>, <code>print_node_wise_performance</code>) now shows
+  every metric that any node has. Before, it showed only the metrics of the
+  first node in the list, so a raw-material supplier's mining figures were left
+  out when another node came first. Two nodes with the same name now each get
+  a column; the second is told apart by its ID.</li>
+<li><strong>[FIX]</strong> <code>disable_logging</code> and <code>set_log_file</code> now close the log file they
+  stop writing to. Before, the file stayed open until the program ended, which
+  caused a <code>ResourceWarning</code> and, on Windows, kept the file locked.</li>
+</ul>
+<h2 id="020-2026-10-11">0.2.0 (2026-10-11)</h2>
+<p>Most of these fixes come from
+<a href="https://github.com/SupplyChainSimulation/SupplyNetPy/issues/1">issue #1</a>, reported by
+<a href="https://github.com/ashwingaikwadiby">@ashwingaikwadiby</a>. Results
+change for networks with manufacturers, raw-material suppliers with finite
+inventory, perishable goods, customers who wait, or replenishment orders that
+have to wait at a supplier. Simple networks, such as the quickstart example,
+give the same results as before.</p>
+<ul>
+<li><strong>[FIX]</strong> A replenishment order that has to wait at its supplier is now a
+  backorder there only while it waits, and is no longer counted twice in the
+  supplier's inventory position. Before, the supplier ordered too much, kept
+  the extra units for the rest of the run, and its backorders were never
+  cleared.</li>
+<li><strong>[FIX]</strong> A manufacturer now keeps making production batches until every
+  planned unit is made, orders raw material for every planned unit, and carries
+  on when units leave its full inventory. Before, it could stop producing for
+  good, with raw material left unused or with orders waiting forever.</li>
+<li><strong>[FIX]</strong> A raw-material supplier with finite inventory starts mining again as
+  soon as its inventory drops. Before, once its inventory had been full it never
+  mined again, and manufacturers buying from it waited forever.</li>
+<li><strong>[FIX]</strong> Perishable goods. An order now gets the batches that are really in
+  inventory when it is filled, oldest first. Expired units are thrown away at
+  once and are no longer shipped to an order that was waiting, and destroyed
+  units are removed at once too. Before, an order that had to wait could lose
+  units, and expired units could be shipped.</li>
+<li><strong>[FIX]</strong> Customers who wait (<code>tolerance</code> above 0) now leave as soon as their
+  tolerance runs out, and their backorders are cleared when they leave. All
+  waiting customers are woken when units arrive, two waiting customers can no
+  longer take the same units, and a partial delivery of 0 units no longer
+  crashes.</li>
+<li><strong>[FIX]</strong> A waiting customer's shortage is recorded once, when the order
+  arrives. Before, it was recorded again at every check, so shortage figures
+  were too high.</li>
+<li><strong>[FIX]</strong> A supplier whose site is disrupted is no longer counted as short for
+  orders it never receives.</li>
+<li><strong>[FIX]</strong> <code>Inventory.destroy()</code> now wakes a raw-material supplier (to mine
+  again) and a manufacturer (to make more). It still does not wake a
+  replenishment policy.</li>
+<li><strong>[NEW]</strong> <code>Inventory.get()</code> takes a <code>site_order</code> argument, and
+  <code>Inventory.waiting_orders()</code> and <code>Inventory.waiting_site_orders()</code> report the
+  units asked for by orders still waiting at an inventory.</li>
+<li><strong>[DOCS]</strong> The (R, Q) policy (<code>RQReplenishment</code>) never used <code>safety_stock</code>, so
+  passing it had no effect. The documentation no longer says that it does.</li>
+<li><strong>[DOCS]</strong> A new Glossary page defines one word for each idea, and the
+  documentation, docstrings and code comments now use those words. The API
+  reference now lists every result of <code>simulate_sc_net</code>, and no longer shows
+  raw markup from the docstrings.</li>
+<li><strong>[DOCS]</strong> Several documentation pages described their examples wrongly, and
+  are corrected. The complex network example now has the links shown in its
+  picture, lead times that differ as intended, and a fixed seed.</li>
+</ul>
+<h2 id="0112-2026-05-31">0.1.12 (2026-05-31)</h2>
+<ul>
+<li><strong>[FIX]</strong> Replenishment orders that were bigger than the free space on the
+  shelf no longer throw away the extra units. Previously, a node with waiting
+  customers could order enough to refill the shelf and also cover them, and any
+  units that did not fit were silently lost even though they had been paid for.
+  In some cases this also pushed the node's inventory position below zero.</li>
+<li><strong>[CHANGE]</strong> When arriving units are dropped because the shelf is full, a
+  warning is now logged suggesting that the node's capacity may be too small.</li>
+<li><strong>[CHANGE]</strong> A customer order that is bigger than the node's whole shelf,
+  with no partial delivery accepted, is now recorded as lost demand right away.
+  Before, it triggered a replenishment order that could never be served.</li>
+<li><strong>[DOCS]</strong> Code comments and docstrings were rewritten in plainer language.</li>
+</ul>
+<h2 id="0111-2026-05-09">0.1.11 (2026-05-09)</h2>
+<ul>
+<li><strong>[FIX]</strong> Random node and link disruptions set with <code>failure_p</code> no longer
+  happen almost immediately at time 0. The failure chance is now applied once
+  per time unit, as documented.</li>
+</ul>
+<h2 id="0110-2026-05-06">0.1.10 (2026-05-06)</h2>
+<ul>
+<li><strong>[NEW]</strong> <code>Inventory.destroy()</code> removes stock (all of it, a fraction, or a
+  custom amount) when a node is disrupted. Nodes accept a matching
+  <code>disruption_impact</code> option. Destroyed units and their value appear in the
+  node's statistics and count towards its cost.</li>
+<li><strong>[FIX]</strong> Expiry of perishable stock (<code>Inventory.remove_expired</code>) now works
+  correctly.</li>
+<li><strong>[DOCS]</strong> Documentation wording was simplified throughout.</li>
+</ul>
+<h2 id="019-2026-04-28">0.1.9 (2026-04-28)</h2>
+<ul>
+<li><strong>[NEW]</strong> <code>Network</code> wrapper around the supply-chain dictionary, with named
+  access to nodes and results. The dictionary-based way of working still works.</li>
+<li><strong>[NEW]</strong> <code>NodeType</code>, a list of the valid node types. Node types can be given
+  either as text (<code>"retailer"</code>) or as a <code>NodeType</code> member.</li>
+<li><strong>[NEW]</strong> <code>log_window=(start, stop)</code> option on <code>simulate_sc_net</code> to log only
+  part of a run.</li>
+<li><strong>[BREAKING]</strong> Python 3.9 or newer is now required. <code>networkx</code> and
+  <code>matplotlib</code> are now declared as dependencies.</li>
+<li><strong>[CHANGE]</strong> Logging is now opt-in. Creating nodes no longer opens (or
+  overwrites) the trace file. <code>simulate_sc_net(logging=True)</code> turns it on for
+  you.</li>
+<li><strong>[CHANGE]</strong> The shortage statistic is now called <code>shortage</code>. The old name,
+  <code>orders_shortage</code>, still works as an alias.</li>
+<li><strong>[CHANGE]</strong> Expiry of perishable stock is now driven by the batches' expiry
+  times instead of repeated checks, which makes large simulations faster.</li>
+<li><strong>[CHANGE]</strong> The remaining items from the code review (see <code>REVIEW.md</code>) were
+  resolved, and the test suite was expanded.</li>
+</ul>
+<h2 id="018-2026-04-24">0.1.8 (2026-04-24)</h2>
+<ul>
+<li><strong>[NEW]</strong> <code>set_seed()</code> makes random disruptions repeatable.</li>
+<li><strong>[BREAKING]</strong> <code>SupplyNetPy.Components</code> now exposes a fixed, documented list
+  of names. Modules that used to be reachable by accident (such as
+  <code>scm.simpy</code>) are no longer available through it.</li>
+<li><strong>[FIX]</strong> A full code review fixed a set of correctness problems, including:<ul>
+<li>Expired perishable stock was not always removed correctly, so holding
+  cost could keep being charged on stock that no longer existed.</li>
+<li>A manufacturer could place duplicate orders for the same raw materials.</li>
+<li>A customer's "demand fulfilled" figure was inflated when an order arrived
+  in several partial shipments.</li>
+<li>Cost totals could pick up unrelated values whose names happened to
+  contain the word "cost".</li>
+<li>Disrupted links were still used for new shipments, and
+  supplier-selection policies did not take link status into account.</li>
+<li>Adding stock to a full shelf could leave the inventory records out of
+  step.</li>
+</ul>
+</li>
+<li><strong>[CHANGE]</strong> Misspelled node parameters (for example <code>shelf_live</code>) are now
+  reported as an error instead of being silently ignored.</li>
+<li><strong>[CHANGE]</strong> A much larger test suite was added.</li>
+</ul>
+<h2 id="017-2026-03-13">0.1.7 (2026-03-13)</h2>
+<ul>
+<li><strong>[NEW]</strong> <code>record_inv_levels</code> option on <code>Inventory</code> to switch recording of
+  inventory levels over time on or off (off by default).</li>
+<li><strong>[FIX]</strong> Adding stock to an inventory that is already full is now handled
+  safely.</li>
+</ul>
+<h2 id="016-2025-11-19">0.1.6 (2025-11-19)</h2>
+<ul>
+<li><strong>[FIX]</strong> When adding stock would go over capacity, only the amount that fits
+  is now added, instead of failing.</li>
+</ul>
+<h2 id="015-2025-11-08">0.1.5 (2025-11-08)</h2>
+<ul>
+<li><strong>[NEW]</strong> <code>name</code> is now included in node statistics.</li>
+<li><strong>[CHANGE]</strong> The minimum required Python version was relaxed.</li>
+</ul>
+<h2 id="012-to-014-2025-09-15">0.1.2 to 0.1.4 (2025-09-15)</h2>
+<ul>
+<li><strong>[FIX]</strong> The wheel build target was added so the package builds correctly.</li>
+<li><strong>[CHANGE]</strong> Package metadata (classifiers and author details) was corrected.</li>
+</ul>
+<h2 id="011-2025-09-02">0.1.1 (2025-09-02)</h2>
+<ul>
+<li><strong>[CHANGE]</strong> Parameters that expect a "callable" (lead times, arrival
+  intervals, and so on) now also accept a plain number such as <code>2</code> or <code>1.5</code>.</li>
+</ul>
+<h2 id="010-2025-08-21">0.1.0 (2025-08-21)</h2>
+<p>First public release on PyPI. It included:</p>
+<ul>
+<li>Supply-chain building blocks: suppliers, manufacturers, inventory nodes
+  (distributors and retailers), demand nodes, and links.</li>
+<li>Replenishment policies: (s, S), (R, Q), and periodic review (with or without
+  safety stock).</li>
+<li>Supplier-selection policies: first, available, cheapest, and fastest.</li>
+<li>Perishable inventory, disruptions of nodes and links, and backorders with
+  partial fulfilment.</li>
+<li>Node-level and network-level results (cost, revenue, profit, shortage), plus
+  <code>create_sc_net</code> and <code>simulate_sc_net</code>.</li>
+<li>A documentation site, worked examples, and a unit-test suite.</li>
+</ul>
+<h2 id="before-the-first-release">Before the first release</h2>
+<p>Development began in May 2024; the repository was moved from its earlier home
+in July 2024. Internal versions 0.0.11 to 0.0.69 were used during development
+and were never published on PyPI.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../about/" class="btn btn-neutral float-left" title="About"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../example/" class="btn btn-neutral float-right" title="Supply Chain With a Manufacturer">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../about/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../example/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

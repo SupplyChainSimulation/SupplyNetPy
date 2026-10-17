@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/api-reference/api-intro/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Introduction - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Introduction";
+        var mkdocs_page_input_path = "api-reference/api-intro.md";
+        var mkdocs_page_url = "/SupplyNetPy/api-reference/api-intro/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Release History</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With a Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Case Studies</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case-studies/milk-supply-chain-india/">Milk Supply Chain (India)</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/customer-demand/">Customer Demand</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/replenishment-policies/">Replenishment Policies</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/supplier-selection/">Supplier Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/disruptions/">Disruptions</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/perishable-products/">Perishable Products</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/statistics/">Statistics and Results</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/running-experiments/">Running Experiments</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Introduction</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#guides">Guides</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#supplynetpy-library-hierarchy">SupplyNetPy Library Hierarchy</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../glossary/">Glossary</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/SupplyChainSimulation/SupplyNetPy">SupplyNetPy on GitHub</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">Introduction</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h2 id="supplynetpy-api-reference">SupplyNetPy API Reference</h2>
+<p><strong>SupplyNetPy</strong> includes a submodule called <strong>Components</strong>, which helps you create supply chain networks by providing their parts, such as nodes, links and customer demands, and assembling them into a network. The <strong>Components</strong> module contains three submodules, <strong>core</strong>, <strong>logger</strong> and <strong>utilities</strong>. The pages that follow describe each of them, module by module and class by class. The words used on these pages are explained in the <a href="../../glossary/">Glossary</a>.</p>
+<p>The <strong>core</strong> module creates the parts of a supply chain. It includes the classes <em>RawMaterial</em>, <em>Product</em>, <em>Inventory</em>, <em>Node</em>, <em>Link</em>, <em>Supplier</em>, <em>Manufacturer</em>, <em>InventoryNode</em> and <em>Demand</em>, the statistics of a node (<em>Statistics</em>) and of a link (<em>LinkStatistics</em>), the replenishment policies (<em>SSReplenishment</em>, <em>RQReplenishment</em>, <em>PeriodicReplenishment</em>), and the supplier-selection policies (<em>SelectFirst</em>, <em>SelectAvailable</em>, <em>SelectCheapest</em>, <em>SelectFastest</em>, <em>SelectProbabilistic</em>). Every node created with these classes runs in a SimPy environment. The <em>Inventory</em> class keeps the inventory of a site, one product per inventory, in a SimPy <em>Container</em>, and can also record how the inventory level changes. For a different kind of inventory with custom behavior, extend <em>Inventory</em> or SimPy <em>Container</em>. The <code>node_type</code> of a node is checked against the <code>NodeType</code> enum, and can be given as a string in any letter case or as an enum member such as <code>scm.NodeType.SUPPLIER</code>. The core module also exports <code>set_seed(seed)</code>, which seeds the random numbers the whole library uses, so runs can be repeated exactly.</p>
+<p>The <strong>logger</strong> module keeps the simulation logs. It includes the <em>GlobalLogger</em> class, a common logger for all the parts of the simulation. You can set it up to save logs to a file or to print them to the console. A <code>global_logger</code> instance for the whole package is also exported, so you can call <code>scm.global_logger.disable_logging()</code> or <code>scm.global_logger.enable_logging()</code> to switch all simulation logs off or on at once.</p>
+<p>The <strong>utilities</strong> module provides useful Python functions that save manual work. It contains functions for creating supply chains (<code>create_sc_net</code>), running simulations (<code>simulate_sc_net</code>), starting the statistics again after a warm-up (<code>reset_stats</code>), and inspecting or drawing the resulting network (<code>get_sc_net_info</code>, <code>print_node_wise_performance</code>, <code>print_link_wise_performance</code>, <code>visualize_sc_net</code>). It also contains the <em>Network</em> class, which holds a network and its results. <code>create_sc_net</code> builds a network either from plain <code>dict</code> descriptions or from ready made <code>Node</code>, <code>Link</code> and <code>Demand</code> objects, but each of its lists must use only one of the two.</p>
+<p>Each submodule lists its public names in <code>__all__</code>, and <code>SupplyNetPy.Components</code> exports exactly these names.</p>
+<h4 id="guides">Guides</h4>
+<p>For tasks that use several parts together, the User Guide explains how to do them step by step.</p>
+<ul>
+<li><a href="../../guide/customer-demand/">Customer Demand</a>. How often customers order and how many units, demand from recorded data, what customers do when the site is short, and delivering their orders.</li>
+<li><a href="../../guide/replenishment-policies/">Replenishment Policies</a>. Choosing a built in policy, when it checks, safety stock, and writing your own policy.</li>
+<li><a href="../../guide/supplier-selection/">Supplier Selection</a>. Choosing a supplier-selection policy, fixed and dynamic mode, choosing suppliers at random, and writing your own policy.</li>
+<li><a href="../../guide/disruptions/">Disruptions</a>. Scheduled and random disruptions of sites and links, what happens to orders, and units lost in a disruption.</li>
+<li><a href="../../guide/perishable-products/">Perishable Products</a>. Shelf life, batches and their manufacturing dates, when units expire, and expired units in the statistics.</li>
+<li><a href="../../guide/statistics/">Statistics and Results</a>. Results for the whole network, statistics of nodes and links, and warm-ups.</li>
+<li><a href="../../guide/running-experiments/">Running Experiments</a>. Replications, seeds, comparing settings fairly, confidence intervals, and running replications in parallel.</li>
+</ul>
+<h4 id="supplynetpy-library-hierarchy">SupplyNetPy Library Hierarchy</h4>
+<pre><code>SupplyNetPy
+├── Components
+│   ├── core.py
+│   ├── logger.py
+│   ├── utilities.py
+</code></pre>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../../guide/running-experiments/" class="btn btn-neutral float-left" title="Running Experiments"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../../glossary/" class="btn btn-neutral float-right" title="Glossary">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../../guide/running-experiments/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../../glossary/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

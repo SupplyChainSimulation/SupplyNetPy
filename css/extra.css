@@ -1,0 +1,25 @@
+/* A grey box around the heading of each class and function in the API
+   reference (mkdocstrings marks these headings with the class doc-heading).
+   Level 3 headings written in the guides and other pages stay plain. */
+h3.doc-heading {
+  padding: 1em;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  border: 2px solid  #cdcdcd; /* 2px width, solid style, black color */
+  border-radius: 2px;
+  background-color:  #dedede;
+}
+/* Let long text in table cells wrap onto several lines, so a wide table fits
+   the page instead of scrolling sideways. The theme keeps every table cell,
+   and every piece of inline code, on one line. Long code names inside a cell
+   may break where needed. The source code shown in the API reference is laid
+   out as a table too (line numbers beside the code), so it is left out: its
+   lines must keep their line breaks and indentation. */
+.wy-table-responsive table:not(.highlighttable) td,
+.wy-table-responsive table:not(.highlighttable) th {
+  white-space: normal;
+}
+.wy-table-responsive table:not(.highlighttable) td code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
