@@ -7,7 +7,11 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
-## Unreleased
+## 0.5.1 (2026-10-27)
+
+Simulation results are the same as in 0.5.0, except for models in which a
+disruption destroys units at a site whose replenishment policy has no
+`period`. This release makes such a site order again when it recovers.
 
 * **[FIX]** A site whose units were destroyed by a disruption
   (`disruption_impact`) now orders again when it recovers. Before, its
@@ -17,6 +21,10 @@ action from you, and **[DOCS]** documentation only.
   run. A site now checks its inventory position whenever it recovers.
   Results change only for models where a disruption destroys units and the
   replenishment policy has no `period`.
+* **[DOCS]** The Disruptions and Replenishment Policies guides say that a
+  site checks its inventory position when it recovers, and why destroying
+  units does not wake its replenishment policy. The Disruptions guide also
+  lists the two cases in which a disrupted site can still order.
 
 ## 0.5.0 (2026-10-17)
 
