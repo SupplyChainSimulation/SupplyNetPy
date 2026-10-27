@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/guide/disruptions/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Disruptions - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Disruptions";
+        var mkdocs_page_input_path = "guide/disruptions.md";
+        var mkdocs_page_url = "/SupplyNetPy/guide/disruptions/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Release History</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With a Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Case Studies</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case-studies/milk-supply-chain-india/">Milk Supply Chain (India)</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../customer-demand/">Customer Demand</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../replenishment-policies/">Replenishment Policies</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../supplier-selection/">Supplier Selection</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Disruptions</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#what-a-disruption-does">What a disruption does</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#scheduled-and-random-disruptions">Scheduled and random disruptions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#what-happens-to-orders">What happens to orders</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#disruptions-in-the-statistics">Disruptions in the statistics</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#what-a-disruption-does-to-stored-inventory">What a disruption does to stored inventory</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../perishable-products/">Perishable Products</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../statistics/">Statistics and Results</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../running-experiments/">Running Experiments</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../glossary/">Glossary</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/SupplyChainSimulation/SupplyNetPy">SupplyNetPy on GitHub</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">User Guide</li>
+      <li class="breadcrumb-item active">Disruptions</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="disruptions">Disruptions</h1>
+<p>Imagine a distributor whose warehouse is flooded for a week. While the water is there, its retailers cannot order from it, and the customers who come to its door are turned away. The trucks already on the road still arrive, and once the water is gone, the distributor works as before. Some of the units inside may be ruined. In SupplyNetPy, such an event is called a disruption, and it can hit a site or a link.</p>
+<p>This guide shows how to make sites and links disrupted, at fixed times or at random, what happens to orders while they are, how the disruptions show up in the statistics, and how to model units lost in a disruption. The words used here are explained in the <a href="../../glossary/">Glossary</a>.</p>
+<h2 id="what-a-disruption-does">What a disruption does</h2>
+<p>A disrupted site takes no new orders, neither replenishment orders from its buyers nor orders from customers. A disrupted link carries no new orders. Everything else goes on as before.</p>
+<ul>
+<li>Orders the site took before the disruption are still served, and customers who were already waiting keep waiting and are served.</li>
+<li>Shipments in transit still arrive, even over a disrupted link. See <a href="../../known-issues/">Known Issues</a>.</li>
+<li>The site itself still places its own replenishment orders and receives deliveries. A raw-material supplier still mines, and a manufacturer still makes its product.</li>
+<li>The units at the site are left alone, unless you set a disruption impact, described at the end of this guide.</li>
+</ul>
+<h2 id="scheduled-and-random-disruptions">Scheduled and random disruptions</h2>
+<p>Sites and links take the same three settings, with slightly different names.</p>
+<table>
+<thead>
+<tr>
+<th>What it sets</th>
+<th>Site</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Time units until the next disruption, for scheduled disruptions</td>
+<td><code>node_disrupt_time</code></td>
+<td><code>link_disrupt_time</code></td>
+</tr>
+<tr>
+<td>Disruption probability, the chance each time unit that a disruption starts</td>
+<td><code>failure_p</code></td>
+<td><code>link_failure_p</code></td>
+</tr>
+<tr>
+<td>Time units a disruption lasts, 1 if not given</td>
+<td><code>node_recovery_time</code></td>
+<td><code>link_recovery_time</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each of them can be a number or a function with no arguments that returns one, so every disruption can be different.</p>
+<p>A <strong>scheduled</strong> disruption starts after <code>node_disrupt_time</code> time units, counted from the start of the run and then from each recovery. So the settings below disrupt the site from 30 to 35, from 65 to 70, and so on.</p>
+<pre><code class="language-python">'node_disrupt_time': 30, 'node_recovery_time': 5
+</code></pre>
+<p>A <strong>random</strong> disruption can start in any time unit, with the chance <code>failure_p</code>. The settings below give a link a 2% chance each time unit of a disruption that lasts between 1 and 4 time units.</p>
+<pre><code class="language-python">'link_failure_p': 0.02, 'link_recovery_time': lambda: random.uniform(1, 4)
+</code></pre>
+<p>If both are given, the scheduled disruption is used and <code>failure_p</code> is ignored. Remember to give a recovery time. Without it, every disruption lasts only 1 time unit.</p>
+<p>Random disruptions draw random numbers, so two runs give different results. To repeat exactly the same run, call <code>scm.set_seed(n)</code> once before you build the network.</p>
+<h2 id="what-happens-to-orders">What happens to orders</h2>
+<ul>
+<li><strong>Replenishment orders.</strong> When a buyer orders, its <a href="../supplier-selection/">supplier-selection policy</a> skips every supplier whose site or link is disrupted. If no supplier can take the order, the order is not placed. It is counted in the buyer's <code>blocked</code> statistic, and the buyer's <a href="../replenishment-policies/">replenishment policy</a> checks again as soon as a supplier or a link recovers.</li>
+<li><strong>Manufacturers.</strong> A manufacturer plans production only when it can order every raw material. If every raw-material supplier of even one raw material is disrupted, it plans nothing until one recovers.</li>
+<li><strong>Customers.</strong> A customer who arrives at a disrupted site is turned away. The order is counted in the site's <code>disruption_lost_sales</code>, and not in its shortage, because the site did not run out of units. It could not take the order.</li>
+</ul>
+<h2 id="disruptions-in-the-statistics">Disruptions in the statistics</h2>
+<p>The statistics of every site, and of every link in <code>link.stats</code>, record its disruptions.</p>
+<table>
+<thead>
+<tr>
+<th>Statistic</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>disruptions</code></td>
+<td>How many disruptions started</td>
+</tr>
+<tr>
+<td><code>disrupted_time</code></td>
+<td>How many time units the site or link was disrupted in all</td>
+</tr>
+<tr>
+<td><code>availability</code></td>
+<td>The share of time it was not disrupted</td>
+</tr>
+<tr>
+<td><code>blocked</code></td>
+<td>Replenishment orders a buyer could not place because every supplier, or the link to it, was disrupted. Recorded at the buyer</td>
+</tr>
+<tr>
+<td><code>disruption_lost_sales</code></td>
+<td>Customer orders a site lost because it was disrupted when they arrived</td>
+</tr>
+</tbody>
+</table>
+<p>A retailer disrupted from 30 to 35 and from 65 to 70 in a run of 100 time units has <code>disruptions</code> 2, <code>disrupted_time</code> 10 and <code>availability</code> 0.9.</p>
+<h2 id="what-a-disruption-does-to-stored-inventory">What a disruption does to stored inventory</h2>
+<p>A disruption in the real world can take many forms, such as a natural disaster, a power cut, contamination, theft or a strike, and each affects the units at a site differently. The settings above only mark the site as disrupted. They do <em>not</em> describe what happens to the units already there.</p>
+<p>If you want the simulation to also account for units that are physically lost in a disruption, set the <code>disruption_impact</code> argument when you create the site (and, if you choose <code>"destroy_fraction"</code>, also <code>disruption_loss_fraction</code>). The available choices are listed below.</p>
+<table>
+<thead>
+<tr>
+<th><code>disruption_impact</code> value</th>
+<th>What happens the moment a disruption starts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>None</code> (the default) or <code>"none"</code></td>
+<td>The site is disrupted, but its units are left alone.</td>
+</tr>
+<tr>
+<td><code>"destroy_all"</code></td>
+<td>All units at the site are lost. For a <code>Manufacturer</code>, its raw materials are lost too, since the idea behind this choice is that every physical thing at the site is gone. Infinite suppliers (which never run out) are skipped, since destroying an unlimited supply has no meaning.</td>
+</tr>
+<tr>
+<td><code>"destroy_fraction"</code></td>
+<td>A share of the inventory level is lost. The share is given by <code>disruption_loss_fraction</code>, which can be a fixed number between 0 and 1 (for example <code>0.3</code> to lose 30%) or a small function that returns a different number each time, if you want random losses.</td>
+</tr>
+<tr>
+<td>A function <code>f(node)</code></td>
+<td>For anything more specific. You write a short Python function describing the effect, and the simulator calls it with the site when a disruption starts. For example, a contamination that destroys only certain batches, damage that reduces capacity, or a lead time penalty that applies once the site recovers.</td>
+</tr>
+</tbody>
+</table>
+<p>The effect is applied <strong>once</strong>, exactly at the moment the site goes from active to inactive, both for scheduled and random disruptions. It is <em>not</em> applied again while the site stays disrupted. If you want a loss that grows over time during a disruption (slow spoilage from a long loss of cooling, ongoing theft), write that inside your own function, where you can start your own SimPy process and time it against <code>node_recovery_time</code>.</p>
+<p>The two built in choices call <code>Inventory.destroy(amount, reason)</code>, a public method on <code>Inventory</code> that removes the units at once, even when orders are waiting at the site. For perishable products, the oldest batches are destroyed first. One subtle but important detail is that <code>destroy</code> does <strong>not</strong> wake up the replenishment policy, because a site should not place replenishment orders while it is disrupted. Instead, the site wakes its replenishment policy when it recovers. The policy then checks the inventory position and orders if it is too low, so a site that lost all its units refills its inventory as soon as it is working again. Note that a disrupted site can still order in two cases. A replenishment policy with a <code>period</code> orders when its time comes, and a policy is woken when one of the site's suppliers, or the link to it, recovers during the site's disruption. <code>destroy</code> also wakes a raw-material supplier, which then mines again to refill its inventory, and a manufacturer, which can then make more. If you write your own impact function that destroys units, call <code>Inventory.destroy(...)</code> for the same reasons, and do not change <code>level</code>, <code>on_hand</code> or <code>perish_queue</code> by hand.</p>
+<p>The units destroyed (<code>destroyed_qty</code>) and their value (<code>destroyed_value</code>) are recorded in the site's statistics. <code>destroyed_value</code> is one of the site's costs, so it is automatically included in <code>node_cost</code> and therefore in <code>profit</code>, and you do not need to subtract it yourself. In your own impact function, report losses the same way, with <code>node.stats.update_stats(destroyed_qty=qty, destroyed_value=qty * unit_cost)</code>, rather than inventing separate statistics that the simulator will not know about.</p>
+<p>A short example.</p>
+<pre><code class="language-python">import random
+import SupplyNetPy.Components as scm
+
+# Destroy all units when a disruption starts, as in a natural disaster.
+distributor = scm.InventoryNode(
+    env=env, ID=&quot;D1&quot;, name=&quot;D1&quot;, node_type=&quot;warehouse&quot;,
+    capacity=200, initial_level=120, inventory_holding_cost=0.2,
+    replenishment_policy=scm.SSReplenishment, policy_param={'s': 100, 'S': 200},
+    product_sell_price=10, product_buy_price=5,
+    node_disrupt_time=lambda: 30, node_recovery_time=lambda: 5,
+    disruption_impact=&quot;destroy_all&quot;,
+)
+
+# Like a power cut, each disruption destroys between 10% and 40% of the inventory level.
+warehouse = scm.InventoryNode(
+    ..., disruption_impact=&quot;destroy_fraction&quot;,
+    disruption_loss_fraction=lambda: random.uniform(0.1, 0.4),
+)
+</code></pre>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../supplier-selection/" class="btn btn-neutral float-left" title="Supplier Selection"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../perishable-products/" class="btn btn-neutral float-right" title="Perishable Products">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../supplier-selection/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../perishable-products/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

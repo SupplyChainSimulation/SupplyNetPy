@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/guide/running-experiments/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Running Experiments - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Running Experiments";
+        var mkdocs_page_input_path = "guide/running-experiments.md";
+        var mkdocs_page_url = "/SupplyNetPy/guide/running-experiments/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Release History</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With a Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Case Studies</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case-studies/milk-supply-chain-india/">Milk Supply Chain (India)</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../customer-demand/">Customer Demand</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../replenishment-policies/">Replenishment Policies</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../supplier-selection/">Supplier Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../disruptions/">Disruptions</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../perishable-products/">Perishable Products</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../statistics/">Statistics and Results</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Running Experiments</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#a-function-that-builds-the-network">A function that builds the network</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#seeds">Seeds</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#comparing-settings-fairly">Comparing settings fairly</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#averages-and-confidence-intervals">Averages and confidence intervals</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#run-length-and-warm-up">Run length and warm-up</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#running-replications-in-parallel">Running replications in parallel</a>
+    </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../glossary/">Glossary</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/SupplyChainSimulation/SupplyNetPy">SupplyNetPy on GitHub</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">User Guide</li>
+      <li class="breadcrumb-item active">Running Experiments</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="running-experiments">Running Experiments</h1>
+<p>Imagine a shop manager who wants to know whether to reorder when 60 units are left or when 120 are left. One simulated year gives an answer, but customers arrive at random, so another year could give a different one. To answer the question properly, the manager simulates many years with each setting, compares the averages, and checks how precise they are. Each of these runs is a replication.</p>
+<p>This guide shows how to set up a network so that it can be run many times, how to control its random numbers with seeds, how to compare settings fairly, and how to collect and summarize the results. The words used here are explained in the <a href="../../glossary/">Glossary</a>.</p>
+<h2 id="a-function-that-builds-the-network">A function that builds the network</h2>
+<p>A network can be simulated only once from the start. Calling <code>simulate_sc_net</code> again with the same <code>sim_time</code> simulates nothing more and gives a warning. So write a function that builds a fresh network, and call it for every run. Its arguments are the settings you want to vary and the seed of the run.</p>
+<pre><code class="language-python">import random
+import statistics
+import SupplyNetPy.Components as scm
+
+def build(s, seed):
+    demand_rng = random.Random(f&quot;demand {seed}&quot;)       # random numbers of the customers
+    lead_rng = random.Random(f&quot;lead time {seed}&quot;)      # random numbers of the lead times
+    nodes = [{'ID': 'S1', 'name': 'Supplier', 'node_type': 'infinite_supplier'},
+             {'ID': 'R1', 'name': 'Shop', 'node_type': 'retailer',
+              'capacity': 300, 'initial_level': 150, 'inventory_holding_cost': 0.2,
+              'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s': s, 'S': 300},
+              'product_buy_price': 4, 'product_sell_price': 10}]
+    links = [{'ID': 'L1', 'source': 'S1', 'sink': 'R1', 'cost': 20,
+              'lead_time': lambda: lead_rng.randint(1, 3)}]
+    demands = [{'ID': 'd1', 'name': 'Customers', 'demand_node': 'R1',
+                'order_arrival_model': lambda: demand_rng.expovariate(1),
+                'order_quantity_model': lambda: demand_rng.randint(5, 15)}]
+    return scm.create_sc_net(nodes, links, demands)
+
+def run(s, seed):
+    sc = build(s, seed)
+    scm.simulate_sc_net(sc, sim_time=365, logging=False)
+    return sc
+</code></pre>
+<p>Pass <code>logging=False</code> to <code>simulate_sc_net</code>. With logging on, every run prints its whole log and writes it to a file, which slows down a study of many runs and buries its output.</p>
+<h2 id="seeds">Seeds</h2>
+<p>Each run above draws its random numbers from its own random number generators, started from the seed. The same seed gives the same customers and the same lead times, so <code>run(60, 1)</code> gives the same profit every time it is called, and a result can always be repeated.</p>
+<p>The seeds here are strings such as <code>"demand 1"</code>, so the customers and the lead times of one run get different random numbers, and no run reuses the numbers of another.</p>
+<p>If the network has random disruptions, also call <code>scm.set_seed(seed)</code> before you build it. It seeds the random numbers the library itself uses for disruptions.</p>
+<h2 id="comparing-settings-fairly">Comparing settings fairly</h2>
+<p>Run every setting with the same seeds. Then each setting faces exactly the same customers and lead times, and the differences in the results come from the settings themselves. This is called common random numbers.</p>
+<p>That is why the customers and the lead times have separate generators. If they shared one, the lead times of the replenishment orders would use up random numbers in a different order under each setting, and from then on the two settings would see different customers.</p>
+<pre><code class="language-python">rows = []
+for s in (60, 120):
+    for seed in range(30):
+        sc = run(s, seed)
+        shop = sc[&quot;nodes&quot;][&quot;R1&quot;].stats
+        rows.append({'s': s, 'seed': seed, 'profit': sc[&quot;profit&quot;],
+                     'lost_sales': shop.lost_sales[1],
+                     'avg_inventory_level': shop.avg_inventory_level})
+</code></pre>
+<p>Each row holds the settings, the seed and the results you want to keep, from the network results (<code>sc["profit"]</code>) or from the statistics of a node. The <a href="../statistics/">Statistics and Results</a> guide lists what there is.</p>
+<h2 id="averages-and-confidence-intervals">Averages and confidence intervals</h2>
+<p>The average over the replications is the estimate, and its confidence interval shows how precise it is.</p>
+<pre><code class="language-python">for s in (60, 120):
+    profits = [row['profit'] for row in rows if row['s'] == s]
+    mean = statistics.mean(profits)
+    half_width = 1.96 * statistics.stdev(profits) / len(profits) ** 0.5
+    print(f&quot;s = {s}: profit {mean:.0f} ± {half_width:.0f}&quot;)
+</code></pre>
+<p>This prints a profit of 10161 ± 651 for <code>s</code> 60 and 7696 ± 581 for <code>s</code> 120, as 95% confidence intervals. To narrow an interval, run more replications. Four times as many make it about half as wide.</p>
+<p>Because both settings used the same seeds, the difference can also be measured run by run. The profit with <code>s</code> 60 minus the profit with <code>s</code> 120, for the same seed, averages 2465 ± 159. That interval is much narrower than the two above, because the luck of each run, a busy year or a quiet one, is the same for both settings and cancels out.</p>
+<p>With pandas installed, <code>pandas.DataFrame(rows)</code> turns the rows into a table, and <code>df.groupby('s')['profit'].agg(['mean', 'std'])</code> gives the same averages.</p>
+<h2 id="run-length-and-warm-up">Run length and warm-up</h2>
+<p><code>sim_time</code> is the time at which the run stops, and events due at exactly that time do not happen. So <code>sim_time=365</code> covers time 0 up to just before 365.</p>
+<p>Every run starts with its initial inventory levels, nothing in transit and no orders waiting. To leave this first stretch out of the results, run a warm-up before the measured period.</p>
+<pre><code class="language-python">sc = build(60, 1)
+net = scm.Network(sc)
+net.simulate(30, logging=False).reset_stats().simulate(395, logging=False)
+print(net.results[&quot;profit&quot;])                 # from 30 to 395
+</code></pre>
+<p>How a warm-up resets the statistics is explained in the <a href="../statistics/">Statistics and Results</a> guide.</p>
+<h2 id="running-replications-in-parallel">Running replications in parallel</h2>
+<p>Replications do not depend on each other, so they can run at the same time on several processor cores, with Python's <code>concurrent.futures</code>.</p>
+<pre><code class="language-python">from concurrent.futures import ProcessPoolExecutor
+
+def profit(args):
+    s, seed = args
+    return s, seed, run(s, seed)[&quot;profit&quot;]
+
+if __name__ == &quot;__main__&quot;:
+    with ProcessPoolExecutor() as pool:
+        results = list(pool.map(profit, [(s, seed) for s in (60, 120) for seed in range(30)]))
+</code></pre>
+<p>Each run builds its own network inside its process, so a run gives the same result as when it runs alone. On Windows and macOS, each process starts Python afresh and imports your script. So put the functions at the top level of a script file, not in a notebook cell or inside another function, and start the pool under <code>if __name__ == "__main__":</code> as above. Starting the processes takes time, so this pays off only when the runs are long or many.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../statistics/" class="btn btn-neutral float-left" title="Statistics and Results"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../../api-reference/api-intro/" class="btn btn-neutral float-right" title="Introduction">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../statistics/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../../api-reference/api-intro/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
