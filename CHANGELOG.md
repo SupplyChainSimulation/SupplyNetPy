@@ -7,6 +7,17 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
+## Unreleased
+
+* **[FIX]** A site whose units were destroyed by a disruption
+  (`disruption_impact`) now orders again when it recovers. Before, its
+  replenishment policy was not woken, so a site with no units left waited
+  until a buyer ordered from it or a customer waited for units. A site whose
+  buyers had moved to other suppliers could stay empty for the rest of the
+  run. A site now checks its inventory position whenever it recovers.
+  Results change only for models where a disruption destroys units and the
+  replenishment policy has no `period`.
+
 ## 0.5.0 (2026-10-17)
 
 Simulation results are the same as in 0.4.0. This release adds

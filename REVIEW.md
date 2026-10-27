@@ -653,6 +653,26 @@ Tests: `TestLinkWarnsWhenBuyerCanOrderMoreThanSupplierHolds` (4: a larger buyer,
 
 **Assumption until then:** models are built so that no buyer orders more than its supplier can hold: each supplier's capacity is at least what any of its buyers can order (for a manufacturer, its capacity × the quantity of that raw material per product unit). Revisit after the planned work (§6.8 link statistics, §6.10 probability-based supplier selection).
 
+### 3.28 A site whose units were destroyed by a disruption does not order again after it recovers ✅ Resolved
+Found in the milk case-study review (2026-10-27). `Node.disruption`, `Inventory.destroy`.
+
+**Original issue.** A replenishment policy without a review period checks its inventory position only when `inventory_drop` fires. With `disruption_impact="destroy_all"` or `"destroy_fraction"`, `Inventory.destroy` empties the inventory but on purpose does not fire `inventory_drop` for a site with a replenishment policy, and on recovery `Node.disruption` woke only the site's buyers (§3.23), not the site itself. The policy stayed asleep until something else woke it: a buyer's replenishment order (`Inventory.get`) or a customer who starts waiting (a backorder). Customers with no tolerance, at a site with no units, wake nothing. So a site with no buyer orders and no waiting customers never ordered again. With backup suppliers this is the normal case: the buyers move to a backup that has units (`SelectAvailable` in dynamic mode), and the empty site stays empty for the rest of the run. In the milk case study (full network, p_fail 1/25, 2 backups), 273 of 282 distributors spent whole days below s without ordering, and two thirds of the profit gain from backups came from empty sites saving holding cost.
+
+The reason given for not firing `inventory_drop` in `destroy` was also wrong. It said new orders are already blocked while the site is disrupted, but `can_place_order` checks only the suppliers and their links, never the site's own status. A disrupted site can still place replenishment orders.
+
+**Decision (user, 2026-10-27).** The site checks its own inventory position when it recovers, as a real site would when it opens again, and its policy decides whether to order. `destroy` keeps not firing `inventory_drop`, so the site does not order while it is disrupted; only the reason changes. Whether a disrupted site should be barred from ordering at all (adding its own status to `can_place_order`, which would also stop periodic policies and wake-ups from its suppliers' recoveries during its own disruption) is a separate decision, left open because it changes results more widely.
+
+**Fix applied:**
+
+- `Node.disruption` calls `self.wake_replenishment()` on recovery, after waking the buyers. Both orders are correct, but they start the replenishment orders of that moment in a different order, and so draw random numbers in a different order. Waking the site after its buyers gives the same results as the case study's own impact function (see Verified). Extra wake-ups do no harm: a policy whose position is above its reorder point waits again, policies with a `period` ignore the signal, and a limited raw-material supplier re-checks whether its inventory is full.
+- The `Inventory.destroy` docstring and comment, the `wake_replenishment` and `wait_for_drop` docstrings, the Disruptions and Replenishment Policies guides, and the two CLAUDE.md bullets give the corrected reason and the new wake-up.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`). `sc_with_factory.py` (`profit: 49419.6`) and `hybrid_big_sc.py` give output identical to the last commit's code.
+- `pytest` — 399/399 passing. New `TestPolicyWokenWhenItsOwnSiteRecovers` (2 tests: a site whose units are destroyed from day 0.5 to day 2.5, with customers who do not wait, orders 20 units on recovery and none before; a site with no units destroyed places no order on recovery). The first fails on the old code.
+- Milk case study, full network, rep 0, α 0.4, β 0.5, p_fail 1/25, distributor capacity unlimited, 180 days. The fix with the built in `"destroy_all"` gives exactly the same profit per day as the last commit with the case study's impact function (`_destroy_all_impact`, then wait for recovery and call `node.wake_replenishment()`): 652,738,299.53 with 0 backups and 657,365,849.74 with 2 (service level 0.9927 and 0.9982). These are also the values that function gave on 0.2.2. Waking the site before its buyers gave 652,524,497.85 and 657,359,719.28 instead, which is why it is woken after them.
+
 ---
 
 ## 4. Design / architecture issues

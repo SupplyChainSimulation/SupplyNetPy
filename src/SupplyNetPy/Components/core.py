@@ -2799,6 +2799,16 @@ class Node(NamedEntity, InfoMixin):
                 # leave its inventory, so nothing else would wake its policy.
                 for link in self.buyers:
                     link.sink.wake_replenishment()
+                # Wake this node's own replenishment policy too, so that it
+                # checks its inventory position now that the node is working
+                # again. A disruption that destroyed units did not wake it (see
+                # ``Inventory.destroy``). Without this, a node with no units
+                # left, no orders from buyers and no waiting customers would
+                # never order again, for the same reason. It is woken after
+                # its buyers, so that a run gives the same results as models
+                # that woke the node with their own impact function before
+                # the library did.
+                self.wake_replenishment()
 
     def _warn_if_supplier_cannot_hold(self, supplier, quantity):
         # A supplier fills a replenishment order only when it holds the whole
@@ -2920,8 +2930,10 @@ class Node(NamedEntity, InfoMixin):
         A policy without a review period checks only when it is woken, normally
         when the node's inventory drops. A supplier or a link that recovers from
         a disruption calls this on its buyer, because an order the policy tried
-        to place during the disruption was not placed. The policy then checks
-        again and orders if its inventory position is still too low. An extra
+        to place during the disruption was not placed. A node that recovers
+        also calls it on itself, because units destroyed by the disruption did
+        not wake its policy. The policy then checks again and orders if its
+        inventory position is too low. An extra
         wake-up does no harm: if the position is fine, the policy just waits
         again. A policy with a review period checks on its own timer and is not
         affected.
@@ -3053,8 +3065,8 @@ class Node(NamedEntity, InfoMixin):
 
         Replenishment policies use it as ``yield from node.wait_for_drop()``.
         It waits on the node's ``inventory_drop`` event, which fires when the
-        inventory drops, and also when one of the node's suppliers or the link
-        to it recovers from a disruption (see ``wake_replenishment``). A SimPy event can fire only once, so after it fires it
+        inventory drops, and also when the node itself, one of its suppliers or
+        the link to it recovers from a disruption (see ``wake_replenishment``). A SimPy event can fire only once, so after it fires it
         is replaced with a fresh one, ready for the next drop. Doing this here
         keeps that replacing step in one place.
 
@@ -3898,11 +3910,11 @@ class Inventory(NamedEntity, InfoMixin):
         Removes the units right away, even when orders are waiting,
         so the caller (usually a ``Node`` disruption handler) sees the new
         ``level`` on the very next line. The method does **not** fire
-        ``inventory_drop`` for nodes with a replenishment policy — that event is
-        what triggers replenishment policies, and new orders are already blocked
-        while the node is ``"inactive"``. Firing it here would line up
-        replenishment orders that all go out the moment the node recovers, which
-        is exactly the kind of unwanted coupling we removed earlier. It does
+        ``inventory_drop`` for nodes with a replenishment policy. That event
+        wakes the policy, and a disrupted node can still place replenishment
+        orders, so the node would order while it is disrupted. Instead the node
+        wakes its own policy when it recovers (see ``Node.disruption``), and the
+        policy then orders if its inventory position is too low. It does
         wake a raw-material supplier (which then mines to refill its inventory,
         as it does whenever its inventory drops) and a manufacturer (which can
         make more now that there is free capacity).
@@ -3960,7 +3972,8 @@ class Inventory(NamedEntity, InfoMixin):
         # There is free capacity again. A raw-material supplier whose inventory
         # was full starts mining again, and a manufacturer that stopped because
         # its inventory was full carries on. Other nodes are not told, so their
-        # replenishment policies do not place replenishment orders (see above).
+        # replenishment policies do not order while the node is disrupted; the
+        # node wakes its policy when it recovers (see above).
         # Raw-material suppliers have no replenishment policy, so for them the
         # "inventory dropped" signal only restarts mining.
         if isinstance(self.node, Supplier):

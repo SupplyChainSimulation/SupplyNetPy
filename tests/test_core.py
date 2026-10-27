@@ -3983,6 +3983,52 @@ class TestPolicyWokenWhenSupplierRecovers(unittest.TestCase):
         assert d1.buyers == []
 
 
+class TestPolicyWokenWhenItsOwnSiteRecovers(unittest.TestCase):
+    """
+    A disruption that destroys a site's inventory does not wake the site's
+    own replenishment policy, so that the site does not order while it is
+    disrupted. The site wakes its own policy when it recovers. Without that,
+    a site with no units left and no buyer orders or waiting customers would
+    never order again: nothing would leave its inventory, so nothing else
+    would wake its policy.
+    """
+
+    def _distributor(self, env, **disruption_kwargs):
+        # The distributor holds 20 units. Its customers buy 1 unit a day and
+        # do not wait, so an empty inventory does not wake its policy. It is
+        # disrupted from day 0.5 to day 2.5 (and again from day 3).
+        sup = scm.Supplier(env=env, ID="S1", name="S1", node_type="infinite_supplier")
+        d1 = scm.InventoryNode(env=env, ID="D1", name="D1", node_type="distributor",
+                               capacity=100, initial_level=20, inventory_holding_cost=0,
+                               replenishment_policy=scm.SSReplenishment,
+                               policy_param={"s": 5, "S": 20},
+                               product_buy_price=1, product_sell_price=2,
+                               node_disrupt_time=lambda: 0.5, node_recovery_time=lambda: 2,
+                               **disruption_kwargs)
+        scm.Link(env=env, ID="L1", source=sup, sink=d1, cost=0, lead_time=lambda: 1)
+        scm.Demand(env=env, ID="C1", name="C1", order_arrival_model=lambda: 1,
+                   order_quantity_model=lambda: 1, demand_node=d1)
+        return d1
+
+    def test_site_orders_when_it_recovers_after_its_inventory_is_destroyed(self):
+        env = simpy.Environment()
+        d1 = self._distributor(env, disruption_impact="destroy_all")
+        env.run(until=2.25)
+        assert d1.inventory.level == 0
+        assert d1.stats.demand_placed == [0, 0], "no order while the site is disrupted"
+        env.run(until=2.75)
+        assert d1.stats.demand_placed == [1, 20]
+
+    def test_recovery_without_destroyed_units_places_no_order(self):
+        # The extra wake-up does no harm: the inventory position (19) is
+        # above s, so the policy just waits again.
+        env = simpy.Environment()
+        d1 = self._distributor(env)
+        env.run(until=2.75)
+        assert d1.inventory.level == 19
+        assert d1.stats.demand_placed == [0, 0]
+
+
 class TestOrdersSkipDisruptedSupplierSites(unittest.TestCase):
     """
     place_order checks that some supplier can take the order, and the

@@ -45,7 +45,7 @@ By default, the (s, S) and (R, Q) policies check the inventory position each tim
 'policy_param': {'s': 80, 'S': 300, 'period': 5, 'first_review_delay': 1}   # checks at 1, 6, 11, 16, ...
 ```
 
-A policy without a `period` is also woken when one of the site's suppliers, or the link to it, recovers from a disruption. While every supplier is disrupted, the site cannot place an order, so the policy checks again the moment one recovers, instead of waiting for the next sale. A policy with a `period` keeps to its own timer.
+A policy without a `period` is also woken when the site itself recovers from a disruption. A disruption that destroys units does not wake the policy, so the site checks its inventory position again the moment it is working again. The policy is also woken when one of the site's suppliers, or the link to it, recovers. While every supplier is disrupted, the site cannot place an order, so the policy checks again the moment one recovers, instead of waiting for the next sale. A policy with a `period` keeps to its own timer.
 
 ## Safety stock
 
@@ -97,6 +97,6 @@ The policy works with its site through a small set of helper methods on `Node`, 
 
 * `node.position()` returns the inventory position. Use it instead of working the position out yourself from `node.inventory.on_hand` and `node.stats.backorder`.
 * `node.place_order(quantity)` first checks that some supplier can take the order, then chooses a supplier with the site's supplier-selection policy and places the replenishment order. If every supplier, or the link to it, is disrupted, no order is placed. Use it instead of calling `selection_policy.select(...)` and `env.process(process_order(...))` yourself.
-* `node.wait_for_drop()` waits until the site's inventory drops, or until one of its suppliers or the link to it recovers from a disruption, then gets ready for the next time. A policy that found no supplier to order from is woken this way, so it can check again. Use it as `yield from node.wait_for_drop()`.
+* `node.wait_for_drop()` waits until the site's inventory drops, until the site recovers from a disruption, or until one of its suppliers or the link to it recovers, then gets ready for the next time. A policy that found no supplier to order from is woken this way, so it can check again. Use it as `yield from node.wait_for_drop()`.
 
 To give your policy the warning about unused parameters, list the keys it reads in the class attribute `_param_keys`, as in the example. A policy without such a list is not checked.
