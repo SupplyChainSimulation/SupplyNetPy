@@ -56,7 +56,7 @@ A few names in the code use a different word from the one chosen here (for examp
 | **Manufacturing date** | When a unit was made. | `manufacturing_date` |
 | **Batch** | Units of a perishable good that share a manufacturing date. Every order takes units from the oldest batch first, then from the next oldest, and so on. | entries `(manufacturing date, quantity)` in `inventory.perish_queue` |
 | **Expired units** | Perishable units that reached the end of their shelf life and were thrown away. | `inventory.waste`; reported as `inventory_waste` |
-| **Destroyed units** | Units lost in a disruption (fire, flood, theft, and so on). | `Inventory.destroy`; recorded as `destroyed_qty` and `destroyed_value` |
+| **Destroyed units** | Units lost in a disruption (fire, flood, theft, and so on). | `Inventory.destroy`; recorded as `destroyed_qty`, and their disposal cost as `destroyed_value` |
 
 ---
 
@@ -121,8 +121,9 @@ A few names in the code use a different word from the one chosen here (for examp
 | **Holding cost** | The cost of keeping one unit in inventory for one time unit, and the total of that cost over the run. | `inventory_holding_cost` (rate); `inventory_carry_cost` (total) |
 | **Buy price, sell price** | What a site pays per unit, and what it charges per unit. | `product_buy_price`, `product_sell_price` |
 | **Transportation cost** | The cost of sending one order over a link. | `Link.cost`; total in `transportation_cost` |
+| **Disposal cost** | The cost of getting rid of one destroyed unit, for example the safe disposal of spoiled medicines. It is 0 unless set, for units that can simply be thrown away. It does not include the buy price of the unit, which the site already paid when the unit arrived. | `disposal_cost` (per unit); total in `destroyed_value` |
 | **Revenue** | Sell price times the units the site fulfilled. | `revenue` |
-| **Node cost** | Everything a site spent: holding, purchases, transportation, manufacturing, destroyed units, and so on. | `node_cost` |
+| **Node cost** | Everything a site spent: holding, purchases, transportation, manufacturing, disposal of destroyed units, and so on. | `node_cost` |
 | **Profit** | Revenue minus node cost. | `profit` |
 | **Standard deviation** | How far values usually are from their average. SupplyNetPy uses the sample standard deviation, which divides by one less than the number of values. With fewer than two values it is not defined and is given as `None`. | `link.stats.order_size_std` (one value per order), `link.stats.units_per_time_unit_std` (one value per time unit) |
 

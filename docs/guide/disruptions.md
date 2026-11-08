@@ -65,7 +65,7 @@ A retailer disrupted from 30 to 35 and from 65 to 70 in a run of 100 time units 
 
 A disruption in the real world can take many forms, such as a natural disaster, a power cut, contamination, theft or a strike, and each affects the units at a site differently. The settings above only mark the site as disrupted. They do *not* describe what happens to the units already there.
 
-If you want the simulation to also account for units that are physically lost in a disruption, set the `disruption_impact` argument when you create the site (and, if you choose `"destroy_fraction"`, also `disruption_loss_fraction`). The available choices are listed below.
+If you want the simulation to also account for units that are physically lost in a disruption, set the `disruption_impact` argument when you create the site (and, if you choose `"destroy_fraction"`, also `disruption_loss_fraction`). If getting rid of the destroyed units costs money, also set `disposal_cost`, described below the table. The available choices are listed below.
 
 | `disruption_impact` value | What happens the moment a disruption starts |
 | --- | --- |
@@ -78,7 +78,11 @@ The effect is applied **once**, exactly at the moment the site goes from active 
 
 The two built in choices call `Inventory.destroy(amount, reason)`, a public method on `Inventory` that removes the units at once, even when orders are waiting at the site. For perishable products, the oldest batches are destroyed first. One subtle but important detail is that `destroy` does **not** wake up the replenishment policy, because a site should not place replenishment orders while it is disrupted. Instead, the site wakes its replenishment policy when it recovers. The policy then checks the inventory position and orders if it is too low, so a site that lost all its units refills its inventory as soon as it is working again. Note that a disrupted site can still order in two cases. A replenishment policy with a `period` orders when its time comes, and a policy is woken when one of the site's suppliers, or the link to it, recovers during the site's disruption. `destroy` also wakes a raw-material supplier, which then mines again to refill its inventory, and a manufacturer, which can then make more. If you write your own impact function that destroys units, call `Inventory.destroy(...)` for the same reasons, and do not change `level`, `on_hand` or `perish_queue` by hand.
 
-The units destroyed (`destroyed_qty`) and their value (`destroyed_value`) are recorded in the site's statistics. `destroyed_value` is one of the site's costs, so it is automatically included in `node_cost` and therefore in `profit`, and you do not need to subtract it yourself. In your own impact function, report losses the same way, with `node.stats.update_stats(destroyed_qty=qty, destroyed_value=qty * unit_cost)`, rather than inventing separate statistics that the simulator will not know about.
+The units destroyed are recorded in the site's statistics as `destroyed_qty`. The site paid for these units when they arrived, in `inventory_spend_cost`, and they will never be sold, so their loss already shows in its profit. Their buy price is not charged a second time.
+
+Getting rid of destroyed units can cost extra. A pharmacy whose medicines spoil when the cooling fails in a power cut must pay for their safe disposal, while a food shop can simply throw spoiled food away. Set `disposal_cost`, the cost of disposing of one destroyed unit, when you create the site. Each destroyed unit is then charged this cost, and the total is recorded as `destroyed_value`. `destroyed_value` is one of the site's costs, so it is automatically included in `node_cost` and therefore in `profit`, and you do not need to subtract it yourself. The default is 0, for units that cost nothing to throw away. At a manufacturer, destroyed raw materials are charged the same cost per unit as its product.
+
+In your own impact function, report losses the same way, with `node.stats.update_stats(destroyed_qty=qty, destroyed_value=qty * node.disposal_cost)`, rather than inventing separate statistics that the simulator will not know about.
 
 A short example.
 
@@ -100,5 +104,10 @@ distributor = scm.InventoryNode(
 warehouse = scm.InventoryNode(
     ..., disruption_impact="destroy_fraction",
     disruption_loss_fraction=lambda: random.uniform(0.1, 0.4),
+)
+
+# A pharmacy loses its medicines in a power cut, and safe disposal costs 2 per unit.
+pharmacy = scm.InventoryNode(
+    ..., disruption_impact="destroy_all", disposal_cost=2,
 )
 ```

@@ -87,7 +87,7 @@ _LOGGER_KWARGS = {"log_to_file", "log_file", "log_to_screen"}
 # so these names are still present in the subclass's kwargs even after being
 # passed up to Node; they must be removed before the remaining kwargs are passed
 # on to Inventory.
-_NODE_KWARGS = {"failure_p", "node_disrupt_time", "node_recovery_time", "logging", "rng", "logger_name", "stats_period", "periodic_stats", "disruption_impact", "disruption_loss_fraction"}
+_NODE_KWARGS = {"failure_p", "node_disrupt_time", "node_recovery_time", "logging", "rng", "logger_name", "stats_period", "periodic_stats", "disruption_impact", "disruption_loss_fraction", "disposal_cost"}
 
 
 class NodeType(str, enum.Enum):
@@ -374,7 +374,9 @@ class Statistics(InfoMixin):
         inventory_spend_cost (float): What this node paid for the units it received.
         transportation_cost (float): Transportation cost of this node's orders.
         destroyed_qty (float): Units destroyed in disruptions (see Inventory.destroy).
-        destroyed_value (float): Value of the destroyed units; part of ``node_cost``.
+        destroyed_value (float): Disposal cost of the destroyed units: ``destroyed_qty`` times the node's
+            ``disposal_cost`` (0 unless set); part of ``node_cost``. What the node paid for those units is not
+            added again: it is already in ``inventory_spend_cost``.
         node_cost (float): Everything this node spent (the sum of its costs).
         revenue (float): Sell price times the units this node fulfilled.
         profit (float): Revenue minus node cost.
@@ -411,10 +413,10 @@ class Statistics(InfoMixin):
     ]
     # Attributes that contribute to ``node_cost``. ``node_cost`` itself is NOT
     # listed — it is the derived sum (see ``update_stats``). ``destroyed_value``
-    # is the monetary loss from disruption-driven inventory destruction
-    # (Inventory.destroy + Node._disruption_impact_fn); rolling it into
-    # node_cost makes the impact visible in profit without callers needing
-    # to know about a separate "loss" line.
+    # is the cost of getting rid of units destroyed in disruptions (destroyed
+    # units times the node's ``disposal_cost``). It is not the price paid for
+    # those units: that was counted in ``inventory_spend_cost`` when they
+    # arrived, and counting it again would charge the node twice for them.
     _cost_components = ["inventory_carry_cost", "inventory_spend_cost", "transportation_cost", "destroyed_value"]
     # Values that describe the present rather than count what happened, so
     # ``reset`` keeps them. ``backorder`` is what the node owes right now:
@@ -508,7 +510,8 @@ class Statistics(InfoMixin):
         self.transportation_cost = 0 # transportation cost of this node's orders
         # Units destroyed in disruptions (for example, a flood at a
         # warehouse). ``destroyed_qty`` counts the units; ``destroyed_value``
-        # is their value, and is part of ``node_cost`` (see _cost_components).
+        # is the cost of disposing of them, and is part of ``node_cost`` (see
+        # _cost_components).
         self.destroyed_qty = 0
         self.destroyed_value = 0
         self.node_cost = 0 # everything this node spent
@@ -2424,29 +2427,6 @@ class SelectProbabilistic(SupplierSelectionPolicy):
 #                           disruption can destroy a different amount.
 # ---------------------------------------------------------------------------
 
-def _unit_destroyed_value(node) -> float:
-    """
-    The value of one destroyed unit, used to record ``destroyed_value``.
-
-    Each kind of node values its units differently: an ``InventoryNode`` uses
-    its ``buy_price``, a ``Manufacturer`` the ``buy_price`` of its ``Product``,
-    and a raw-material supplier the ``cost`` of its ``RawMaterial``. This
-    helper tries each in turn, so the impact functions do not need to know
-    about every kind of node. It returns 0 when no price is set (for example,
-    a node built only to study disruptions, with no costs); the callers then
-    record ``destroyed_qty`` but no ``destroyed_value``.
-    """
-    if getattr(node, "buy_price", 0):
-        return node.buy_price
-    product = getattr(node, "product", None)
-    if product is not None and getattr(product, "buy_price", 0):
-        return product.buy_price
-    raw = getattr(node, "raw_material", None)
-    if raw is not None and getattr(raw, "cost", 0):
-        return raw.cost
-    return 0
-
-
 def _destroy_all_impact(node) -> None:
     """
     Built-in effect for ``disruption_impact="destroy_all"``: destroy all units at
@@ -2454,33 +2434,26 @@ def _destroy_all_impact(node) -> None:
     also clears its raw materials (``raw_inventory_counts``), not just its
     product `Inventory`. For an infinite supplier (``level == inf``) this does
     nothing — there is no real pile to destroy.
+
+    Each destroyed unit, of the product or of a raw material, is charged the
+    node's ``disposal_cost`` (see `Node`), recorded as ``destroyed_value``.
     """
+    disposal_cost = getattr(node, "disposal_cost", 0)
     inv = getattr(node, "inventory", None)
-    unit_value = _unit_destroyed_value(node)
     if inv is not None and inv.level != float('inf'):
         destroyed = inv.destroy(amount=None, reason="destroy_all")
         if destroyed > 0 and hasattr(node, "stats"):
             node.stats.update_stats(destroyed_qty=destroyed,
-                                    destroyed_value=destroyed * unit_value)
+                                    destroyed_value=destroyed * disposal_cost)
     # A manufacturer counts its raw materials in a plain dictionary, not in its
-    # inventory, so they are cleared by hand here. Each raw material is valued
-    # at its own cost (more accurate than the product's value used above).
+    # inventory, so they are cleared by hand here.
     raw_counts = getattr(node, "raw_inventory_counts", None)
     if raw_counts:
-        raw_cost_lookup = {}
-        # A manufacturer's suppliers are links whose ``source`` is a
-        # raw-material supplier; its ``raw_material`` holds the cost per unit.
-        for link in getattr(node, "suppliers", []):
-            rm = getattr(getattr(link, "source", None), "raw_material", None)
-            if rm is not None:
-                raw_cost_lookup[rm.ID] = rm.cost
         total_qty = 0
-        total_value = 0
         for rm_id, qty in list(raw_counts.items()):
             if qty <= 0:
                 continue
             total_qty += qty
-            total_value += qty * raw_cost_lookup.get(rm_id, 0)
             raw_counts[rm_id] = 0
         if total_qty > 0:
             node.logger.info(
@@ -2489,7 +2462,7 @@ def _destroy_all_impact(node) -> None:
             )
             if hasattr(node, "stats"):
                 node.stats.update_stats(destroyed_qty=total_qty,
-                                        destroyed_value=total_value)
+                                        destroyed_value=total_qty * disposal_cost)
 
 
 def _destroy_fraction_impact(fraction_fn):
@@ -2516,7 +2489,7 @@ def _destroy_fraction_impact(fraction_fn):
         if destroyed > 0 and hasattr(node, "stats"):
             node.stats.update_stats(
                 destroyed_qty=destroyed,
-                destroyed_value=destroyed * _unit_destroyed_value(node),
+                destroyed_value=destroyed * getattr(node, "disposal_cost", 0),
             )
     return _impact
 
@@ -2603,6 +2576,11 @@ class Node(NamedEntity, InfoMixin):
         disruption_loss_fraction (float | callable, optional): Fraction between 0 and 1, used with
             ``disruption_impact="destroy_fraction"``. May be a zero-arg function, so each disruption can
             destroy a different fraction.
+        disposal_cost (float, optional): The cost of getting rid of one unit destroyed in a disruption, for
+            example the safe disposal of medicines spoiled by a power cut. Default 0, for units that can simply
+            be thrown away. Destroyed units are charged this cost, recorded as ``stats.destroyed_value`` and
+            included in ``node_cost``. Their buy price is not charged again: the node paid it when the units
+            arrived (``inventory_spend_cost``). It applies to raw materials destroyed at a manufacturer too.
         **kwargs: Additional arguments for the logger.
 
     Attributes:
@@ -2617,6 +2595,7 @@ class Node(NamedEntity, InfoMixin):
         node_recovery_time (callable): function giving the time units a disruption lasts
         disruption_impact: The ``disruption_impact`` setting as given (a name, a function, or None).
         _disruption_impact_fn (callable | None): The function that ``disruption()`` calls when a disruption starts.
+        disposal_cost (float): The cost of getting rid of one unit destroyed in a disruption.
         logger (GlobalLogger): logger object
         suppliers (list): The links to this node's suppliers (links whose ``sink`` is this node); filled in by
             ``Link.__init__`` through ``add_supplier_link``.
@@ -2629,7 +2608,7 @@ class Node(NamedEntity, InfoMixin):
         place_order: Chooses a supplier with the supplier-selection policy and places a replenishment order.
         wait_for_drop: Waits until the inventory drops (use with ``yield from``).
     """
-    _info_keys = ["ID", "name", "node_type", "failure_p", "node_status", "logging", "disruption_impact"]
+    _info_keys = ["ID", "name", "node_type", "failure_p", "node_status", "logging", "disruption_impact", "disposal_cost"]
 
     def __init__(self, env: simpy.Environment,
                  ID: str,
@@ -2642,6 +2621,7 @@ class Node(NamedEntity, InfoMixin):
                  rng: random.Random = None,
                  disruption_impact=None,
                  disruption_loss_fraction=1.0,
+                 disposal_cost: float = 0,
                  **kwargs) -> None:
         """
         Initialize the node object.
@@ -2707,6 +2687,12 @@ class Node(NamedEntity, InfoMixin):
         # function that runs when a disruption starts is ``_disruption_impact_fn``.
         self.disruption_impact = disruption_impact
         self._disruption_impact_fn = _resolve_disruption_impact(disruption_impact, disruption_loss_fraction)
+        # The cost of getting rid of one destroyed unit (0 when they can simply
+        # be thrown away). Only this is charged for destroyed units: their buy
+        # price was already counted when they arrived.
+        validate_number(name="disposal_cost", value=disposal_cost)
+        validate_non_negative(name="disposal_cost", value=disposal_cost)
+        self.disposal_cost = disposal_cost
 
         logger_name = self.ID # default logger name is the node ID
         if 'logger_name' in kwargs:
@@ -3941,8 +3927,8 @@ class Inventory(NamedEntity, InfoMixin):
 
         Returns:
             float: The units actually destroyed (``0`` in the cases above where
-            nothing happens). Callers usually multiply this by the value of one
-            unit to record ``destroyed_value`` on ``Statistics``.
+            nothing happens). Callers usually multiply this by the node's
+            ``disposal_cost`` to record ``destroyed_value`` on ``Statistics``.
         """
         if self.inventory.level == float('inf'):
             return 0  # infinite_supplier — nothing physical to destroy

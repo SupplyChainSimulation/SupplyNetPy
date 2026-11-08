@@ -35,7 +35,7 @@ The statistics answer a few kinds of question. Counts of orders are given as `[n
 | Did the site serve its orders? | `shortage`, `backorder`, `lost_sales`, `waited`, `avg_waiting_time` |
 | How much inventory did it hold? | `inventory_level` at the end, `avg_inventory_level`, `zero_inventory_share` (the share of time it had no units), `inventory_waste` (expired units), `dropped_qty` (delivered units that did not fit) |
 | How did disruptions affect it? | `disruptions`, `disrupted_time`, `availability`, `blocked`, `disruption_lost_sales`, explained in the [Disruptions](disruptions.md) guide |
-| What did it cost and earn? | `inventory_carry_cost` (the holding cost), `inventory_spend_cost` (what it paid for the units it received), `transportation_cost`, `destroyed_value`, then `node_cost` (all of them added up), `revenue` and `profit` |
+| What did it cost and earn? | `inventory_carry_cost` (the holding cost), `inventory_spend_cost` (what it paid for the units it received), `transportation_cost`, `destroyed_value` (the cost of disposing of units destroyed in disruptions), then `node_cost` (all of them added up), `revenue` and `profit` |
 
 A raw-material supplier also records what it mined and what mining cost, and a manufacturer what it made and what making it cost. Both costs are part of its `node_cost`.
 

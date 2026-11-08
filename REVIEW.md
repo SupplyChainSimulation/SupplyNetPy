@@ -673,6 +673,26 @@ The reason given for not firing `inventory_drop` in `destroy` was also wrong. It
 - `pytest` — 399/399 passing. New `TestPolicyWokenWhenItsOwnSiteRecovers` (2 tests: a site whose units are destroyed from day 0.5 to day 2.5, with customers who do not wait, orders 20 units on recovery and none before; a site with no units destroyed places no order on recovery). The first fails on the old code.
 - Milk case study, full network, rep 0, α 0.4, β 0.5, p_fail 1/25, distributor capacity unlimited, 180 days. The fix with the built in `"destroy_all"` gives exactly the same profit per day as the last commit with the case study's impact function (`_destroy_all_impact`, then wait for recovery and call `node.wake_replenishment()`): 652,738,299.53 with 0 backups and 657,365,849.74 with 2 (service level 0.9927 and 0.9982). These are also the values that function gave on 0.2.2. Waking the site before its buyers gave 652,524,497.85 and 657,359,719.28 instead, which is why it is woken after them.
 
+### 3.29 Destroyed units are charged twice ✅ Resolved
+Found in review (user, 2026-11-08). `_destroy_all_impact`, `_destroy_fraction_impact`, `Statistics._cost_components`.
+
+**Original issue.** The two built in disruption impacts recorded `destroyed_value = destroyed units × unit value`, with the unit value taken from the node's `buy_price`, its product's `buy_price`, or its raw material's `cost` (`_unit_destroyed_value`). `destroyed_value` is in `_cost_components`, so it was added to `node_cost`. But the node had already paid for those units when they arrived (`inventory_spend_cost`, booked for every unit received, whether it is later sold, kept or destroyed), or when it mined or made them (`total_material_cost`, `total_manufacturing_cost`). A destroyed unit earns no revenue, so its loss was already in profit. Charging its price again counted the same money twice. Example: a site buys 100 units at 10 (spend 1,000) and 40 are destroyed. Profit already reflects the 40 units paid for and never sold; the extra 400 made the node cost 1,400 for 1,000 of purchases.
+
+**Decision (user, 2026-11-08).** Destroyed units are charged only what it costs to get rid of them, which is a real extra cost in some cases (safe disposal of cold-chain medicines after a power cut) and nothing in others (spoiled food thrown away). A new node setting `disposal_cost`, default 0.
+
+**Fix applied:**
+
+- `Node.__init__` takes `disposal_cost: float = 0`, checked with `validate_number` and `validate_non_negative`, stored as `node.disposal_cost`, added to `_NODE_KWARGS` (so it never reaches `Inventory`) and to `Node._info_keys`.
+- `_destroy_all_impact` and `_destroy_fraction_impact` record `destroyed_value = destroyed units × node.disposal_cost`. A manufacturer's destroyed raw materials are charged the same cost per unit. `_unit_destroyed_value` and the raw-material cost lookup are removed.
+- `Statistics` docstrings and comments, the `Node` and `Inventory.destroy` docstrings, the Disruptions and Statistics guides, the README, the Glossary (new entry, disposal cost), CHANGELOG and the CLAUDE.md disruption-impact bullet describe the new meaning.
+
+**Results change** for any model with `disruption_impact="destroy_all"` or `"destroy_fraction"`: with the default `disposal_cost=0`, `destroyed_value` is 0 and `node_cost` is lower by what it used to hold. Order flows, inventory levels and service levels are unchanged. The milk case study uses `"destroy_all"`, so its profit figures include the old double charge.
+
+**Verified:**
+
+- `examples/py/intro_simple.py` unchanged (`profit: -4435.0`; it has no disruption impact).
+- `pytest` — 409/409 passing. Updated the destroy-all, destroy-fraction and manufacturer tests for the new values; new `TestDisposalCost` (default 0, shown by `get_info`, negative and non-number values rejected, accepted by `Supplier` and `Manufacturer`, usable from a custom impact function), destroy-all and destroy-fraction tests with a disposal cost, a test that the default leaves `node_cost` at 0, and `test_create_sc_net_passes_disposal_cost` for the dict netlist.
+
 ---
 
 ## 4. Design / architecture issues

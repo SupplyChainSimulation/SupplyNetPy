@@ -204,6 +204,20 @@ def test_create_sc_net_with_dicts():
     assert "nodes" in scnet and "links" in scnet and "demands" in scnet
     assert scnet["num_suppliers"] == 1
 
+def test_create_sc_net_passes_disposal_cost():
+    # disposal_cost is a node setting, so it must reach the node and not be
+    # passed on to Inventory (which would reject it).
+    nodes = [{"ID": "N1", "node_type": "infinite_supplier", "name": "S1"},
+             {"ID": "N2", "node_type": "warehouse", "name": "R1", "capacity": 100,
+              "initial_level": 50, "inventory_holding_cost": 1.0, "product_sell_price": 10.0,
+              "product_buy_price": 5.0, "replenishment_policy": None, "policy_param": None,
+              "disruption_impact": "destroy_all", "disposal_cost": 0.5}
+            ]
+    links = [{"ID": "L1", "source": "N1", "sink": "N2", "lead_time": lambda:2.5, "cost": 1.0}]
+    demands = [{"ID": "D1", "demand_node": "N2",  "name":"d1", "order_quantity_model": lambda: 10, "order_arrival_model": lambda: 5}]
+    scnet = utilities.create_sc_net(nodes, links, demands)
+    assert scnet["nodes"]["N2"].disposal_cost == 0.5
+
 def test_create_sc_net_with_objects():
     env = simpy.Environment()
     n = DummyNode("N1", "supplier")

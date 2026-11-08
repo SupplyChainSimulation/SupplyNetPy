@@ -74,7 +74,7 @@ def contaminate(node):
 scm.InventoryNode(..., disruption_impact=contaminate)
 ~~~
 
-The loss is applied once, at the moment the disruption starts (not repeatedly while it lasts). The units lost and their value are saved on the node as `node.stats.destroyed_qty` and `node.stats.destroyed_value`, and the value is automatically subtracted when the simulation calculates the node's profit, so you don't need to do that bookkeeping yourself.
+The loss is applied once, at the moment the disruption starts (not repeatedly while it lasts). The units lost are saved on the node as `node.stats.destroyed_qty`. The node already paid for them when they arrived, so their loss already shows in its profit. If getting rid of them costs money (for example the safe disposal of spoiled medicines), give the node a `disposal_cost` per unit, such as `disposal_cost=2`. The total is saved as `node.stats.destroyed_value` and automatically subtracted when the simulation calculates the node's profit, so you don't need to do that bookkeeping yourself. The default is 0, for units that can simply be thrown away.
 
 The words used here (inventory level, disruption, customer demand, and so on) are defined in the [Glossary](https://supplychainsimulation.github.io/SupplyNetPy/glossary/).
 

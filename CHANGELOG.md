@@ -7,6 +7,31 @@ Each entry is tagged: **[NEW]** a new feature, **[FIX]** a bug fix,
 **[CHANGE]** a change in behavior, **[BREAKING]** a change that may need
 action from you, and **[DOCS]** documentation only.
 
+## Unreleased
+
+Simulation results are the same as in 0.5.1, except for the costs and
+profit of sites whose units are destroyed by a disruption
+(`disruption_impact`).
+
+* **[NEW]** The site setting `disposal_cost`, the cost of getting rid of one
+  unit destroyed in a disruption, such as the safe disposal of medicines
+  spoiled in a power cut. The default is 0, for units that can simply be
+  thrown away. Destroyed units are charged this cost, recorded as
+  `destroyed_value`, which is part of `node_cost`. At a manufacturer,
+  destroyed raw materials are charged the same cost per unit.
+* **[FIX]** Destroyed units are no longer charged twice. Before, a destroyed
+  unit was charged its buy price (or its raw material's cost) in
+  `destroyed_value`, although the site had already paid that price when the
+  unit arrived (`inventory_spend_cost`). `destroyed_value` now holds only the
+  disposal cost.
+* **[BREAKING]** With the default `disposal_cost` of 0, `destroyed_value` is
+  0, so `node_cost` is lower and `profit` higher than before for sites whose
+  units are destroyed. To charge something for destroyed units, set
+  `disposal_cost`. A custom impact function should record
+  `destroyed_value=qty * node.disposal_cost`.
+* **[DOCS]** The Disruptions and Statistics guides, the README and the
+  Glossary (new entry, disposal cost) describe the new setting.
+
 ## 0.5.1 (2026-10-27)
 
 Simulation results are the same as in 0.5.0, except for models in which a

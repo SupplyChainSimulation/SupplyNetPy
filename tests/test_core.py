@@ -3545,9 +3545,43 @@ class TestNodeDisruptionImpactDestroyAll(unittest.TestCase):
         env.run(until=6)  # disruption fired at t=5
         assert node.inventory.level == 0
         assert node.stats.destroyed_qty == 80
-        assert node.stats.destroyed_value == 80 * 5  # buy_price = 5
+        # No disposal cost given: destroying units costs nothing extra. Their
+        # buy price is not charged again (it is in inventory_spend_cost).
+        assert node.stats.destroyed_value == 0
+
+    def test_destroy_all_charges_disposal_cost_per_unit(self):
+        env = _fresh_env()
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=80, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            node_disrupt_time=lambda: 5, node_recovery_time=lambda: 3,
+            disruption_impact="destroy_all", disposal_cost=2,
+        )
+        env.run(until=6)
+        assert node.stats.destroyed_qty == 80
+        assert node.stats.destroyed_value == 80 * 2  # disposal cost, not buy price
 
     def test_destroy_all_rolls_into_node_cost(self):
+        env = _fresh_env()
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=50, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=4,
+            node_disrupt_time=lambda: 2, node_recovery_time=lambda: 100,
+            disruption_impact="destroy_all", disposal_cost=3,
+        )
+        env.run(until=10)
+        # destroyed_value (50 units x 3) is in _cost_components, so it shows
+        # up in node_cost. No holding cost, no purchases and no transport here,
+        # so it is the whole node cost.
+        assert node.stats.destroyed_value == 150
+        assert node.stats.node_cost == 150
+        assert node.stats.profit == -150
+
+    def test_destroy_all_without_disposal_cost_leaves_node_cost_unchanged(self):
         env = _fresh_env()
         node = scm.InventoryNode(
             env=env, ID="D1", name="D1", node_type="warehouse",
@@ -3558,11 +3592,8 @@ class TestNodeDisruptionImpactDestroyAll(unittest.TestCase):
             disruption_impact="destroy_all",
         )
         env.run(until=10)
-        # destroyed_value (200) is in _cost_components, so it must show up
-        # in node_cost after stats are updated. update_stats is called
-        # internally by destroy_all_impact, which sums node_cost.
-        assert node.stats.destroyed_value == 200
-        assert node.stats.node_cost >= 200  # may include carrying cost too
+        assert node.stats.destroyed_qty == 50
+        assert node.stats.node_cost == 0
 
     def test_destroy_all_fires_only_on_active_to_inactive_edge(self):
         """The hook must fire once per disruption, not on every tick during
@@ -3609,6 +3640,22 @@ class TestNodeDisruptionImpactDestroyFraction(unittest.TestCase):
         env.run(until=10)
         assert node.inventory.level == 75
         assert node.stats.destroyed_qty == 25
+        assert node.stats.destroyed_value == 0  # no disposal cost given
+
+    def test_fraction_charges_disposal_cost_per_unit(self):
+        env = _fresh_env()
+        node = scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=100, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5,
+            node_disrupt_time=lambda: 5, node_recovery_time=lambda: 100,
+            disruption_impact="destroy_fraction",
+            disruption_loss_fraction=0.25, disposal_cost=4,
+        )
+        env.run(until=10)
+        assert node.stats.destroyed_qty == 25
+        assert node.stats.destroyed_value == 25 * 4
 
     def test_callable_fraction_samples_per_edge(self):
         env = _fresh_env()
@@ -3723,6 +3770,72 @@ class TestNodeDisruptionImpactValidation(unittest.TestCase):
         assert n2._disruption_impact_fn is None
 
 
+class TestDisposalCost(unittest.TestCase):
+    """``disposal_cost`` is the cost of getting rid of one destroyed unit.
+    It defaults to 0, must be a number that is not negative, and is shown by
+    ``get_info``."""
+
+    def _node(self, env, **kwargs):
+        return scm.InventoryNode(
+            env=env, ID="D1", name="D1", node_type="warehouse",
+            capacity=100, initial_level=10, inventory_holding_cost=0,
+            replenishment_policy=None, policy_param={},
+            product_sell_price=10, product_buy_price=5, **kwargs,
+        )
+
+    def test_default_is_zero(self):
+        node = self._node(_fresh_env())
+        assert node.disposal_cost == 0
+
+    def test_shown_by_get_info(self):
+        node = self._node(_fresh_env(), disposal_cost=2.5)
+        assert node.get_info()["disposal_cost"] == 2.5
+
+    def test_negative_raises(self):
+        with pytest.raises(ValueError):
+            self._node(_fresh_env(), disposal_cost=-1)
+
+    def test_not_a_number_raises(self):
+        with pytest.raises(ValueError):
+            self._node(_fresh_env(), disposal_cost="5")
+
+    def test_accepted_by_supplier_and_manufacturer(self):
+        env = _fresh_env()
+        rm = scm.RawMaterial(ID="RM1", name="RM1", extraction_quantity=10,
+                             extraction_time=2, mining_cost=1, cost=2)
+        sup = scm.Supplier(env=env, ID="S1", name="S1", node_type="supplier",
+                           capacity=100, initial_level=100,
+                           inventory_holding_cost=0, raw_material=rm,
+                           disposal_cost=1.5)
+        prod = scm.Product(ID="P1", name="P1", manufacturing_cost=1,
+                           manufacturing_time=1, sell_price=20,
+                           raw_materials=[(rm, 1)], batch_size=5)
+        mfr = scm.Manufacturer(
+            env=env, ID="M1", name="M1",
+            capacity=100, initial_level=10, inventory_holding_cost=0,
+            product_sell_price=20, replenishment_policy=None, policy_param={},
+            product=prod, disposal_cost=3,
+        )
+        assert sup.disposal_cost == 1.5
+        assert mfr.disposal_cost == 3
+
+    def test_custom_impact_function_can_use_it(self):
+        env = _fresh_env()
+
+        def spoil_half(node):
+            qty = node.inventory.destroy(amount=node.inventory.level * 0.5,
+                                         reason="spoiled")
+            node.stats.update_stats(destroyed_qty=qty,
+                                    destroyed_value=qty * node.disposal_cost)
+
+        node = self._node(env, node_disrupt_time=lambda: 5,
+                          node_recovery_time=lambda: 100,
+                          disruption_impact=spoil_half, disposal_cost=2)
+        env.run(until=10)
+        assert node.stats.destroyed_qty == 5
+        assert node.stats.destroyed_value == 10
+
+
 class TestManufacturerDisruptionImpactDestroyAll(unittest.TestCase):
     """For a Manufacturer, ``destroy_all`` must wipe both the finished-goods
     inventory and the per-raw-material counts — the spirit of "everything
@@ -3749,6 +3862,7 @@ class TestManufacturerDisruptionImpactDestroyAll(unittest.TestCase):
             capacity=100, initial_level=10, inventory_holding_cost=0,
             product_sell_price=20, replenishment_policy=None, policy_param={},
             product=prod, supplier_selection_policy=scm.SelectFirst,
+            disposal_cost=2,
         )
         scm.Link(env=env, ID="L1", source=sup, sink=mfr, lead_time=lambda: 1, cost=0)
         # Force a known raw_inventory_counts state. Bypassing env.run avoids
@@ -3764,11 +3878,9 @@ class TestManufacturerDisruptionImpactDestroyAll(unittest.TestCase):
         assert mfr.raw_inventory_counts.get(rm.ID, 0) == 0
         # destroyed_qty covers both finished (10) and raw (50) units.
         assert mfr.stats.destroyed_qty == 60
-        # destroyed_value: finished priced at product.buy_price (which the
-        # Manufacturer init set to manufacturing_cost + raw_material cost
-        # = 1 + 2 = 3); raw priced at rm.cost = 2.
-        # 10*3 + 50*2 = 130
-        assert mfr.stats.destroyed_value == 130
+        # destroyed_value: every destroyed unit, product or raw material,
+        # costs the disposal cost (2): 60 * 2 = 120.
+        assert mfr.stats.destroyed_value == 120
 
 
 class _StubRng:

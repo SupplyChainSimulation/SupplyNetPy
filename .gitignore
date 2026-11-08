@@ -89,6 +89,7 @@ target/
 
 # Claude Code local settings
 .claude/
+CLAUDE.md
 
 # IPython
 profile_default/
