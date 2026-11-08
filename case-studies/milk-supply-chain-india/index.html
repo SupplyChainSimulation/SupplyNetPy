@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/case-studies/milk-supply-chain-india/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Milk Supply Chain (India) - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Milk Supply Chain (India)";
+        var mkdocs_page_input_path = "case-studies/milk-supply-chain-india.md";
+        var mkdocs_page_url = "/SupplyNetPy/case-studies/milk-supply-chain-india/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Release History</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With a Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Case Studies</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Milk Supply Chain (India)</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#goal-of-the-study">Goal of the Study</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#the-network">The Network</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#modeling-with-supplynetpy">Modeling with SupplyNetPy</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#experiments">Experiments</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#insights">Insights</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#further-work">Further work</a>
+    </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/customer-demand/">Customer Demand</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/replenishment-policies/">Replenishment Policies</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/supplier-selection/">Supplier Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/disruptions/">Disruptions</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/perishable-products/">Perishable Products</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/statistics/">Statistics and Results</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../guide/running-experiments/">Running Experiments</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../glossary/">Glossary</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/SupplyChainSimulation/SupplyNetPy">SupplyNetPy on GitHub</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">Case Studies</li>
+      <li class="breadcrumb-item active">Milk Supply Chain (India)</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="a-national-scale-milk-supply-chain-india">A National Scale Milk Supply Chain (India)</h1>
+<p>Milk is one of the most perishable goods distributed at national scale. A packet leaves the processing plant with a shelf life of only a few days, and India, the largest producer of milk in the world, moves it through thousands of distributors and retailers every day. Every site in that chain faces the same tension. Holding too few units loses sales, while holding too many means units expire before they sell.</p>
+<p>This case study models a national scale milk supply chain for India using SupplyNetPy. The network has three levels, with 31 manufacturers supplying 282 distributors, which in turn supply 1,498 retailers placed according to census town populations. The study performs an exhaustive evaluation and simulation based optimization to find near optimal replenishment settings, namely the reorder point fraction (alpha) and the order up to fraction (beta), for a given degree of disruption (controlled by the disruption probability, p_fail) and a given network structure (controlled by the number of backup distributors per retailer, n_backup).</p>
+<h2 id="goal-of-the-study">Goal of the Study</h2>
+<p>The goal is to study the combined effect of perishability and disruption on supply chain network performance, measured by profit, service level, and waste. These two forces pull replenishment policy in opposite directions. Perishability punishes holding too many units, because they expire before they sell. Disruption punishes holding too few, because a site that loses its inventory leaves its buyers and customers unserved. The experiments quantify this tension and identify the replenishment settings that balance it best at each disruption level, with and without backup distributors.</p>
+<h2 id="the-network">The Network</h2>
+<p>The network is built entirely from public data. Towns are taken from the Census of India 2011, and each town receives a retailer whose demand is proportional to its population. Distributors and manufacturers are placed in larger towns and cities, weighted by state level milk production statistics, and every site is placed at its real coordinates.</p>
+<p>Sites are then connected by nearest neighbor links. Each distributor buys from its nearest manufacturer, and each retailer is linked to its three nearest distributors. One of the three is the primary source and the other two serve as backups. A link is created only when its lead time is shorter than the shelf life of the product, so milk can never be sent along a path on which it would expire in transit. Lead times and transportation costs are worked out from road distances. Capacities are sized from the daily demand of the population each site serves. The result is a network of about 3,300 nodes and 6,300 links spanning the country.</p>
+<p>The complete network can be explored in the interactive map below. Layers for primary and backup links can be toggled on and off.</p>
+<p><a href="../milk-india/supply_chain_map.html" target="_blank"><b>&#128279; Open the interactive supply chain network map</b></a> <small>(opens in a new tab, about 5 MB)</small></p>
+
+<h2 id="modeling-with-supplynetpy">Modeling with SupplyNetPy</h2>
+<p>The study exercises several capabilities of the library together.</p>
+<ul>
+<li>Perishable inventory with first in, first out expiry, so each batch carries its manufacturing date and is thrown away when it passes its shelf life.</li>
+<li>(s, S) replenishment at every distributor and retailer, with s and S worked out from alpha, beta, and the capacity of the node.</li>
+<li>Supplier-selection policies, so a retailer with backup links switches to a distributor that is not disrupted when its primary distributor is.</li>
+<li>Disruptions that destroy the units at the disrupted site, followed by recovery after a while.</li>
+<li>Statistics for each node that report profit, service, waste, and costs for every site in the network.</li>
+</ul>
+<p>Each site is described by a plain dictionary, and the whole network is just a list of such dictionaries, created by a program from the data files. A distributor, a retailer with a backup link, and the links between them look like this.</p>
+<pre><code class="language-python">import random
+import SupplyNetPy.Components as scm
+
+P_FAIL = 0.005          # chance a disruption starts each day (one every 200 days on average)
+
+distributor = {'ID': 'D042', 'name': 'Distributor 42', 'node_type': 'distributor',
+               'capacity': 11200, 'initial_level': 11200,
+               'inventory_type': 'perishable', 'shelf_life': 5,
+               'inventory_holding_cost': 0.75,
+               'replenishment_policy': scm.SSReplenishment,
+               'policy_param': {'s': 1792, 'S': 4480},  # S = beta * capacity, s = alpha * S
+               'node_disrupt_time': lambda: random.expovariate(P_FAIL),  # time until the next disruption
+               'node_recovery_time': lambda: 1.0,  # each disruption lasts one day
+               'disruption_impact': 'destroy_all',  # a disrupted site loses all its units
+               'product_buy_price': 20, 'product_sell_price': 24}
+
+retailer = {'ID': 'R0731', 'name': 'Retailer 731', 'node_type': 'retailer',
+            'capacity': 1400, 'initial_level': 1400,
+            'inventory_type': 'perishable', 'shelf_life': 5,
+            'inventory_holding_cost': 0.6,
+            'replenishment_policy': scm.SSReplenishment,
+            'policy_param': {'s': 224, 'S': 560},
+            'supplier_selection_policy': scm.SelectAvailable,  # a distributor that is not disrupted and has enough units
+            'supplier_selection_mode': 'dynamic',
+            'product_buy_price': 24, 'product_sell_price': 29}
+
+links = [
+    {'ID': 'L1', 'source': 'P007', 'sink': 'D042', 'cost': 950.0, 'lead_time': lambda: 0.20},
+    {'ID': 'L2', 'source': 'D042', 'sink': 'R0731', 'cost': 120.0, 'lead_time': lambda: 0.05},  # primary
+    {'ID': 'L3', 'source': 'D118', 'sink': 'R0731', 'cost': 180.0, 'lead_time': lambda: 0.08},  # backup
+]  # costs and lead times come from road distances
+
+net = scm.create_sc_net(nodes=nodes, links=links, demands=demands)
+net = scm.simulate_sc_net(net, sim_time=180)
+</code></pre>
+<h2 id="experiments">Experiments</h2>
+<p>The experiments sweep a full factorial grid over the four factors. The replenishment settings alpha and beta, the disruption probability p_fail, and the number of backup distributors n_backup are varied together, and every configuration is simulated for a 180 day horizon with multiple independent replications. The sweep amounts to roughly 24,000 simulation runs, executed in parallel on an 80 core server. Each run records network profit, customer service level, and waste, with waste split into units lost to expiry and units destroyed by disruptions.</p>
+<h2 id="insights">Insights</h2>
+<p>Four findings stand out from the sweep.</p>
+<ol>
+<li><strong>For perishables, more inventory is not safer.</strong> Beyond a modest level, raising the order up to fraction beta reduces both profit and service, because the extra units expire before they can be sold.</li>
+<li><strong>Disruption shifts the optimum.</strong> As disruptions become more frequent, the best policy keeps more units in inventory. The buffer that perishability punishes in calm conditions becomes worth paying for when sites keep losing their inventory.</li>
+<li><strong>Backup distributors pay off.</strong> Every near optimal configuration found by the sweep uses all the backup distributors available. Backup links soften the profit and service loss caused by disruptions at little cost in calm conditions.</li>
+<li><strong>A profitable network can hide a struggling level.</strong> Under heavy disruption the network as a whole remains profitable while the retail level runs at a loss, a pattern that only becomes visible when performance is examined per node.</li>
+</ol>
+<p>The figures below show expected profit as a surface over the alpha and beta grid. The plots are interactive, so they can be rotated, zoomed, and hovered to read individual values. The first surface uses two backups per retailer, and rotating it shows the best (alpha, beta) region moving as disruption grows. The second surface fixes the disruption probability at one disruption every 200 days on average and shows how profit responds to the replenishment settings at that disruption level.</p>
+<iframe src="../milk-india/profit_surface_alpha_beta_nbackup_2.html" width="100%" height="470" style="border:none;" loading="lazy"></iframe>
+
+<iframe src="../milk-india/profit_surface_beta_alpha_pfail_005.html" width="100%" height="470" style="border:none;" loading="lazy"></iframe>
+
+<p>The per node view behind the fourth finding is available as a second interactive map. It shows the measured profit and the expiry waste of every retailer in the country at the best configuration found for each disruption level, with one toggleable layer per disruption level.</p>
+<p><a href="../milk-india/retailer_profit_heatmap.html" target="_blank"><b>&#128279; Open the interactive retailer profit and waste map</b></a> <small>(opens in a new tab, about 15 MB)</small></p>
+
+<h2 id="further-work">Further work</h2>
+<p>The exhaustive sweep produced a large volume of simulation data, and a related research thread builds on it. We are exploring graph neural network (GNN) metamodels for simulation based optimization of supply chains. A metamodel trained on this data may learn to predict near optimal values of alpha, beta, and n_backup for a given disruption degree directly from the network, without running thousands of simulations.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../../case_study_pharma/" class="btn btn-neutral float-left" title="Pharmacy Supply Chain"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../../guide/customer-demand/" class="btn btn-neutral float-right" title="Customer Demand">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../../case_study_pharma/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../../guide/customer-demand/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
