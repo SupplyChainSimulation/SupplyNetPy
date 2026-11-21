@@ -23,3 +23,11 @@ h3.doc-heading {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* A table with seven or more columns gets less space at the sides of each
+   cell, so it fits the width of the page instead of scrolling sideways. The
+   theme leaves 16 pixels on each side of every cell, which is too much for a
+   table of many short numbers. */
+.wy-table-responsive table:not(.highlighttable):has(th:nth-child(7)) td,
+.wy-table-responsive table:not(.highlighttable):has(th:nth-child(7)) th {
+  padding: 8px 6px;
+}
