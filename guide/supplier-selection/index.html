@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://supplychainsimulation.github.io/SupplyNetPy/guide/supplier-selection/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Supplier Selection - SupplyNetPy</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+        <link href="../../css/extra.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Supplier Selection";
+        var mkdocs_page_input_path = "guide/supplier-selection.md";
+        var mkdocs_page_url = "/SupplyNetPy/guide/supplier-selection/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/rust.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> SupplyNetPy
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../ten_min/">SupplyNetPy in 10 Minutes</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../about/">About</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Release History</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Examples</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Basic</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example/">Supply Chain With a Manufacturer</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-newvendor/">News Vendor</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../EOQ_est/">Estimating EOQ</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../../safety_inv_est/">Estimating Safety Stock</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Advanced</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../../example-complex/">Complex Supply Chain</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Case Studies</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case_study_pharma/">Pharmacy Supply Chain</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../case-studies/milk-supply-chain-india/">Milk Supply Chain (India)</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../customer-demand/">Customer Demand</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../replenishment-policies/">Replenishment Policies</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Supplier Selection</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#giving-a-site-its-policy">Giving a site its policy</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#the-built-in-policies">The built in policies</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#fixed-or-dynamic">Fixed or dynamic</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#choosing-suppliers-at-random">Choosing suppliers at random</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#networks-built-by-a-program">Networks built by a program</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#when-a-supplier-is-disrupted">When a supplier is disrupted</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#random-numbers">Random numbers</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#manufacturers">Manufacturers</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#writing-your-own-policy">Writing your own policy</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#policies-with-settings">Policies with settings</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../disruptions/">Disruptions</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../perishable-products/">Perishable Products</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../statistics/">Statistics and Results</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../running-experiments/">Running Experiments</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-intro/">Introduction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../glossary/">Glossary</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-core/">Core Components</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-utilities/">Utilities</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api-reference/api-ref-logger/">Logger</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../known-issues/">Known Issues and Planned Work</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/SupplyChainSimulation/SupplyNetPy">SupplyNetPy on GitHub</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">SupplyNetPy</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">User Guide</li>
+      <li class="breadcrumb-item active">Supplier Selection</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="supplier-selection">Supplier Selection</h1>
+<p>Imagine a retailer that can buy the same product from two distributors. Shipping from the first one is cheaper, but its orders take two days to arrive. The second one charges more for transport, and its orders arrive the next day. Each time the retailer orders, it has to pick one of them. In SupplyNetPy, the rule for this choice is called a supplier-selection policy. The replenishment policy decides when to order and how many units, and the supplier-selection policy decides which supplier receives the order.</p>
+<p>This guide shows how to choose a built in policy and its mode, how to choose suppliers at random, and how to write your own policy. The words used here are explained in the <a href="../../glossary/">Glossary</a>.</p>
+<h2 id="giving-a-site-its-policy">Giving a site its policy</h2>
+<p>A distributor or retailer that has more than one supplier takes two settings. <code>supplier_selection_policy</code> is the policy's class, and <code>supplier_selection_mode</code> is <code>"fixed"</code> or <code>"dynamic"</code>. As with replenishment policies, pass the class itself, without creating an object from it.</p>
+<pre><code class="language-python">retailer = {'ID': 'R1', 'name': 'Retailer1', 'node_type': 'retailer',
+            'capacity': 100, 'initial_level': 100, 'inventory_holding_cost': 0.2,
+            'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s': 40, 'S': 100},
+            'supplier_selection_policy': scm.SelectCheapest, 'supplier_selection_mode': 'dynamic',
+            'product_buy_price': 100, 'product_sell_price': 110}
+</code></pre>
+<p>Without these settings, a site uses <code>SelectFirst</code> in fixed mode, so it orders from the supplier whose link was created first. A site with only one supplier does not need them.</p>
+<h2 id="the-built-in-policies">The built in policies</h2>
+<p>Each policy chooses among the suppliers that can take an order right now. A supplier is skipped while its site, or the link to it, is disrupted.</p>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>Chooses</th>
+<th>Class</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../../api-reference/api-ref-core/#SupplyNetPy.Components.core.SelectFirst">First</a></td>
+<td>The supplier whose link was created first</td>
+<td><code>SelectFirst</code></td>
+</tr>
+<tr>
+<td><a href="../../api-reference/api-ref-core/#SupplyNetPy.Components.core.SelectAvailable">Available</a></td>
+<td>The first supplier whose inventory level can fill the whole order. If none can, the first supplier, and the order waits there until enough units arrive</td>
+<td><code>SelectAvailable</code></td>
+</tr>
+<tr>
+<td><a href="../../api-reference/api-ref-core/#SupplyNetPy.Components.core.SelectCheapest">Cheapest</a></td>
+<td>The supplier with the lowest transportation cost, the <code>cost</code> of the link to it</td>
+<td><code>SelectCheapest</code></td>
+</tr>
+<tr>
+<td><a href="../../api-reference/api-ref-core/#SupplyNetPy.Components.core.SelectFastest">Fastest</a></td>
+<td>The supplier with the shortest lead time</td>
+<td><code>SelectFastest</code></td>
+</tr>
+</tbody>
+</table>
+<p>When lead times are random, <code>SelectFastest</code> draws one lead time from each link to compare them. The shipment then draws its own lead time, so the chosen supplier is the one that looked fastest at that moment, and it may still turn out slower.</p>
+<h2 id="fixed-or-dynamic">Fixed or dynamic</h2>
+<p>The mode says how often the choice is made.</p>
+<ul>
+<li>In <strong>dynamic</strong> mode, the policy chooses again for every replenishment order. Use it when the best supplier can change during a run, for example with <code>SelectAvailable</code>, whose answer depends on the inventory levels at that moment, or with <code>SelectFastest</code> and random lead times.</li>
+<li>In <strong>fixed</strong> mode, the policy keeps the first supplier it chose and sends every later order there. This models a site with a regular supplier. While that supplier, or the link to it, is disrupted, the orders go to another supplier, chosen by the same rule. Once it recovers, the orders go back to it.</li>
+</ul>
+<p>In fixed mode the policy's rule decides only the first order and the orders placed during a disruption. So <code>SelectAvailable</code> in fixed mode looks at the inventory levels only once. Since fixed is the default of every built in policy except <code>SelectProbabilistic</code>, give <code>supplier_selection_mode='dynamic'</code> whenever you want the rule applied to every order.</p>
+<p>To see where the orders went, print the statistics of the site's links. Each row shows what the site ordered over one link and what arrived.</p>
+<pre><code class="language-python">scm.print_link_wise_performance(sc[&quot;nodes&quot;][&quot;R1&quot;].suppliers)
+</code></pre>
+<h2 id="choosing-suppliers-at-random">Choosing suppliers at random</h2>
+<p>Imagine a retailer that spreads its orders over three distributors. About half of its orders go to D1, about 30% to D2 and the rest to D3, with no rule such as the cheapest supplier. Each order goes to one of them by chance, with these shares. <code>SelectProbabilistic</code> does this. Give it the probability of each supplier in <code>supplier_selection_param</code>, keyed by the ID of the supplier.</p>
+<pre><code class="language-python">retailer = {'ID': 'R1', 'name': 'Retailer1', 'node_type': 'retailer',
+            'capacity': 100, 'initial_level': 100, 'inventory_holding_cost': 0.2,
+            'replenishment_policy': scm.SSReplenishment, 'policy_param': {'s': 40, 'S': 100},
+            'supplier_selection_policy': scm.SelectProbabilistic,
+            'supplier_selection_param': {'probabilities': {'D1': 0.5, 'D2': 0.3, 'D3': 0.2}, 'seed': 7},
+            'product_buy_price': 100, 'product_sell_price': 110}
+</code></pre>
+<p>The probabilities must sum to 1, and none can be negative. A supplier with probability 0 is never chosen. Every link to the site needs a probability, and every probability needs a link, so a mistyped ID is reported when the network is built, before the run. The policy makes a new choice for every order, so it always works in dynamic mode, and <code>supplier_selection_mode</code> is not needed.</p>
+<p>Over many orders, the shares come close to the probabilities. The statistics of the site's links show the real shares, as above.</p>
+<h3 id="networks-built-by-a-program">Networks built by a program</h3>
+<p>A program that builds many networks for an experiment, for example with random links between distributors and retailers, can choose the links and the probabilities in the same loop.</p>
+<pre><code class="language-python">rng = random.Random(1)
+distributors = ['D1', 'D2', 'D3', 'D4', 'D5']
+links, probabilities = [], {}
+for r in ['R1', 'R2']:
+    chosen = rng.sample(distributors, k=3)
+    weights = [rng.random() for _ in chosen]
+    probabilities[r] = {d: w / sum(weights) for d, w in zip(chosen, weights)}
+    for d in chosen:
+        links.append({'ID': f'{d}{r}', 'source': d, 'sink': r, 'cost': 2, 'lead_time': lambda: 3})
+</code></pre>
+<p>Each retailer's dictionary then gets <code>'supplier_selection_param': {'probabilities': probabilities[r]}</code>. In a network where every distributor is linked to every retailer, list every distributor, and give 0 to those a retailer should not use.</p>
+<p>When you create the objects yourself, a site is created before its links. Give its probabilities once you know them.</p>
+<pre><code class="language-python">r1.selection_policy.set_probabilities({'D1': 0.5, 'D2': 0.3, 'D3': 0.2})
+</code></pre>
+<p>The links are checked against them at the site's next order.</p>
+<h3 id="when-a-supplier-is-disrupted">When a supplier is disrupted</h3>
+<p>The probabilities are the shares while every supplier can take orders. The setting <code>on_disruption</code> says what happens when one cannot.</p>
+<ul>
+<li>With <code>'rescale'</code> (the default), the order goes to one of the other suppliers, which keep their ratios. With 0.5, 0.3 and 0.2 and D1 disrupted, D2 and D3 get 0.6 and 0.4 for that order. Once D1 recovers, the shares are 0.5, 0.3 and 0.2 again.</li>
+<li>With <code>'block'</code>, the choice is made as if no supplier were disrupted. If it falls on a disrupted supplier, the order is not placed, and it is counted as a blocked order at the site and on the link. The site orders again when a supplier or a link recovers, or when its inventory drops.</li>
+</ul>
+<pre><code class="language-python">'supplier_selection_param': {'probabilities': {'D1': 0.5, 'D2': 0.3, 'D3': 0.2}, 'on_disruption': 'block'}
+</code></pre>
+<p>If every supplier with a probability above 0 is disrupted, the order is blocked with either setting.</p>
+<p>So with disruptions, the shares at the end of a run differ from the probabilities. Say D1 is disrupted during 40% of the orders, and the others never are. With <code>'rescale'</code>, D1 receives about 30% of the orders (0.5 × 0.6), and the site never goes without. With <code>'block'</code>, D1 is still chosen for half of the orders, but receives only about 37.5% of the orders sent (0.3 out of 0.8), and the site goes without for the blocked orders.</p>
+<h3 id="random-numbers">Random numbers</h3>
+<p>The policy draws one random number for each order from its own random number generator, so its choices never change any other random numbers in the run, such as those of disruptions. Give a <code>seed</code> to repeat the same choices in every run. Two runs with the same seed see the same random numbers, so when you compare two sets of probabilities, only the orders whose number falls near a boundary go to a different supplier. These are common random numbers, explained in <a href="../running-experiments/">Running Experiments</a>. Without a seed, the policy takes one from the site's random number generator, so <code>scm.set_seed</code> still makes the run repeatable. You can also give your own <code>random.Random</code> as <code>rng</code>.</p>
+<h2 id="manufacturers">Manufacturers</h2>
+<p>A manufacturer does not use a supplier-selection policy. For each raw material, it orders from the first raw-material supplier of that raw material that can take an order, in the order the links were created. While that supplier, or the link to it, is disrupted, it orders from the next one. A manufacturer given a supplier-selection policy, a mode or settings for the policy warns that they are not used.</p>
+<h2 id="writing-your-own-policy">Writing your own policy</h2>
+<p>When no built in policy fits, write your own as a subclass of <code>SupplierSelectionPolicy</code>. Suppose the retailer above should order from whichever distributor has the most units right now.</p>
+<pre><code class="language-python">class SelectMostStock(scm.SupplierSelectionPolicy):
+    def select(self, order_quantity):
+        candidates = self._active_suppliers()
+        selected = max(candidates, key=lambda link: link.available_quantity())
+        return self._apply_mode(selected)
+</code></pre>
+<p>Give it to a site like a built in policy.</p>
+<pre><code class="language-python">'supplier_selection_policy': SelectMostStock, 'supplier_selection_mode': 'dynamic',
+</code></pre>
+<p>A site reaches each supplier over a link, so the policy works with links. <code>select</code> is called with the number of units in the order and returns the link to the chosen supplier. Follow the same three steps as the built in policies.</p>
+<ol>
+<li><code>self._active_suppliers()</code> returns the links in <code>self.node.suppliers</code> that can take an order right now, so disrupted suppliers and links are skipped.</li>
+<li>Choose one of them with your own rule.</li>
+<li><code>return self._apply_mode(selected)</code> applies the fixed or dynamic mode, so your policy follows <code>supplier_selection_mode</code> like the built in ones.</li>
+</ol>
+<p>To compare suppliers, use what the link offers. <code>link.available_quantity()</code> gives the supplier's inventory level, so the policy does not need to reach past the link into the supplier's inventory. <code>link.cost</code> is the transportation cost, <code>link.lead_time()</code> draws a lead time, and <code>link.source</code> is the supplier itself.</p>
+<h3 id="policies-with-settings">Policies with settings</h3>
+<p>A policy can take settings, given to the site in <code>supplier_selection_param</code>, just as <code>SelectProbabilistic</code> takes its probabilities. Suppose the retailer should order from the cheapest distributor, but skip any distributor that has fewer than 20 units.</p>
+<pre><code class="language-python">class SelectCheapestInStock(scm.SupplierSelectionPolicy):
+    _param_keys = (&quot;min_units&quot;,)
+
+    def select(self, order_quantity):
+        min_units = (self.params or {}).get(&quot;min_units&quot;, 0)
+        candidates = self._active_suppliers()
+        stocked = [link for link in candidates if link.available_quantity() &gt;= min_units]
+        selected = min(stocked or candidates, key=lambda link: link.cost)
+        return self._apply_mode(selected)
+</code></pre>
+<p>The site gives the setting with the policy.</p>
+<pre><code class="language-python">'supplier_selection_policy': SelectCheapestInStock, 'supplier_selection_mode': 'dynamic',
+'supplier_selection_param': {'min_units': 20},
+</code></pre>
+<p>The policy finds its settings in <code>self.params</code>. When the site is given no settings, <code>self.params</code> is <code>None</code>, so the example reads from an empty dict instead and uses 0. When no distributor has 20 units, the policy takes the cheapest one anyway.</p>
+<p><code>_param_keys</code> lists the settings the policy reads. The library warns about any other setting, because the policy would ignore it, so a typo such as <code>'min_unit'</code> does not go unnoticed. Without <code>_param_keys</code>, no setting is checked.</p>
+<p>Some settings name suppliers, as the probabilities of <code>SelectProbabilistic</code> do. To check them against the site's links, override <code>check_links(self)</code> and raise a <code>ValueError</code> when a setting does not match. <code>self.node.suppliers</code> gives the links, and <code>link.source.ID</code> gives the ID of each supplier. <code>create_sc_net</code> calls <code>check_links</code> once every link exists, so a mistyped supplier ID is reported before the run. If you run a network without <code>create_sc_net</code>, call <code>site.selection_policy.check_links()</code> yourself once its links are created.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../replenishment-policies/" class="btn btn-neutral float-left" title="Replenishment Policies"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../disruptions/" class="btn btn-neutral float-right" title="Disruptions">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../replenishment-policies/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../disruptions/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
